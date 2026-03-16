@@ -4,13 +4,14 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { access, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { buildProgram } from "../cli/dist/index.js";
+import { TEST_GROUPS } from "./real-mod-full-test/groups/index.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,6 +32,7 @@ const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
 const REAL_CLIENT_INSTANCE_ID = "mct-real-1.20.4-fabric";
 const REAL_CLIENT_WS_PORT = 25560;
 const REAL_CLIENT_INSTANCE_PATH_FRAGMENT = path.join("PrismLauncher", "instances", REAL_CLIENT_INSTANCE_ID);
+const LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
 
 const NON_REQUEST_LEAF_COMMANDS = [
   "client launch",
@@ -55,6 +57,62 @@ const FIXTURE = {
   reset: { x: 18, y: 80, z: 37 },
   teleport: { x: 12.5, y: 80, z: 37.5 }
 };
+
+function summarizeForLog(value, maxLength = 240) {
+  if (value == null) {
+    return "";
+  }
+
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function parseCliOptions(argv) {
+  const selectedGroups = [];
+  let listGroups = false;
+  let json = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--group") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --group");
+      }
+      selectedGroups.push(nextValue);
+      index += 1;
+      continue;
+    }
+    if (arg === "--list-groups") {
+      listGroups = true;
+      continue;
+    }
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  const knownGroups = new Set(TEST_GROUPS.map((group) => group.id));
+  for (const group of selectedGroups) {
+    if (!knownGroups.has(group)) {
+      throw new Error(`Unknown group: ${group}`);
+    }
+  }
+
+  const effectiveGroups = selectedGroups.length > 0 ? selectedGroups : TEST_GROUPS.map((group) => group.id);
+  const runLabel = effectiveGroups.length === TEST_GROUPS.length ? "all" : effectiveGroups.join("+");
+
+  return {
+    listGroups,
+    json,
+    selectedGroups: effectiveGroups,
+    selectedGroupSet: new Set(effectiveGroups),
+    runLabel,
+    runSlug: slugify(runLabel) || "all"
+  };
+}
 
 function collectLeafCommands(command, parents = []) {
   if (command.commands.length === 0) {
@@ -600,19 +658,53 @@ function buildSupportMatrix() {
 }
 
 async function main() {
+  const options = parseCliOptions(process.argv.slice(2));
+  if (options.listGroups) {
+    const payload = {
+      groups: TEST_GROUPS,
+      defaultGroups: TEST_GROUPS.map((group) => group.id)
+    };
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      for (const group of TEST_GROUPS) {
+        process.stdout.write(`${group.id}\t${group.title}\n`);
+      }
+    }
+    return;
+  }
+
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await ensureFileExists(RESOURCEPACK_PATH);
   await syncBuiltFixturePlugin();
 
+  const runReportPath =
+    options.runSlug === "all"
+      ? LEGACY_REPORT_PATH
+      : path.join(REPORT_DIR, `real-mod-full-test.${options.runSlug}.latest.json`);
+  const runLogPath = path.join(REPORT_DIR, `real-mod-full-test.${options.runSlug}.latest.log`);
+  await writeFile(runLogPath, "", "utf8");
+
+  let logChain = Promise.resolve();
+  const writeLogLine = (message) => {
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    logChain = logChain.then(() => appendFile(runLogPath, line, "utf8"));
+  };
+
   const summary = {
     startedAt: new Date().toISOString(),
+    selectedGroups: options.selectedGroups,
+    runLabel: options.runLabel,
+    reportPath: runReportPath,
+    logPath: runLogPath,
     configPath: CONFIG_PATH,
     stateDir: STATE_DIR,
     serverLogPath: SERVER_LOG_PATH,
     clientLogPath: CLIENT_LOG_PATH,
     screenshots: [],
     supportMatrix: null,
+    groups: [],
     steps: [],
     cleanup: null
   };
@@ -622,13 +714,17 @@ async function main() {
   const coveredNonRequestLeafCommands = new Set();
   const resourcePackServer = await startResourcePackServer();
   await updateServerProperties();
-  let cachedEntityIds = {};
+  const state = {
+    cachedEntityIds: {}
+  };
 
   summary.supportMatrix = {
     requestLeafCommands: supportMatrix.requestLeafCommands,
     requestLeafCount: supportMatrix.requestLeafCommands.length,
     nonRequestLeafCommands: NON_REQUEST_LEAF_COMMANDS
   };
+
+  writeLogLine(`run start groups=${options.selectedGroups.join(",")}`);
 
   const recordStep = (name, result, extra = {}) => {
     summary.steps.push({
@@ -642,7 +738,41 @@ async function main() {
       stdout: result.stdout || undefined,
       ...extra
     });
+    writeLogLine(
+      `step name=${name} kind=${extra.kind ?? "step"} ok=${result.ok} exit=${result.exitCode} durationMs=${result.durationMs} data=${summarizeForLog(extra.verifiedData ?? result.json?.data ?? result.json ?? null)}`
+    );
   };
+
+  async function runTestGroup(groupId, fn) {
+    if (!options.selectedGroupSet.has(groupId)) {
+      return;
+    }
+
+    const definition = TEST_GROUPS.find((group) => group.id === groupId);
+    const record = {
+      id: groupId,
+      title: definition?.title ?? groupId,
+      startedAt: new Date().toISOString(),
+      status: "running"
+    };
+    summary.groups.push(record);
+    writeLogLine(`group start id=${groupId} title=${record.title}`);
+    const startedStepCount = summary.steps.length;
+
+    try {
+      await fn();
+      record.status = "passed";
+    } catch (error) {
+      record.status = "failed";
+      record.error = error instanceof Error ? error.stack : String(error);
+      writeLogLine(`group fail id=${groupId} error=${summarizeForLog(record.error, 400)}`);
+      throw error;
+    } finally {
+      record.finishedAt = new Date().toISOString();
+      record.stepCount = summary.steps.length - startedStepCount;
+      writeLogLine(`group end id=${groupId} status=${record.status}`);
+    }
+  }
 
   async function captureClientDiagnostics(label) {
     const slug = slugify(label || "failure");
@@ -934,6 +1064,39 @@ async function main() {
     await sleep(600);
   }
 
+  const testContext = {
+    FIXTURE,
+    SCREENSHOT_DIR,
+    approx,
+    applyHudSetup,
+    chestSlotPoint,
+    closeGuiSetup,
+    countOccurrences,
+    ensureFileExists,
+    expect,
+    openChestSetup,
+    path,
+    pointNear,
+    pollClientRequest,
+    prepareEnchantSetup,
+    readClientLogText,
+    recordStep,
+    resetFixture,
+    restartEnvironmentWithResourcePack,
+    runCli,
+    runClientLeaf,
+    runSetup,
+    scheduleClientCommand,
+    sleep,
+    state,
+    summary,
+    takeDesktopScreenshot,
+    unwrapRequestSuccess,
+    waitForClientLogCountIncrease,
+    waitForLogEntry,
+    waitForTeleport
+  };
+
   try {
     const initialCleanup = await stopEnvironment();
     recordStep("cleanup-before-client-stop", initialCleanup.clientStop);
@@ -956,17 +1119,13 @@ async function main() {
       expect(data.reachable === true, "server was not reachable");
     });
 
-    await runNonRequestLeaf("client launch", ["client", "launch", "real"], (data) => {
-      expect(data.name === "real", "client launch returned unexpected name");
-    });
+    await launchRealClientAndWaitReady("initial");
+    coveredNonRequestLeafCommands.add("client launch");
+    coveredNonRequestLeafCommands.add("client wait-ready");
 
     await runNonRequestLeaf("client list", ["client", "list"], (data) => {
       expect(Array.isArray(data.clients), "client list did not return clients");
       expect(data.clients.some((client) => client.name === "real"), "client list missing real client");
-    });
-
-    await runNonRequestLeaf("client wait-ready", ["client", "wait-ready", "real", "--timeout", "180"], (data) => {
-      expect(data.connected === true, "client did not become ready");
     });
 
     await sleep(5000);
@@ -983,694 +1142,21 @@ async function main() {
     summary.screenshots.push(readyDesktopShot);
 
     await resetFixture("setup initial fixture reset");
+    for (const group of TEST_GROUPS) {
+      await runTestGroup(group.id, async () => {
+        await group.run(testContext);
+      });
+    }
 
-    await runClientLeaf("status health", ["status", "health"], (data) => {
-      expect(approx(data.health, 20, 0.5), "unexpected health value");
-      expect(data.food === 20, "unexpected food value");
-    });
-
-    await runClientLeaf("status effects", ["status", "effects"], (data) => {
-      expect(Array.isArray(data.effects), "status effects did not return an array");
-    });
-
-    await runClientLeaf("status experience", ["status", "experience"], (data) => {
-      expect(data.level === 30, "unexpected experience level");
-    });
-
-    await runClientLeaf("status gamemode", ["status", "gamemode"], (data) => {
-      expect(data.gameMode === "survival", "unexpected game mode");
-    });
-
-    await runClientLeaf("status world", ["status", "world"], (data) => {
-      expect(String(data.dimension).includes("overworld"), "unexpected world dimension");
-    });
-
-    await runClientLeaf("status all", ["status", "all"], (data) => {
-      expect(data.health?.food === 20, "status all missing health");
-      expect(data.position?.onGround === true, "status all missing position");
-    });
-
-    const screenSize = await runClientLeaf("screen size", ["screen", "size"], (data) => {
-      expect(Number(data.width) > 0, "screen width was not positive");
-      expect(Number(data.height) > 0, "screen height was not positive");
-    });
-
-    await resetFixture("setup reset before raw keyboard input");
-
-    await runClientLeaf("input key down", ["input", "key", "down", "shift"], (data) => {
-      expect(data.down === true, "input key down did not report success");
-      expect(Array.isArray(data.keys) && data.keys.includes("shift"), "input key down did not retain shift");
-    });
-
-    await runClientLeaf("input keys-down", ["input", "keys-down"], (data) => {
-      expect(Array.isArray(data.keys), "input keys-down did not return an array");
-      expect(data.keys.includes("shift"), "input keys-down did not include shift");
-    });
-
-    await runClientLeaf("input key up", ["input", "key", "up", "shift"], (data) => {
-      expect(data.up === true, "input key up did not report success");
-      expect(Array.isArray(data.keys) && !data.keys.includes("shift"), "input key up did not release shift");
-    });
-
-    await runClientLeaf("input key press", ["input", "key", "press", "inventory"], (data) => {
-      expect(data.pressed === true, "input key press did not report success");
-    });
-    await runSetup("setup wait inventory screen for raw key press", ["gui", "wait-open", "--timeout", "5"], (data) => {
-      expect(data.opened === true, "raw input key press did not open inventory");
-    });
-    await pollClientRequest(
-      "setup inspect inventory after raw key press",
-      ["gui", "info"],
-      (data) => data.open === true && Number(data.size) > 0
-    );
-    await closeGuiSetup("setup close inventory after raw key press");
-
-    await runSetup("setup select first hotbar slot before raw scroll", ["inventory", "hotbar", "0"], (data) => {
-      expect(data.item?.type === "minecraft:dirt", "failed to reset hotbar before raw scroll");
-    });
-
-    await runClientLeaf(
-      "input scroll",
-      ["input", "scroll", String(Math.round(screenSize.width / 2)), String(Math.round(screenSize.height / 2)), "--delta", "1"],
-      async (data) => {
-        expect(data.scrolled === true, "input scroll did not report success");
-        const held = unwrapRequestSuccess(await runCli(["--client", "real", "inventory", "held"]));
-        expect(held.item?.type !== "minecraft:dirt", "input scroll did not change the selected hotbar slot");
+      const missingRequestLeafCommands = supportMatrix.requestLeafCommands.filter(
+        (leaf) => !coveredRequestLeafCommands.has(leaf)
+      );
+      summary.supportMatrix.coveredRequestLeafCommands = [...coveredRequestLeafCommands].sort();
+      summary.supportMatrix.coveredNonRequestLeafCommands = [...coveredNonRequestLeafCommands].sort();
+      summary.supportMatrix.missingRequestLeafCommands = missingRequestLeafCommands;
+      if (options.selectedGroups.length === TEST_GROUPS.length) {
+        assert.deepEqual(missingRequestLeafCommands, [], `Missing request leaf coverage: ${missingRequestLeafCommands.join(", ")}`);
       }
-    );
-
-    await resetFixture("setup reset before input key hold");
-
-    await runClientLeaf("input key hold", ["input", "key", "hold", "w", "--duration", "800"], async (data) => {
-      expect(data.held === true, "input key hold did not report success");
-      expect(Number(data.actualDuration) >= 700, "input key hold returned an unexpectedly short duration");
-      const position = unwrapRequestSuccess(await runCli(["--client", "real", "position", "get"]));
-      const moved = Math.hypot(position.x - FIXTURE.teleport.x, position.z - FIXTURE.teleport.z);
-      expect(moved > 0.5, "input key hold did not move the player");
-    });
-
-    await resetFixture("setup reset before movement");
-
-    await runClientLeaf("look set", ["look", "set", "--yaw", "90", "--pitch", "-15"], (data) => {
-      expect(approx(data.yaw, 90, 0.1), "look set yaw mismatch");
-      expect(approx(data.pitch, -15, 0.1), "look set pitch mismatch");
-    });
-
-    await runClientLeaf("rotation get", ["rotation", "get"], (data) => {
-      expect(approx(data.yaw, 90, 0.25), "rotation yaw mismatch");
-      expect(approx(data.pitch, -15, 0.25), "rotation pitch mismatch");
-    });
-
-    await runClientLeaf("look at", ["look", "at", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)], (data) => {
-      expect(typeof data.yaw === "number", "look at yaw missing");
-      expect(typeof data.pitch === "number", "look at pitch missing");
-    });
-
-    await runClientLeaf("look entity", ["look", "entity", "--name", "MCT Trader"], (data) => {
-      expect(typeof data.entityId === "number", "look entity did not return entity id");
-    });
-
-    await runClientLeaf("move jump", ["move", "jump"], (data) => {
-      expect(data.success === true, "move jump failed");
-    });
-
-    await runClientLeaf("move sneak", ["move", "sneak", "on"], (data) => {
-      expect(data.sneaking === true, "move sneak did not enable sneaking");
-    });
-
-    await runClientLeaf("move sprint", ["move", "sprint", "on"], (data) => {
-      expect(data.sprinting === true, "move sprint did not enable sprint");
-    });
-
-    await runClientLeaf("move forward", ["move", "forward", "2"], (data) => {
-      const dx = Number(data.newPos?.x) - FIXTURE.teleport.x;
-      const dz = Number(data.newPos?.z) - FIXTURE.teleport.z;
-      expect(Math.hypot(dx, dz) > 0.5, "move forward did not change position");
-    });
-
-    await runClientLeaf("move back", ["move", "back", "1"], (data) => {
-      expect(typeof data.newPos?.x === "number", "move back did not return position");
-    });
-
-    await runClientLeaf("move left", ["move", "left", "1"], (data) => {
-      expect(typeof data.newPos?.x === "number", "move left did not return position");
-    });
-
-    await runClientLeaf("move right", ["move", "right", "1"], (data) => {
-      expect(typeof data.newPos?.x === "number", "move right did not return position");
-    });
-
-    await runClientLeaf("move to", ["move", "to", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)], (data) => {
-      expect(data.arrived === true || Number(data.distance) < 1.5, "move to did not arrive near target");
-    });
-
-    await resetFixture("setup reset before inventory");
-
-    await runClientLeaf("inventory get", ["inventory", "get"], (data) => {
-      expect(Array.isArray(data.slots), "inventory get slots missing");
-      expect(data.slots.length > 0, "inventory get returned no slots");
-    });
-
-    await runClientLeaf("inventory slot", ["inventory", "slot", "0"], (data) => {
-      expect(data.item?.type === "minecraft:dirt", "inventory slot 0 was not dirt");
-    });
-
-    await runClientLeaf("inventory held", ["inventory", "held"], (data) => {
-      expect(data.item?.type === "minecraft:dirt", "inventory held was not dirt");
-    });
-
-    await runClientLeaf("inventory hotbar", ["inventory", "hotbar", "3"], (data) => {
-      expect(data.selectedSlot === 3, "inventory hotbar did not switch to slot 3");
-      expect(data.item?.type === "minecraft:writable_book", "inventory hotbar slot 3 was not writable book");
-    });
-
-    await runClientLeaf("inventory use", ["inventory", "use"], (data) => {
-      expect(data.success === true, "inventory use did not succeed");
-    });
-    await closeGuiSetup("setup close book screen after inventory use");
-
-    await resetFixture("setup reset before swap hands");
-    await runSetup("setup select sword", ["inventory", "hotbar", "5"], (data) => {
-      expect(data.selectedSlot === 5, "failed to select sword hotbar slot");
-    });
-
-    await runClientLeaf("inventory swap-hands", ["inventory", "swap-hands"], (data) => {
-      expect(data.offHand?.type === "minecraft:diamond_sword", "swap hands did not move sword to offhand");
-    });
-
-    await resetFixture("setup reset before drop");
-    await runSetup("setup select bread", ["inventory", "hotbar", "4"], (data) => {
-      expect(data.item?.type === "minecraft:bread", "failed to select bread");
-    });
-
-    await runClientLeaf("inventory drop", ["inventory", "drop", "--all"], (data) => {
-      expect(data.dropped === true, "inventory drop did not report success");
-    });
-
-    await resetFixture("setup reset before book commands");
-    await runSetup("setup select writable book", ["inventory", "hotbar", "3"], (data) => {
-      expect(data.item?.type === "minecraft:writable_book", "failed to select writable book");
-    });
-
-    const bookPages = ["Real Page 1", "Real Page 2"];
-    await runClientLeaf("book write", ["book", "write", "--pages", ...bookPages], (data) => {
-      expect(data.written === true, "book write failed");
-      expect(Array.isArray(data.pages) && data.pages.length === 2, "book write pages missing");
-    });
-
-    await runClientLeaf("book read", ["book", "read"], (data) => {
-      expect(Array.isArray(data.pages), "book read did not return pages");
-      expect(data.pages.some((page) => page.includes("Real Page 1")), "book read missing written page");
-    });
-
-    await runClientLeaf("book sign", ["book", "sign", "--title", "Guide", "--author", "Bot"], (data) => {
-      expect(data.signed === true, "book sign failed");
-      expect(data.title === "Guide", "book sign title mismatch");
-    });
-
-    await resetFixture("setup reset before block and gui");
-
-    await runClientLeaf(
-      "block get",
-      ["block", "get", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)],
-      (data) => {
-        expect(data.type === "minecraft:chest", "block get did not return chest fixture");
-      }
-    );
-
-    await runClientLeaf(
-      "block place",
-      ["block", "place", String(FIXTURE.placeBlock.x), String(FIXTURE.placeBlock.y), String(FIXTURE.placeBlock.z), "--face", "up"],
-      (data) => {
-        expect(data.success === true, "block place failed");
-        expect(data.placedType === "minecraft:dirt", "block place did not place dirt");
-      }
-    );
-
-    await resetFixture("setup reset before block break");
-    await runSetup("setup select pickaxe", ["inventory", "hotbar", "1"], (data) => {
-      expect(data.item?.type === "minecraft:diamond_pickaxe", "failed to select pickaxe");
-    });
-
-    await runClientLeaf(
-      "block break",
-      ["block", "break", String(FIXTURE.breakBlock.x), String(FIXTURE.breakBlock.y), String(FIXTURE.breakBlock.z)],
-      (data) => {
-        expect(data.success === true, "block break failed");
-        expect(data.blockType === "minecraft:air", "block break did not clear the target block");
-      }
-    );
-
-    await resetFixture("setup reset before sign");
-
-    await runClientLeaf("sign read", ["sign", "read", String(FIXTURE.sign.x), String(FIXTURE.sign.y), String(FIXTURE.sign.z)], (data) => {
-      expect(Array.isArray(data.front), "sign read front text missing");
-      expect(data.front[0] === "MCT Line 1", "sign read returned unexpected content");
-    });
-
-    await runClientLeaf(
-      "sign edit",
-      ["sign", "edit", String(FIXTURE.sign.x), String(FIXTURE.sign.y), String(FIXTURE.sign.z), "--lines", "A", "B", "C", "D"],
-      (data) => {
-        expect(data.front[0] === "A", "sign edit did not update the first line");
-        expect(data.front[3] === "D", "sign edit did not update the fourth line");
-      }
-    );
-
-    const scheduledOpenChest = scheduleClientCommand(
-      ["block", "interact", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)],
-      1000
-    );
-    await runClientLeaf("gui wait-open", ["gui", "wait-open", "--timeout", "6"], async (data) => {
-      expect(data.opened === true, "gui wait-open did not detect chest");
-      unwrapRequestSuccess(await scheduledOpenChest);
-    });
-
-    const chestGui = await runClientLeaf("gui info", ["gui", "info"], (data) => {
-      expect(data.open === true, "gui info did not report an open screen");
-      expect(typeof data.title === "string" && data.title.length > 0, "gui info title missing");
-    });
-
-    await runClientLeaf("gui snapshot", ["gui", "snapshot"], (data) => {
-      expect(Array.isArray(data.slots), "gui snapshot slots missing");
-      expect(data.slots.length > 20, "gui snapshot returned too few slots");
-    });
-
-    await runClientLeaf("gui slot", ["gui", "slot", "13"], (data) => {
-      expect(data.item?.type === "minecraft:diamond", "gui slot 13 did not contain the fixture diamonds");
-    });
-
-    const slot0Point = chestSlotPoint(chestGui, 0);
-    const slot3Point = chestSlotPoint(chestGui, 3);
-    const slot5Point = chestSlotPoint(chestGui, 5);
-    const slot13Point = chestSlotPoint(chestGui, 13);
-
-    await runClientLeaf("input mouse-move", ["input", "mouse-move", String(slot13Point.x), String(slot13Point.y)], (data) => {
-      expect(data.moved === true, "input mouse-move did not report success");
-      expect(pointNear(data, slot13Point), "input mouse-move did not move near the target slot");
-    });
-
-    await runClientLeaf("input mouse-pos", ["input", "mouse-pos"], (data) => {
-      expect(typeof data.x === "number" && typeof data.y === "number", "input mouse-pos did not return coordinates");
-      expect(pointNear(data, slot13Point), "input mouse-pos did not reflect the latest mouse location");
-    });
-
-    await runClientLeaf("input click", ["input", "click", String(slot13Point.x), String(slot13Point.y)], async (data) => {
-      expect(data.clicked === true, "input click did not report success");
-      const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-      expect(snapshot.cursorItem?.type === "minecraft:diamond", "input click did not pick up the diamond stack");
-    });
-
-    await runSetup("setup return diamonds after raw click", ["gui", "click", "13", "--button", "left"], (data) => {
-      expect(data.success === true, "failed to return diamonds after raw click");
-    });
-
-    await runClientLeaf(
-      "input double-click",
-      ["input", "double-click", String(slot13Point.x), String(slot13Point.y)],
-      (data) => {
-        expect(data.clicked === true, "input double-click did not report success");
-        expect(data.count === 2, "input double-click did not report double click count");
-      }
-    );
-
-    await runSetup("setup pick cobblestone for raw drag", ["gui", "click", "0", "--button", "left"], (data) => {
-      expect(data.success === true, "failed to pick cobblestone before raw drag");
-    });
-
-    await runClientLeaf(
-      "input drag",
-      ["input", "drag", String(slot3Point.x), String(slot3Point.y), String(slot5Point.x), String(slot5Point.y), "--button", "left"],
-      async (data) => {
-        expect(data.dragged === true, "input drag did not report success");
-        const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-        for (const slot of [3, 4, 5]) {
-          const item = snapshot.slots.find((entry) => entry.slot === slot)?.item;
-          expect(item?.type === "minecraft:cobblestone", `input drag did not distribute cobblestone to slot ${slot}`);
-        }
-      }
-    );
-
-    const capturePath = path.join(SCREENSHOT_DIR, "real-capture-gui.png");
-    await runClientLeaf("screenshot", ["screenshot", "--output", capturePath, "--region", "0,0,200,200", "--gui"], async (data) => {
-      await ensureFileExists(capturePath);
-      expect(String(data.path).endsWith("real-capture-gui.png"), "screenshot did not return the expected output path");
-      summary.screenshots.push({ ok: true, path: capturePath, source: "capture.screenshot" });
-    });
-
-    const guiShotPath = path.join(SCREENSHOT_DIR, "real-gui-screenshot.png");
-    await runClientLeaf("gui screenshot", ["gui", "screenshot", "--output", guiShotPath], async (data) => {
-      await ensureFileExists(guiShotPath);
-      expect(String(data.path).endsWith("real-gui-screenshot.png"), "gui screenshot did not return the expected output path");
-      summary.screenshots.push({ ok: true, path: guiShotPath, source: "gui.screenshot" });
-    });
-
-    await runClientLeaf(
-      "wait",
-      ["wait", "1", "--ticks", "20", "--until-health-above", "18", "--until-gui-open", "--until-on-ground", "--timeout", "5"],
-      (data) => {
-        expect(Number(data.waitedSeconds) >= 1.9, "wait completed too quickly");
-        expect(data.guiOpen === true, "wait did not observe an open GUI");
-        expect(data.onGround === true, "wait did not report onGround");
-      }
-    );
-
-    await runClientLeaf("gui close", ["gui", "close"], (data) => {
-      expect(data.success === true, "gui close failed");
-    });
-
-    await openChestSetup("setup reopen chest for gui click");
-    await runClientLeaf("gui click", ["gui", "click", "13", "--button", "right"], (data) => {
-      expect(data.success === true, "gui click failed");
-    });
-    await closeGuiSetup("setup close chest after gui click");
-
-    await openChestSetup("setup reopen chest for gui drag");
-    await runSetup("setup pick chest slot 0", ["gui", "click", "0", "--button", "left"], (data) => {
-      expect(data.success === true, "failed to pick up chest item");
-    });
-    await runClientLeaf("gui drag", ["gui", "drag", "--slots", "1,2,3", "--button", "left"], (data) => {
-      expect(data.success === true, "gui drag failed");
-    });
-    await closeGuiSetup("setup close chest after gui drag");
-
-    await openChestSetup("setup reopen chest for gui wait-update");
-    const scheduledGuiUpdate = scheduleClientCommand(["gui", "click", "22", "--button", "left"], 1000);
-    await runClientLeaf("gui wait-update", ["gui", "wait-update", "--timeout", "6"], async (data) => {
-      expect(data.updated === true, "gui wait-update did not detect a change");
-      unwrapRequestSuccess(await scheduledGuiUpdate);
-    });
-    await closeGuiSetup("setup close chest after gui wait-update");
-
-    await resetFixture("setup reset before block interact");
-    await runClientLeaf(
-      "block interact",
-      ["block", "interact", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)],
-      (data) => {
-        expect(data.success === true, "block interact failed");
-      }
-    );
-    await closeGuiSetup("setup close chest after block interact");
-
-    await resetFixture("setup reset before hud");
-    await applyHudSetup();
-
-    await runClientLeaf("hud scoreboard", ["hud", "scoreboard"], (data) => {
-      expect(data.title === "MCT Sidebar", "hud scoreboard title mismatch");
-      expect(Array.isArray(data.entries) && data.entries.length >= 3, "hud scoreboard entries missing");
-    });
-
-    await runClientLeaf("hud tab", ["hud", "tab"], (data) => {
-      expect(data.header === "MCT Header", "hud tab header mismatch");
-      expect(Array.isArray(data.players) && data.players.length >= 1, "hud tab players missing");
-    });
-
-    await runClientLeaf("hud bossbar", ["hud", "bossbar"], (data) => {
-      expect(Array.isArray(data.bossBars) && data.bossBars.length >= 1, "hud bossbar missing");
-    });
-
-    await runClientLeaf("hud actionbar", ["hud", "actionbar"], (data) => {
-      expect(String(data.text).includes("MCT Actionbar"), "hud actionbar mismatch");
-    });
-
-    await runClientLeaf("hud title", ["hud", "title"], (data) => {
-      expect(data.title === "MCT Title", "hud title mismatch");
-      expect(data.subtitle === "MCT Subtitle", "hud subtitle mismatch");
-    });
-
-    await runClientLeaf("hud nametag", ["hud", "nametag", "--player", "TEST1"], (data) => {
-      expect(data.prefix === "MCT[", "hud nametag prefix mismatch");
-      expect(data.suffix === "]", "hud nametag suffix mismatch");
-    });
-
-    await resetFixture("setup reset before entity");
-
-    await runClientLeaf("entity list", ["entity", "list", "--radius", "16"], (data) => {
-      expect(Array.isArray(data.entities), "entity list missing entities");
-      expect(data.entities.length >= 3, "entity list returned too few entities");
-      cachedEntityIds = Object.fromEntries(data.entities.map((entity) => [entity.name, entity.id]));
-      expect(cachedEntityIds["MCT Trader"], "entity list missing MCT Trader");
-      expect(cachedEntityIds["MCT Mount"], "entity list missing MCT Mount");
-      expect(cachedEntityIds["MCT Target"], "entity list missing MCT Target");
-    });
-
-    await runClientLeaf("entity info", ["entity", "info", "--id", String(cachedEntityIds["MCT Trader"])], (data) => {
-      expect(data.name === "MCT Trader", "entity info returned the wrong entity");
-      expect(data.type === "minecraft:villager", "entity info type mismatch");
-    });
-
-    await runClientLeaf("entity attack", ["entity", "attack", "--name", "MCT Target"], (data) => {
-      expect(data.success === true, "entity attack failed");
-      expect(data.entityType === "minecraft:zombie", "entity attack hit the wrong entity");
-    });
-
-    await runClientLeaf("entity interact", ["entity", "interact", "--name", "MCT Trader"], (data) => {
-      expect(data.success === true, "entity interact failed");
-      expect(data.entityType === "minecraft:villager", "entity interact hit the wrong entity");
-    });
-    await closeGuiSetup("setup close villager gui after entity interact");
-
-    await resetFixture("setup reset before combat kill");
-    await runSetup("setup select sword for combat kill", ["inventory", "hotbar", "5"], (data) => {
-      expect(data.item?.type === "minecraft:diamond_sword", "failed to select sword before combat kill");
-    });
-    await runClientLeaf("combat kill", ["combat", "kill", "--nearest", "--type", "zombie", "--timeout", "20"], (data) => {
-      expect(data.killed === true, "combat kill did not report a kill");
-      expect(Number(data.hits) >= 1, "combat kill did not register any hits");
-    });
-
-    await resetFixture("setup reset before combat engage");
-    await runSetup("setup select sword for combat engage", ["inventory", "hotbar", "5"], (data) => {
-      expect(data.item?.type === "minecraft:diamond_sword", "failed to select sword before combat engage");
-    });
-    await runSetup("setup move away before combat engage", ["move", "to", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)], (data) => {
-      expect(data.arrived === true || Number(data.distance) < 1.5, "failed to move away before combat engage");
-    });
-    await runClientLeaf("combat engage", ["combat", "engage", "--name", "MCT Target", "--timeout", "25"], (data) => {
-      expect(data.killed === true, "combat engage did not report a kill");
-      expect(Number(data.hits) >= 1, "combat engage did not register any hits");
-    });
-
-    await resetFixture("setup reset before combat chase");
-    await runSetup("setup select sword for combat chase", ["inventory", "hotbar", "5"], (data) => {
-      expect(data.item?.type === "minecraft:diamond_sword", "failed to select sword before combat chase");
-    });
-    await runSetup("setup move away before combat chase", ["move", "to", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)], (data) => {
-      expect(data.arrived === true || Number(data.distance) < 1.5, "failed to move away before combat chase");
-    });
-    await runClientLeaf("combat chase", ["combat", "chase", "--name", "MCT Target", "--timeout", "25"], (data) => {
-      expect(data.killed === true, "combat chase did not report a kill");
-      expect(Number(data.hits) >= 1, "combat chase did not register any hits");
-    });
-
-    await resetFixture("setup reset before combat clear");
-    await runSetup("setup select sword for combat clear", ["inventory", "hotbar", "5"], (data) => {
-      expect(data.item?.type === "minecraft:diamond_sword", "failed to select sword before combat clear");
-    });
-    await runClientLeaf("combat clear", ["combat", "clear", "--type", "zombie", "--radius", "16", "--timeout", "25"], (data) => {
-      expect(Number(data.killed) >= 1, "combat clear did not kill any zombie");
-      expect(Number(data.remaining) === 0, "combat clear left zombies alive");
-    });
-
-    await resetFixture("setup reset before combat pickup");
-    await runSetup("setup drop bread for combat pickup", ["inventory", "hotbar", "4"], (data) => {
-      expect(data.item?.type === "minecraft:bread", "failed to select bread before combat pickup");
-    });
-    await runSetup("setup create pickup drops", ["inventory", "drop", "--all"], (data) => {
-      expect(data.dropped === true, "failed to create dropped items for combat pickup");
-    });
-    await runClientLeaf("combat pickup", ["combat", "pickup", "--radius", "5", "--timeout", "10"], (data) => {
-      expect(Array.isArray(data.picked), "combat pickup did not return picked items");
-      expect(data.picked.some((item) => item.type === "minecraft:bread"), "combat pickup did not collect the dropped bread");
-    });
-
-    await resetFixture("setup reset before mount");
-    await runClientLeaf("entity mount", ["entity", "mount", "--name", "MCT Mount"], (data) => {
-      expect(data.success === true, "entity mount failed");
-      expect(typeof data.vehicleId === "number", "entity mount did not return vehicle id");
-    });
-
-    await runClientLeaf("entity steer", ["entity", "steer", "--forward", "--jump"], (data) => {
-      expect(typeof data.newPos?.x === "number", "entity steer did not return position");
-    });
-
-    await runClientLeaf("entity dismount", ["entity", "dismount"], (data) => {
-      expect(data.success === true, "entity dismount failed");
-    });
-
-    await resetFixture("setup reset before trade");
-    await runSetup("setup open villager trade", ["entity", "interact", "--name", "MCT Trader"], (data) => {
-      expect(data.success === true, "failed to open villager trade");
-    });
-
-    await runClientLeaf("trade", ["trade", "--index", "0"], (data) => {
-      expect(data.success === true, "trade failed");
-      expect(data.result?.type === "minecraft:diamond", "trade result was not a diamond");
-    });
-    await closeGuiSetup("setup close trade gui");
-
-    await resetFixture("setup reset before craft");
-    await runSetup(
-      "setup open crafting table",
-      ["block", "interact", String(FIXTURE.craft.x), String(FIXTURE.craft.y), String(FIXTURE.craft.z)],
-      (data) => {
-        expect(data.success === true, "failed to open crafting table");
-      }
-    );
-    await runSetup("setup wait craft gui", ["gui", "wait-open", "--timeout", "5"], (data) => {
-      expect(data.opened === true, "craft gui did not open");
-    });
-
-    await runClientLeaf(
-      "craft",
-      ["craft", "--recipe", '[[null,"diamond",null],[null,"stick",null],[null,"stick",null]]'],
-      (data) => {
-        expect(data.crafted === true, "craft command failed");
-        expect(data.result?.type === "minecraft:diamond_shovel", "craft result was not a diamond shovel");
-      }
-    );
-    await closeGuiSetup("setup close craft gui");
-
-    await resetFixture("setup reset before anvil");
-    await runSetup(
-      "setup open anvil",
-      ["block", "interact", String(FIXTURE.anvil.x), String(FIXTURE.anvil.y), String(FIXTURE.anvil.z)],
-      (data) => {
-        expect(data.success === true, "failed to open anvil");
-      }
-    );
-    await runSetup("setup wait anvil gui", ["gui", "wait-open", "--timeout", "5"], (data) => {
-      expect(data.opened === true, "anvil gui did not open");
-    });
-
-    const anvilSnapshot = await runSetup("setup anvil snapshot for raw typing", ["gui", "snapshot"], (data) => {
-      expect(Array.isArray(data.slots), "anvil snapshot slots missing");
-    });
-    const anvilSwordSlot = anvilSnapshot.slots.find((slot) => slot.item?.type === "minecraft:diamond_sword")?.slot;
-    expect(Number.isInteger(anvilSwordSlot), "diamond sword slot not found in anvil gui");
-
-    await runSetup("setup pick sword for raw typing", ["gui", "click", String(anvilSwordSlot), "--button", "left"], (data) => {
-      expect(data.success === true, "failed to pick sword for raw typing");
-    });
-    await runSetup("setup place sword into anvil input", ["gui", "click", "0", "--button", "left"], (data) => {
-      expect(data.success === true, "failed to place sword into anvil input");
-    });
-
-    await runClientLeaf("input type", ["input", "type", "RawName"], async (data) => {
-      expect(data.typed === true, "input type did not report success");
-      const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-      const preview = snapshot.slots.find((slot) => slot.slot === 2)?.item;
-      expect(String(preview?.displayName ?? "").includes("RawName"), "input type did not update the anvil preview name");
-    });
-
-    await runClientLeaf("input key combo", ["input", "key", "combo", "backspace"], async (data) => {
-      expect(data.pressed === true, "input key combo did not report success");
-      const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-      const preview = snapshot.slots.find((slot) => slot.slot === 2)?.item;
-      expect(String(preview?.displayName ?? "").includes("RawNam"), "input key combo did not update the anvil preview name");
-      expect(!String(preview?.displayName ?? "").includes("RawName"), "input key combo did not remove the trailing character");
-    });
-
-    await closeGuiSetup("setup close anvil after raw typing");
-
-    await resetFixture("setup reset before standard anvil");
-    await runSetup(
-      "setup reopen anvil",
-      ["block", "interact", String(FIXTURE.anvil.x), String(FIXTURE.anvil.y), String(FIXTURE.anvil.z)],
-      (data) => {
-        expect(data.success === true, "failed to reopen anvil");
-      }
-    );
-    await runSetup("setup wait reopened anvil gui", ["gui", "wait-open", "--timeout", "5"], (data) => {
-      expect(data.opened === true, "reopened anvil gui did not open");
-    });
-
-    await runClientLeaf("anvil", ["anvil", "--input-slot", "5", "--rename", "Renamed"], (data) => {
-      expect(data.success === true, "anvil command failed");
-      expect(String(data.result?.displayName).includes("Renamed"), "anvil did not rename the item");
-    });
-    await closeGuiSetup("setup close anvil gui");
-
-    await resetFixture("setup reset before enchant");
-    await prepareEnchantSetup();
-    await runClientLeaf("enchant", ["enchant", "--option", "0"], (data) => {
-      expect(data.success === true, "enchant command failed");
-      expect(data.selectedOption === 0, "enchant command selected unexpected option");
-    });
-    await closeGuiSetup("setup close enchant gui");
-
-    await runClientLeaf("chat command", ["chat", "command", "mcttp"], async (data) => {
-      expect(data.sent === true, "chat command did not report sent");
-      const teleported = await waitForTeleport(30);
-      recordStep("chat command teleport confirm", teleported.cli, { kind: "verification", position: teleported.position });
-    });
-
-    const chatSendToken = `MCT_REAL_CHAT_SEND_${Date.now()}`;
-    await runClientLeaf("chat send", ["chat", "send", chatSendToken], async (data) => {
-      expect(data.sent === true, "chat send did not report sent");
-      await waitForLogEntry(chatSendToken, 30);
-    });
-
-    await runClientLeaf("chat history", ["chat", "history", "--last", "10"], (data) => {
-      expect(Array.isArray(data.messages), "chat history messages missing");
-      expect(data.messages.some((message) => String(message.content ?? "").includes(chatSendToken)), "chat history missing sent token");
-    });
-
-    const chatLastToken = `MCT_REAL_CHAT_LAST_${Date.now()}`;
-    await runSetup("setup chat last token", ["chat", "send", chatLastToken], async (data) => {
-      expect(data.sent === true, "chat last setup send failed");
-      await waitForLogEntry(chatLastToken, 30);
-    });
-
-    await runClientLeaf("chat last", ["chat", "last"], (data) => {
-      expect(String(data.message?.content ?? "").includes(chatLastToken), "chat last did not return latest token");
-    });
-
-    const chatWaitToken = `MCT_REAL_CHAT_WAIT_${Date.now()}`;
-    const scheduledChat = scheduleClientCommand(["chat", "send", chatWaitToken], 1000);
-    await runClientLeaf("chat wait", ["chat", "wait", "--match", chatWaitToken, "--timeout", "7"], async (data) => {
-      expect(data.matched === true, "chat wait did not match");
-      expect(String(data.message?.content ?? "").includes(chatWaitToken), "chat wait returned unexpected message");
-      unwrapRequestSuccess(await scheduledChat);
-    });
-
-    await restartEnvironmentWithResourcePack("setup restart before resourcepack reject");
-    await runClientLeaf("resourcepack status", ["resourcepack", "status"], (data) => {
-      expect(data.acceptanceStatus === "pending", "resourcepack status was not pending after request");
-    });
-
-    await runClientLeaf("resourcepack reject", ["resourcepack", "reject"], (data) => {
-      expect(data.acceptanceStatus === "declined", "resourcepack reject did not decline the request");
-    });
-
-    await restartEnvironmentWithResourcePack("setup restart before resourcepack accept");
-    await runClientLeaf("resourcepack status", ["resourcepack", "status"], (data) => {
-      expect(data.acceptanceStatus === "pending", "resourcepack status was not pending before accept");
-    });
-    await runClientLeaf("resourcepack accept", ["resourcepack", "accept"], (data) => {
-      expect(data.acceptanceStatus === "allowed", "resourcepack accept did not allow the request");
-    });
-    const reconnectCount = countOccurrences(await readClientLogText(), "Connecting to 127.0.0.1, 25565");
-    await runClientLeaf("client reconnect", ["client", "reconnect"], (data) => {
-      expect(data.connecting === true, "client reconnect did not start");
-    });
-    await waitForClientLogCountIncrease("Connecting to 127.0.0.1, 25565", reconnectCount, 30);
-    const reconnectGui = await runCli(["--client", "real", "gui", "info"], { allowFailure: true });
-    recordStep("client reconnect gui info", reconnectGui, {
-      kind: "verification",
-      verifiedData: reconnectGui.json?.data?.data ?? null
-    });
-
-    const finalDesktopShot = await takeDesktopScreenshot("client-after-full-real-test");
-    summary.screenshots.push(finalDesktopShot);
-
-    const missingRequestLeafCommands = supportMatrix.requestLeafCommands.filter(
-      (leaf) => !coveredRequestLeafCommands.has(leaf)
-    );
-    assert.deepEqual(missingRequestLeafCommands, [], `Missing request leaf coverage: ${missingRequestLeafCommands.join(", ")}`);
-    summary.supportMatrix.coveredRequestLeafCommands = [...coveredRequestLeafCommands].sort();
-    summary.supportMatrix.coveredNonRequestLeafCommands = [...coveredNonRequestLeafCommands].sort();
-    summary.supportMatrix.missingRequestLeafCommands = missingRequestLeafCommands;
   } finally {
     try {
       await updateServerProperties();
@@ -1698,26 +1184,33 @@ async function main() {
       }
     };
     summary.finishedAt = new Date().toISOString();
+    writeLogLine("run cleanup complete");
   }
 
-  const reportPath = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
-  await writeFile(reportPath, `${JSON.stringify({ success: true, reportPath, summary }, null, 2)}\n`, "utf8");
-  process.stdout.write(`${JSON.stringify({ success: true, reportPath, summary }, null, 2)}\n`);
+  await logChain;
+  const payload = { success: true, reportPath: runReportPath, logPath: runLogPath, summary };
+  await writeFile(runReportPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 main().catch(async (error) => {
+  const options = parseCliOptions(process.argv.slice(2));
+  const reportPath =
+    options.runSlug === "all"
+      ? LEGACY_REPORT_PATH
+      : path.join(REPORT_DIR, `real-mod-full-test.${options.runSlug}.latest.json`);
+  const logPath = path.join(REPORT_DIR, `real-mod-full-test.${options.runSlug}.latest.log`);
   const fallback = {
     success: false,
+    reportPath,
+    logPath,
     error: error instanceof Error ? error.stack : String(error)
   };
 
   try {
     await mkdir(REPORT_DIR, { recursive: true });
-    await writeFile(
-      path.join(REPORT_DIR, "real-mod-full-test.latest.json"),
-      `${JSON.stringify(fallback, null, 2)}\n`,
-      "utf8"
-    );
+    await appendFile(logPath, `[${new Date().toISOString()}] run fail error=${summarizeForLog(fallback.error, 800)}\n`, "utf8");
+    await writeFile(reportPath, `${JSON.stringify(fallback, null, 2)}\n`, "utf8");
   } catch {}
 
   process.stderr.write(`${JSON.stringify(fallback, null, 2)}\n`);

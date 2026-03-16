@@ -8,7 +8,10 @@
   "scripts": {
     "build": "npm run build --workspace cli",
     "test": "npm run test --workspace cli",
-    "test:e2e": "npm run test:e2e --workspace cli"
+    "test:e2e": "npm run test:e2e --workspace cli",
+    "test:real": "node scripts/run-real-mod-test-suite.mjs",
+    "test:real:group": "node scripts/real-mod-full-test.mjs",
+    "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups"
   },
   "engines": {
     "node": ">=20"
