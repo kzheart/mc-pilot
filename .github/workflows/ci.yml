@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 7.4
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build and test CLI
+        run: npm test
+
+      - name: Validate client-mod skeleton
+        run: gradle -q classes
+        working-directory: client-mod
+
+      - name: Validate legacy mod skeleton
+        run: gradle -q classes
+        working-directory: client-mod-legacy
