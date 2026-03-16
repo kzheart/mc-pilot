@@ -126,11 +126,27 @@ test("system e2e: CLI can orchestrate server, client and request flow", async ()
   );
 
   try {
+    const configShow = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "config-show"],
+      cwd
+    );
+    assert.equal(configShow.success, true);
+    assert.equal((configShow.data as { stateDir: string }).stateDir, stateDir);
+    assert.equal((configShow.data as { config: { server: { port: number } } }).config.server.port, serverPort);
+
     const serverStart = await runCli(
       ["--config", configPath, "--state-dir", stateDir, "server", "start", "--eula"],
       cwd
     );
     assert.equal(serverStart.success, true);
+
+    const serverStatus = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "server", "status"],
+      cwd
+    );
+    assert.equal(serverStatus.success, true);
+    assert.equal((serverStatus.data as { running: boolean }).running, true);
+    assert.equal((serverStatus.data as { port: number }).port, serverPort);
 
     const serverReady = await runCli(
       ["--config", configPath, "--state-dir", stateDir, "server", "wait-ready", "--timeout", "5"],
@@ -179,6 +195,33 @@ test("system e2e: CLI can orchestrate server, client and request flow", async ()
       cwd
     );
     assert.equal((clientList.data as { clients: Array<{ running: boolean }> }).clients[0]?.running, true);
+
+    const clientStop = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "client", "stop", "bot"],
+      cwd
+    );
+    assert.equal(clientStop.success, true);
+    assert.equal((clientStop.data as { stopped: boolean }).stopped, true);
+
+    const clientListAfterStop = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "client", "list"],
+      cwd
+    );
+    assert.equal((clientListAfterStop.data as { clients: Array<unknown> }).clients.length, 0);
+
+    const serverStop = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "server", "stop"],
+      cwd
+    );
+    assert.equal(serverStop.success, true);
+    assert.equal((serverStop.data as { stopped: boolean }).stopped, true);
+
+    const serverStatusAfterStop = await runCli(
+      ["--config", configPath, "--state-dir", stateDir, "server", "status"],
+      cwd
+    );
+    assert.equal(serverStatusAfterStop.success, true);
+    assert.equal((serverStatusAfterStop.data as { running: boolean }).running, false);
 
     const serverLog = await readFile(path.join(stateDir, "logs", "paper-server.log"), "utf8");
     assert.equal(typeof serverLog, "string");

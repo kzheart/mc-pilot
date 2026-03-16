@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { pathToFileURL } from "node:url";
 
 import { createBlockCommand } from "./commands/block.js";
 import { createBookCommand } from "./commands/book.js";
@@ -24,52 +25,60 @@ import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
-const program = new Command();
+export function buildProgram() {
+  const program = new Command();
 
-program
-  .name("mct")
-  .description("Minecraft Auto Test CLI")
-  .version("0.1.0");
+  program
+    .name("mct")
+    .description("Minecraft Auto Test CLI")
+    .version("0.1.0");
 
-attachGlobalOptions(program);
+  attachGlobalOptions(program);
 
-program
-  .command("config-show")
-  .description("显示当前生效配置与状态目录")
-  .action(
-    wrapCommand(async (context) => {
-      return {
-        cwd: context.cwd,
-        stateDir: context.state.getRootDir(),
-        config: context.config
-      };
-    })
-  );
+  program
+    .command("config-show")
+    .description("显示当前生效配置与状态目录")
+    .action(
+      wrapCommand(async (context) => {
+        return {
+          cwd: context.cwd,
+          stateDir: context.state.getRootDir(),
+          config: context.config
+        };
+      })
+    );
 
-program.addCommand(createServerCommand());
-program.addCommand(createClientCommand());
-program.addCommand(createChatCommand());
-program.addCommand(createMoveCommand());
-program.addCommand(createLookCommand());
-program.addCommand(createPositionCommand());
-program.addCommand(createRotationCommand());
-program.addCommand(createBlockCommand());
-program.addCommand(createEntityCommand());
-program.addCommand(createInventoryCommand());
-program.addCommand(createGuiCommand());
-program.addCommand(createScreenshotCommand());
-program.addCommand(createScreenCommand());
-program.addCommand(createHudCommand());
-program.addCommand(createStatusCommand());
-program.addCommand(createSignCommand());
-program.addCommand(createBookCommand());
-program.addCommand(createChannelCommand());
-program.addCommand(createResourcepackCommand());
-program.addCommand(createEffectsCommand());
-program.addCommand(createCraftCommand());
-program.addCommand(createAnvilCommand());
-program.addCommand(createEnchantCommand());
-program.addCommand(createTradeCommand());
-program.addCommand(createWaitCommand());
+  program.addCommand(createServerCommand());
+  program.addCommand(createClientCommand());
+  program.addCommand(createChatCommand());
+  program.addCommand(createMoveCommand());
+  program.addCommand(createLookCommand());
+  program.addCommand(createPositionCommand());
+  program.addCommand(createRotationCommand());
+  program.addCommand(createBlockCommand());
+  program.addCommand(createEntityCommand());
+  program.addCommand(createInventoryCommand());
+  program.addCommand(createGuiCommand());
+  program.addCommand(createScreenshotCommand());
+  program.addCommand(createScreenCommand());
+  program.addCommand(createHudCommand());
+  program.addCommand(createStatusCommand());
+  program.addCommand(createSignCommand());
+  program.addCommand(createBookCommand());
+  program.addCommand(createChannelCommand());
+  program.addCommand(createResourcepackCommand());
+  program.addCommand(createEffectsCommand());
+  program.addCommand(createCraftCommand());
+  program.addCommand(createAnvilCommand());
+  program.addCommand(createEnchantCommand());
+  program.addCommand(createTradeCommand());
+  program.addCommand(createWaitCommand());
 
-program.parseAsync(process.argv);
+  return program;
+}
+
+const program = buildProgram();
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  program.parseAsync(process.argv);
+}
