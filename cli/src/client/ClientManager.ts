@@ -4,7 +4,7 @@ import path from "node:path";
 
 import type { CommandContext } from "../util/context.js";
 import { MctError } from "../util/errors.js";
-import { isProcessRunning, killProcessTree } from "../util/process.js";
+import { getListeningPids, isProcessRunning, killProcessTree } from "../util/process.js";
 import { WebSocketClient } from "./WebSocketClient.js";
 
 export interface ClientRuntimeState {
@@ -141,6 +141,12 @@ export class ClientManager {
       killProcessTree(client.pid);
     }
 
+    for (const pid of getListeningPids(client.wsPort)) {
+      if (pid !== client.pid) {
+        killProcessTree(pid);
+      }
+    }
+
     delete snapshot.clients[name];
     if (snapshot.defaultClient === name) {
       snapshot.defaultClient = Object.keys(snapshot.clients)[0];
@@ -160,6 +166,15 @@ export class ClientManager {
       Object.values(snapshot.clients).map(async (client) => {
         const running = isProcessRunning(client.pid);
         if (!running) {
+          const wsReachable = await this.isWsReachable(client.wsPort, 1);
+          if (wsReachable) {
+            return {
+              ...client,
+              running: true,
+              detached: true
+            };
+          }
+
           return {
             ...client,
             running: false,
@@ -210,7 +225,7 @@ export class ClientManager {
       );
     }
 
-    if (!isProcessRunning(client.pid)) {
+    if (!isProcessRunning(client.pid) && !(await this.isWsReachable(client.wsPort, 1))) {
       throw new MctError(
         {
           code: "CLIENT_NOT_RUNNING",
@@ -233,5 +248,15 @@ export class ClientManager {
 
   private async writeSnapshot(snapshot: ClientStateSnapshot) {
     await this.context.state.writeJson(CLIENT_STATE_FILE, snapshot);
+  }
+
+  private async isWsReachable(wsPort: number, timeoutSeconds: number) {
+    try {
+      const ws = new WebSocketClient(this.getWsUrl(wsPort));
+      await ws.ping(timeoutSeconds);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
