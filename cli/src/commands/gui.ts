@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { createRequestAction, parseNumberList } from "./request-helpers.js";
+import { createRequestAction, parseNumberList, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createGuiCommand() {
   const command = new Command("gui").description("GUI 与容器交互");
@@ -50,7 +50,7 @@ export function createGuiCommand() {
       createRequestAction(
         "gui.wait-open",
         ({ options }) => ({ timeout: options.timeout }),
-        ({ options }) => (options.timeout ? Number(options.timeout) : undefined)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
       )
     );
 
@@ -62,7 +62,7 @@ export function createGuiCommand() {
       createRequestAction(
         "gui.wait-update",
         ({ options }) => ({ timeout: options.timeout }),
-        ({ options }) => (options.timeout ? Number(options.timeout) : undefined)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
       )
     );
 

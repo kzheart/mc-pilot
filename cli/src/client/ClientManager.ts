@@ -70,6 +70,20 @@ export class ClientManager {
       );
     }
 
+    const listeningPids = getListeningPids(wsPort);
+    for (const pid of listeningPids) {
+      killProcessTree(pid);
+    }
+    if (listeningPids.length > 0) {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        if (getListeningPids(wsPort).length === 0) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
     const launchCommand = configured.launchCommand;
     if (!launchCommand || launchCommand.length === 0) {
       throw new MctError(

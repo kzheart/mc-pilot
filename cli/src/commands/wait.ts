@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { createRequestAction } from "./request-helpers.js";
+import { createRequestAction, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createWaitCommand() {
   return new Command("wait")
@@ -22,8 +22,11 @@ export function createWaitCommand() {
           untilOnGround: Boolean(options.untilOnGround),
           timeout: options.timeout
         }),
-        ({ options, args }, context) =>
-          options.timeout ? Number(options.timeout) : args[0] ? Number(args[0]) : context.config.timeout.default
+        ({ options, args }, context) => {
+          const requested =
+            options.timeout ? Number(options.timeout) : args[0] ? Number(args[0]) : context.config.timeout.default;
+          return withTransportTimeoutBuffer(requested, context.config.timeout.default);
+        }
       )
     );
 }

@@ -12,6 +12,9 @@ base {
 
 loom {
     splitEnvironmentSourceSets()
+    mixin {
+        defaultRefmapName.set("mct.refmap.json")
+    }
 
     mods {
         create("mct") {

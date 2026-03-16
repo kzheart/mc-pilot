@@ -6,3 +6,6 @@ commands:
   mcttp:
     description: Teleport the player to a known test position.
     usage: /mcttp
+  mctfixture:
+    description: Manage the Minecraft Auto Test fixture arena.
+    usage: /mctfixture <reset|hud|resourcepack|opensign|drops>

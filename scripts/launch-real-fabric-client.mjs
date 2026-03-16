@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -104,9 +104,25 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
+async function syncBuiltMod(instanceRoot, repoRoot) {
+  const sourceJar = path.join(repoRoot, "client-mod", "build", "libs", "mct-client-mod-0.1.0.jar");
+  const targetDir = path.join(instanceRoot, "minecraft", "mods");
+  const targetJar = path.join(targetDir, "mct-client-mod-0.1.0.jar");
+
+  try {
+    await access(sourceJar);
+  } catch {
+    return;
+  }
+
+  await mkdir(targetDir, { recursive: true });
+  await copyFile(sourceJar, targetJar);
+}
+
 async function buildLaunchSpec(options) {
   const prismRoot = options["prism-root"];
   const instanceId = options["instance-id"];
+  const repoRoot = process.cwd();
   const minecraftVersion = process.env.MCT_CLIENT_VERSION || options["minecraft-version"] || "1.20.4";
   const fabricLoaderVersion = options["fabric-loader-version"] || "0.16.10";
   const instanceRoot = path.join(prismRoot, "instances", instanceId);
@@ -116,6 +132,7 @@ async function buildLaunchSpec(options) {
   const assetsRoot = path.join(prismRoot, "assets");
   const nativesDir = path.join(instanceRoot, "natives");
   const packMeta = await readJson(path.join(instanceRoot, "mmc-pack.json"));
+  await syncBuiltMod(instanceRoot, repoRoot);
   const componentMetas = new Map();
   for (const component of packMeta.components) {
     const componentMetaPath = path.join(metaRoot, component.uid, `${component.version}.json`);

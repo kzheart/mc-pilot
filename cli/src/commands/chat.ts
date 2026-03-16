@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { createRequestAction } from "./request-helpers.js";
+import { createRequestAction, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createChatCommand() {
   const command = new Command("chat").description("聊天与命令操作");
@@ -32,7 +32,7 @@ export function createChatCommand() {
       createRequestAction(
         "chat.wait",
         ({ options }) => ({ match: options.match, timeout: options.timeout }),
-        ({ options }) => (options.timeout ? Number(options.timeout) : undefined)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
       )
     );
 

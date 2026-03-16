@@ -64,6 +64,11 @@ export function parseNumberList(text: string) {
     .map((value) => Number(value));
 }
 
+export function withTransportTimeoutBuffer(requestedTimeout: number | undefined, fallbackTimeout: number) {
+  const effectiveTimeout = requestedTimeout ?? fallbackTimeout;
+  return Math.max(effectiveTimeout + 10, fallbackTimeout);
+}
+
 export function buildEntityFilter(options: {
   type?: string;
   name?: string;

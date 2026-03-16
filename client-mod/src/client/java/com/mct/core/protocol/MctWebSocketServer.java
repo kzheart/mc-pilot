@@ -42,6 +42,7 @@ public final class MctWebSocketServer extends WebSocketServer {
                 exception.getCode()
             );
         } catch (Exception exception) {
+            exception.printStackTrace();
             response = new Response(
                 request.id() != null ? request.id() : UUID.randomUUID().toString(),
                 false,

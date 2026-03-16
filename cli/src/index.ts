@@ -3,14 +3,14 @@ import { pathToFileURL } from "node:url";
 
 import { createBlockCommand } from "./commands/block.js";
 import { createBookCommand } from "./commands/book.js";
-import { createChannelCommand } from "./commands/channel.js";
 import { createClientCommand } from "./commands/client.js";
 import { createChatCommand } from "./commands/chat.js";
+import { createCombatCommand } from "./commands/combat.js";
 import { createAnvilCommand, createCraftCommand, createEnchantCommand, createTradeCommand } from "./commands/craft.js";
-import { createEffectsCommand } from "./commands/effects.js";
 import { createEntityCommand } from "./commands/entity.js";
 import { createGuiCommand } from "./commands/gui.js";
 import { createHudCommand } from "./commands/hud.js";
+import { createInputCommand } from "./commands/input.js";
 import { createInventoryCommand } from "./commands/inventory.js";
 import { createLookCommand } from "./commands/look.js";
 import { createMoveCommand } from "./commands/move.js";
@@ -51,6 +51,7 @@ export function buildProgram() {
   program.addCommand(createServerCommand());
   program.addCommand(createClientCommand());
   program.addCommand(createChatCommand());
+  program.addCommand(createInputCommand());
   program.addCommand(createMoveCommand());
   program.addCommand(createLookCommand());
   program.addCommand(createPositionCommand());
@@ -65,9 +66,8 @@ export function buildProgram() {
   program.addCommand(createStatusCommand());
   program.addCommand(createSignCommand());
   program.addCommand(createBookCommand());
-  program.addCommand(createChannelCommand());
   program.addCommand(createResourcepackCommand());
-  program.addCommand(createEffectsCommand());
+  program.addCommand(createCombatCommand());
   program.addCommand(createCraftCommand());
   program.addCommand(createAnvilCommand());
   program.addCommand(createEnchantCommand());

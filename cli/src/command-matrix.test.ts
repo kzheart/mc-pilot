@@ -89,18 +89,6 @@ const REQUEST_CASES: RequestCase[] = [
     params: { pages: ["Page1", "Page2"] }
   },
   {
-    leaf: "channel listen",
-    argv: ["channel", "listen", "mct:test", "--timeout", "7"],
-    action: "channel.listen",
-    params: { channel: "mct:test", timeout: 7 }
-  },
-  {
-    leaf: "channel send",
-    argv: ["channel", "send", "mct:test", "--data", "{\"ok\":true,\"count\":2}"],
-    action: "channel.send",
-    params: { channel: "mct:test", data: { ok: true, count: 2 } }
-  },
-  {
     leaf: "chat command",
     argv: ["chat", "command", "/spawn"],
     action: "chat.command",
@@ -137,16 +125,34 @@ const REQUEST_CASES: RequestCase[] = [
     params: { recipe: { type: "minecraft:crafting_shapeless" } }
   },
   {
-    leaf: "effects particles",
-    argv: ["effects", "particles", "--last", "4"],
-    action: "effects.particles",
-    params: { last: 4 }
+    leaf: "combat chase",
+    argv: ["combat", "chase", "--id", "77", "--timeout", "30"],
+    action: "combat.chase",
+    params: { filter: { id: 77 }, timeout: 30 }
   },
   {
-    leaf: "effects sounds",
-    argv: ["effects", "sounds", "--last", "3"],
-    action: "effects.sounds",
-    params: { last: 3 }
+    leaf: "combat clear",
+    argv: ["combat", "clear", "--type", "minecraft:zombie", "--radius", "12", "--timeout", "45"],
+    action: "combat.clear",
+    params: { type: "minecraft:zombie", radius: 12, timeout: 45 }
+  },
+  {
+    leaf: "combat engage",
+    argv: ["combat", "engage", "--name", "Boss", "--timeout", "90"],
+    action: "combat.engage",
+    params: { filter: { name: "Boss" }, timeout: 90 }
+  },
+  {
+    leaf: "combat kill",
+    argv: ["combat", "kill", "--nearest", "--type", "zombie", "--timeout", "30"],
+    action: "combat.kill",
+    params: { filter: { nearest: true, type: "zombie" }, timeout: 30 }
+  },
+  {
+    leaf: "combat pickup",
+    argv: ["combat", "pickup", "--radius", "5", "--timeout", "8"],
+    action: "combat.pickup",
+    params: { radius: 5, timeout: 8 }
   },
   {
     leaf: "enchant",
@@ -291,6 +297,84 @@ const REQUEST_CASES: RequestCase[] = [
     argv: ["inventory", "drop", "--all"],
     action: "inventory.drop",
     params: { all: true }
+  },
+  {
+    leaf: "input click",
+    argv: ["input", "click", "400", "300", "--button", "right", "--modifiers", "ctrl,shift"],
+    action: "input.click",
+    params: { x: 400, y: 300, button: "right", modifiers: ["ctrl", "shift"] }
+  },
+  {
+    leaf: "input double-click",
+    argv: ["input", "double-click", "400", "300", "--button", "left"],
+    action: "input.double-click",
+    params: { x: 400, y: 300, button: "left" }
+  },
+  {
+    leaf: "input drag",
+    argv: ["input", "drag", "100", "120", "220", "300", "--button", "left"],
+    action: "input.drag",
+    params: { fromX: 100, fromY: 120, toX: 220, toY: 300, button: "left" }
+  },
+  {
+    leaf: "input key combo",
+    argv: ["input", "key", "combo", "ctrl", "a"],
+    action: "input.key-combo",
+    params: { keys: ["ctrl", "a"] }
+  },
+  {
+    leaf: "input key down",
+    argv: ["input", "key", "down", "shift"],
+    action: "input.key-down",
+    params: { key: "shift" }
+  },
+  {
+    leaf: "input key hold",
+    argv: ["input", "key", "hold", "w", "--duration", "1500"],
+    action: "input.key-hold",
+    params: { key: "w", duration: 1500 }
+  },
+  {
+    leaf: "input key press",
+    argv: ["input", "key", "press", "space"],
+    action: "input.key-press",
+    params: { key: "space" }
+  },
+  {
+    leaf: "input key up",
+    argv: ["input", "key", "up", "shift"],
+    action: "input.key-up",
+    params: { key: "shift" }
+  },
+  {
+    leaf: "input keys-down",
+    argv: ["input", "keys-down"],
+    action: "input.keys-down",
+    params: {}
+  },
+  {
+    leaf: "input mouse-move",
+    argv: ["input", "mouse-move", "640", "360"],
+    action: "input.mouse-move",
+    params: { x: 640, y: 360 }
+  },
+  {
+    leaf: "input mouse-pos",
+    argv: ["input", "mouse-pos"],
+    action: "input.mouse-pos",
+    params: {}
+  },
+  {
+    leaf: "input scroll",
+    argv: ["input", "scroll", "640", "360", "--delta", "-3"],
+    action: "input.scroll",
+    params: { x: 640, y: 360, delta: -3 }
+  },
+  {
+    leaf: "input type",
+    argv: ["input", "type", "hello world"],
+    action: "input.type",
+    params: { text: "hello world" }
   },
   {
     leaf: "inventory get",

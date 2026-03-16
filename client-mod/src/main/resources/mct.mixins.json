@@ -1,9 +1,21 @@
 {
   "required": false,
   "package": "com.mct.mixin",
+  "refmap": "client-mct.refmap.json",
   "compatibilityLevel": "JAVA_17",
   "mixins": [],
-  "client": [],
+  "client": [
+    "AbstractSignEditScreenAccessor",
+    "BossBarHudMixin",
+    "ChatHudMixin",
+    "InGameHudStateMixin",
+    "KeyboardInvoker",
+    "KeyBindingAccessor",
+    "MinecraftClientFocusMixin",
+    "MouseInvoker",
+    "PlayerListHudMixin",
+    "ServerResourcePackManagerMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
