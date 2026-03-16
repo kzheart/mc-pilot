@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { ClientManager } from "../client/ClientManager.js";
+import { createRequestAction } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
 
 export function createClientCommand() {
@@ -59,6 +60,16 @@ export function createClientCommand() {
           (options as { timeout?: number }).timeout ?? context.config.timeout.clientReady
         );
       })
+    );
+
+  command
+    .command("reconnect")
+    .description("让当前客户端重新连接到服务器")
+    .option("--address <address>", "目标服务器地址，默认使用启动配置中的 server")
+    .action(
+      createRequestAction("client.reconnect", ({ options }) => ({
+        address: options.address
+      }))
     );
 
   return command;

@@ -30,6 +30,7 @@ const RESOURCEPACK_PORT = 18080;
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
 const REAL_CLIENT_INSTANCE_ID = "mct-real-1.20.4-fabric";
 const REAL_CLIENT_WS_PORT = 25560;
+const REAL_CLIENT_INSTANCE_PATH_FRAGMENT = path.join("PrismLauncher", "instances", REAL_CLIENT_INSTANCE_ID);
 
 const NON_REQUEST_LEAF_COMMANDS = [
   "client launch",
@@ -93,6 +94,24 @@ function slugify(value) {
 
 function sha1Hex(buffer) {
   return createHash("sha1").update(buffer).digest("hex");
+}
+
+function countOccurrences(text, fragment) {
+  if (!text || !fragment) {
+    return 0;
+  }
+
+  let count = 0;
+  let cursor = 0;
+  while (cursor < text.length) {
+    const nextIndex = text.indexOf(fragment, cursor);
+    if (nextIndex === -1) {
+      break;
+    }
+    count += 1;
+    cursor = nextIndex + fragment.length;
+  }
+  return count;
 }
 
 async function ensureFileExists(filePath) {
@@ -224,6 +243,39 @@ async function waitForInWorld(timeoutSeconds) {
   }
 
   throw new Error(`Client did not enter world within ${timeoutSeconds}s: ${lastFailure ?? "unknown error"}`);
+}
+
+async function waitForResourcePackPending(timeoutSeconds) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  let lastStatus = null;
+  let lastGui = null;
+
+  while (Date.now() < deadline) {
+    const statusResult = await runCli(["--client", "real", "resourcepack", "status"], { allowFailure: true });
+    if (statusResult.ok && statusResult.json?.success === true && statusResult.json.data?.success === true) {
+      lastStatus = statusResult.json.data.data;
+      if (lastStatus.acceptanceStatus === "pending") {
+        return {
+          cli: statusResult,
+          status: lastStatus
+        };
+      }
+    }
+
+    const guiResult = await runCli(["--client", "real", "gui", "info"], { allowFailure: true });
+    if (guiResult.ok && guiResult.json?.success === true && guiResult.json.data?.success === true) {
+      lastGui = guiResult.json.data.data;
+    }
+
+    await sleep(500);
+  }
+
+  throw new Error(
+    `Resource pack status did not become pending within ${timeoutSeconds}s: ${JSON.stringify({
+      lastStatus,
+      lastGui
+    })}`
+  );
 }
 
 async function waitForTeleport(timeoutSeconds) {
@@ -377,50 +429,16 @@ async function findPidsWithPgrep(fragment) {
 
 async function terminatePid(pid, signal) {
   try {
-    process.kill(pid, signal);
+    process.kill(-pid, signal);
     return true;
   } catch {
-    return false;
-  }
-}
-
-async function cleanupClientResidue(recordStep) {
-  const pids = new Set([
-    ...(await findPidsWithLsof(REAL_CLIENT_WS_PORT)),
-    ...(await findPidsWithPgrep(REAL_CLIENT_INSTANCE_ID)),
-    ...(await findPidsWithPgrep("launch-real-fabric-client.mjs"))
-  ]);
-
-  if (pids.size === 0) {
-    return;
-  }
-
-  for (const pid of pids) {
-    await terminatePid(pid, "SIGTERM");
-  }
-  await sleep(500);
-  for (const pid of pids) {
-    await terminatePid(pid, "SIGKILL");
-  }
-
-  recordStep(
-    "cleanup-client-residue",
-    {
-      ok: true,
-      exitCode: 0,
-      durationMs: 0,
-      args: [],
-      stdout: "",
-      stderr: "",
-      json: null
-    },
-    {
-      kind: "cleanup",
-      terminatedPids: [...pids].sort((left, right) => left - right)
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false;
     }
-  );
-
-  await waitForPortRelease(REAL_CLIENT_WS_PORT, 10000);
+  }
 }
 
 async function waitForPortRelease(port, timeoutMs) {
@@ -433,6 +451,143 @@ async function waitForPortRelease(port, timeoutMs) {
   }
 
   throw new Error(`Client WebSocket port ${port} did not become free within ${timeoutMs}ms`);
+}
+
+async function collectClientResidue() {
+  const listeningPids = await findPidsWithLsof(REAL_CLIENT_WS_PORT);
+  const instancePids = await findPidsWithPgrep(REAL_CLIENT_INSTANCE_ID);
+  const launcherPids = await findPidsWithPgrep("launch-real-fabric-client.mjs");
+  const pids = [...new Set([...listeningPids, ...instancePids, ...launcherPids])].sort((left, right) => left - right);
+
+  return {
+    listeningPids,
+    instancePids,
+    launcherPids,
+    pids
+  };
+}
+
+async function waitForClientResidueClear(timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latestResidue = await collectClientResidue();
+
+  while (Date.now() < deadline) {
+    latestResidue = await collectClientResidue();
+    if (latestResidue.pids.length === 0) {
+      await waitForPortRelease(REAL_CLIENT_WS_PORT, 1000);
+      return latestResidue;
+    }
+    await sleep(250);
+  }
+
+  throw new Error(`Client residue did not clear within ${timeoutMs}ms: ${JSON.stringify(latestResidue)}`);
+}
+
+async function readClientLogText() {
+  try {
+    return await readFile(CLIENT_LOG_PATH, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+async function getBindConflictCount() {
+  return countOccurrences(await readClientLogText(), "java.net.BindException: Address already in use");
+}
+
+async function waitForClientLogCountIncrease(fragment, baselineCount, timeoutSeconds) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() < deadline) {
+    if (countOccurrences(await readClientLogText(), fragment) > baselineCount) {
+      return true;
+    }
+    await sleep(500);
+  }
+
+  throw new Error(`Did not observe client log entry within ${timeoutSeconds}s: ${fragment}`);
+}
+
+async function forceKillClientResidueByPattern() {
+  const patterns = [
+    REAL_CLIENT_INSTANCE_ID,
+    REAL_CLIENT_INSTANCE_PATH_FRAGMENT,
+    "launch-real-fabric-client.mjs"
+  ];
+
+  for (const signal of ["-TERM", "-KILL"]) {
+    for (const pattern of patterns) {
+      await runCommand("pkill", [signal, "-f", pattern], { allowFailure: true });
+    }
+    await sleep(1000);
+  }
+}
+
+async function cleanupClientResidue(recordStep, label = "cleanup-client-residue") {
+  let latestResidue = await collectClientResidue();
+
+  if (latestResidue.pids.length === 0) {
+    await forceKillClientResidueByPattern();
+    await waitForPortRelease(REAL_CLIENT_WS_PORT, 1000);
+    return;
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const terminatedPids = [];
+    const forceKilledPids = [];
+
+    for (const pid of latestResidue.pids) {
+      if (await terminatePid(pid, "SIGTERM")) {
+        terminatedPids.push(pid);
+      }
+    }
+
+    await sleep(1000);
+
+    const remainingResidue = await collectClientResidue();
+    for (const pid of remainingResidue.pids) {
+      if (await terminatePid(pid, "SIGKILL")) {
+        forceKilledPids.push(pid);
+      }
+    }
+
+    await forceKillClientResidueByPattern();
+
+    recordStep(
+      label,
+      {
+        ok: true,
+        exitCode: 0,
+        durationMs: 0,
+        args: [],
+        stdout: "",
+        stderr: "",
+        json: null
+      },
+      {
+        kind: "cleanup",
+        attempt,
+        initialResidue: latestResidue,
+        terminatedPids,
+        forceKilledPids
+      }
+    );
+
+    try {
+      await waitForClientResidueClear(15000);
+      await waitForPortRelease(REAL_CLIENT_WS_PORT, 3000);
+      return;
+    } catch (error) {
+      latestResidue = await collectClientResidue();
+      if (attempt === 3) {
+        throw new Error(
+          `${label} failed after ${attempt} attempts: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      await sleep(1000);
+    }
+  }
 }
 
 function buildSupportMatrix() {
@@ -607,17 +762,88 @@ async function main() {
     await sleep(1200);
   }
 
+  async function waitForClientReadyWithConflictDetection(label, baselineBindConflicts) {
+    const deadline = Date.now() + 180_000;
+    let lastFailure = "unknown failure";
+
+    while (Date.now() < deadline) {
+      const waitReady = await runCli(["client", "wait-ready", "real", "--timeout", "5"], { allowFailure: true });
+      if (waitReady.ok && waitReady.json?.success === true) {
+        const waitReadyData = unwrapCliSuccess(waitReady);
+        expect(waitReadyData.connected === true, `${label} client did not become ready`);
+        recordStep(`${label} client wait-ready`, waitReady, { kind: "setup" });
+        return {
+          ready: true
+        };
+      }
+
+      lastFailure = waitReady.stderr || waitReady.stdout || JSON.stringify(waitReady.json);
+      if ((await getBindConflictCount()) > baselineBindConflicts) {
+        recordStep(`${label} client wait-ready bind-conflict`, waitReady, {
+          kind: "setup",
+          bindConflict: true
+        });
+        return {
+          ready: false,
+          bindConflict: true,
+          lastFailure
+        };
+      }
+    }
+
+    return {
+      ready: false,
+      bindConflict: false,
+      lastFailure
+    };
+  }
+
+  async function launchRealClientAndWaitReady(label) {
+    let lastFailure = "unknown failure";
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await cleanupClientResidue(recordStep, `${label} cleanup before launch`);
+      const baselineBindConflicts = await getBindConflictCount();
+
+      const launch = await runCli(["client", "launch", "real"], { allowFailure: true });
+      recordStep(`${label} client launch`, launch, { kind: "setup", attempt });
+      if (!launch.ok || launch.json?.success !== true) {
+        lastFailure = launch.stderr || launch.stdout || JSON.stringify(launch.json);
+      } else {
+        const launchData = unwrapCliSuccess(launch);
+        expect(launchData.name === "real", `${label} returned unexpected client name`);
+
+        const readyState = await waitForClientReadyWithConflictDetection(label, baselineBindConflicts);
+        if (readyState.ready) {
+          return;
+        }
+        lastFailure = readyState.lastFailure ?? lastFailure;
+        if (!readyState.bindConflict && attempt === 2) {
+          throw new Error(`${label} failed: ${lastFailure}`);
+        }
+      }
+
+      const bindConflict = (await getBindConflictCount()) > baselineBindConflicts;
+      if (!bindConflict || attempt === 2) {
+        throw new Error(`${label} failed: ${lastFailure}`);
+      }
+
+      const stopped = await runCli(["client", "stop", "real"], { allowFailure: true });
+      recordStep(`${label} client stop after bind conflict`, stopped, {
+        kind: "setup",
+        attempt,
+        bindConflict: true
+      });
+      await cleanupClientResidue(recordStep, `${label} cleanup after bind conflict`);
+      await sleep(2000);
+    }
+  }
+
   async function relaunchClient(label) {
     const stopped = await runCli(["client", "stop", "real"], { allowFailure: true });
     recordStep(`${label} client stop`, stopped, { kind: "setup" });
     await cleanupClientResidue(recordStep);
-
-    await runNonRequestLeaf(`${label} client launch`, ["client", "launch", "real"], (data) => {
-      expect(data.name === "real", "client relaunch returned unexpected name");
-    });
-    await runNonRequestLeaf(`${label} client wait-ready`, ["client", "wait-ready", "real", "--timeout", "180"], (data) => {
-      expect(data.connected === true, "relaunched client did not become ready");
-    });
+    await launchRealClientAndWaitReady(label);
 
     await sleep(5000);
     const inWorld = await waitForInWorld(180);
@@ -626,10 +852,8 @@ async function main() {
   }
 
   async function restartEnvironmentWithResourcePack(label) {
-    const stopped = await stopEnvironment();
-    recordStep(`${label} client stop`, stopped.clientStop, { kind: "setup" });
-    recordStep(`${label} server stop`, stopped.serverStop, { kind: "setup" });
-    await cleanupClientResidue(recordStep);
+    const serverStop = await runCli(["server", "stop"], { allowFailure: true });
+    recordStep(`${label} server stop`, serverStop, { kind: "setup" });
     await updateServerProperties(resourcePackServer.url, resourcePackServer.sha1);
 
     await runNonRequestLeaf(`${label} server start`, ["server", "start", "--eula"], (data) => {
@@ -638,13 +862,30 @@ async function main() {
     await runNonRequestLeaf(`${label} server wait-ready`, ["server", "wait-ready", "--timeout", "120"], (data) => {
       expect(data.reachable === true, "resource pack server was not reachable");
     });
-    await runNonRequestLeaf(`${label} client launch`, ["client", "launch", "real"], (data) => {
-      expect(data.name === "real", "resource pack client launch returned unexpected name");
+
+    const existingClient = await runCli(["client", "wait-ready", "real", "--timeout", "20"], { allowFailure: true });
+    if (existingClient.ok && existingClient.json?.success === true) {
+      const clientReadyData = unwrapCliSuccess(existingClient);
+      expect(clientReadyData.connected === true, "resource pack client reuse did not stay ready");
+      recordStep(`${label} client reuse wait-ready`, existingClient, {
+        kind: "setup",
+        reusedClient: true
+      });
+      await runClientLeaf(`${label} client reconnect`, ["client", "reconnect"], (data) => {
+        expect(data.connecting === true, "resource pack client reconnect did not start");
+      });
+    } else {
+      await cleanupClientResidue(recordStep, `${label} cleanup before fallback launch`);
+      await launchRealClientAndWaitReady(label);
+    }
+
+    const pendingPack = await waitForResourcePackPending(60);
+    recordStep(`${label} resourcepack pending`, pendingPack.cli, {
+      kind: "setup",
+      verifiedData: pendingPack.status
     });
-    await runNonRequestLeaf(`${label} client wait-ready`, ["client", "wait-ready", "real", "--timeout", "180"], (data) => {
-      expect(data.connected === true, "resource pack client did not become ready");
-    });
-    await sleep(3000);
+    const promptShot = await takeDesktopScreenshot(`${slugify(label)}-resourcepack-pending`);
+    summary.screenshots.push({ source: "desktop.resourcepack.pending", label, ...promptShot });
   }
 
   async function openChestSetup(name = "setup open chest") {
@@ -948,6 +1189,14 @@ async function main() {
     });
 
     await resetFixture("setup reset before block and gui");
+
+    await runClientLeaf(
+      "block get",
+      ["block", "get", String(FIXTURE.chest.x), String(FIXTURE.chest.y), String(FIXTURE.chest.z)],
+      (data) => {
+        expect(data.type === "minecraft:chest", "block get did not return chest fixture");
+      }
+    );
 
     await runClientLeaf(
       "block place",
@@ -1400,6 +1649,16 @@ async function main() {
     });
     await runClientLeaf("resourcepack accept", ["resourcepack", "accept"], (data) => {
       expect(data.acceptanceStatus === "allowed", "resourcepack accept did not allow the request");
+    });
+    const reconnectCount = countOccurrences(await readClientLogText(), "Connecting to 127.0.0.1, 25565");
+    await runClientLeaf("client reconnect", ["client", "reconnect"], (data) => {
+      expect(data.connecting === true, "client reconnect did not start");
+    });
+    await waitForClientLogCountIncrease("Connecting to 127.0.0.1, 25565", reconnectCount, 30);
+    const reconnectGui = await runCli(["--client", "real", "gui", "info"], { allowFailure: true });
+    recordStep("client reconnect gui info", reconnectGui, {
+      kind: "verification",
+      verifiedData: reconnectGui.json?.data?.data ?? null
     });
 
     const finalDesktopShot = await takeDesktopScreenshot("client-after-full-real-test");

@@ -119,6 +119,12 @@ const REQUEST_CASES: RequestCase[] = [
     params: { match: "Joined", timeout: 7 }
   },
   {
+    leaf: "client reconnect",
+    argv: ["client", "reconnect", "--address", "127.0.0.1:25565"],
+    action: "client.reconnect",
+    params: { address: "127.0.0.1:25565" }
+  },
+  {
     leaf: "craft",
     argv: ["craft", "--recipe", "{\"type\":\"minecraft:crafting_shapeless\"}"],
     action: "craft.craft",

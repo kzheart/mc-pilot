@@ -29,7 +29,10 @@ import java.util.regex.PatternSyntaxException;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.SignBlockEntity;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.hud.BossBarHud;
 import net.minecraft.client.gui.hud.ClientBossBar;
 import net.minecraft.client.gui.hud.InGameHud;
@@ -40,6 +43,8 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.client.resource.server.ServerResourcePackLoader;
 import net.minecraft.client.resource.server.ServerResourcePackManager;
 import net.minecraft.client.texture.NativeImage;
@@ -197,6 +202,7 @@ public final class ClientActionExecutor {
             case "hud.title" -> runOnClientThread(this::titleStatus);
             case "hud.nametag" -> runOnClientThread(() -> nameTagStatus(getString(params, "player")));
             case "capture.screenshot" -> captureScreenshot(getString(params, "output"), getOptionalString(params, "region"), getBoolean(params, "gui", false));
+            case "client.reconnect" -> runOnClientThread(() -> reconnectClient(params));
             case "resourcepack.status" -> runOnClientThread(this::resourcePackStatus);
             case "resourcepack.accept" -> runOnClientThread(() -> {
                 requireResourcePackLoader().acceptAll();
@@ -545,18 +551,29 @@ public final class ClientActionExecutor {
                 }
                 return Map.of(
                     "arrived", false,
-                    "distance", position.distanceTo(target)
+                    "distance", position.distanceTo(target),
+                    "horizontal", horizontal,
+                    "vertical", Math.abs(delta.y)
                 );
             });
             if (Boolean.TRUE.equals(status.get("arrived"))) {
                 return status;
             }
             double currentDistance = asDouble(status.get("distance"));
+            double currentHorizontal = asDouble(status.get("horizontal"));
+            double currentVertical = asDouble(status.get("vertical"));
             if (currentDistance + 0.05D < bestDistance) {
                 bestDistance = currentDistance;
                 stalledSteps = 0;
             } else {
                 stalledSteps++;
+            }
+            if (stalledSteps >= 4 && currentHorizontal < 2.75D && currentVertical < 1.5D) {
+                return Map.of(
+                    "arrived", true,
+                    "finalPos", runOnClientThread(() -> positionMap(requirePlayer())),
+                    "distance", currentDistance
+                );
             }
             if (stalledSteps >= 4) {
                 pressMovementKeys(true, false, strafeLeft, !strafeLeft, true, false, 250L);
@@ -833,6 +850,22 @@ public final class ClientActionExecutor {
     private Map<String, Object> resourcePackStatus() {
         requireResourcePackLoader();
         return stateTracker.getResourcePackState();
+    }
+
+    private Map<String, Object> reconnectClient(Map<String, Object> params) {
+        String address = getOptionalString(params, "address");
+        if (address == null || address.isBlank()) {
+            address = System.getenv("MCT_CLIENT_SERVER");
+        }
+        if (address == null || address.isBlank() || !ServerAddress.isValid(address)) {
+            throw new ActionException("INVALID_PARAMS");
+        }
+
+        Screen parent = client.currentScreen != null ? client.currentScreen : new TitleScreen();
+        ServerAddress serverAddress = ServerAddress.parse(address);
+        ServerInfo serverInfo = new ServerInfo("MCT Auto Test", address, ServerInfo.ServerType.OTHER);
+        ConnectScreen.connect(parent, client, serverAddress, serverInfo, false);
+        return Map.of("connecting", true, "address", address);
     }
 
     private Map<String, Object> readSign(Map<String, Object> params) {
