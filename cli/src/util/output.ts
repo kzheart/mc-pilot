@@ -23,7 +23,7 @@ export function printError(error: MctError, mode: OutputMode) {
   if (mode === "human") {
     process.stderr.write(`[${error.code}] ${error.message}\n`);
 
-    if (error.details && Object.keys(error.details).length > 0) {
+    if (error.details && typeof error.details === "object" && Object.keys(error.details).length > 0) {
       process.stderr.write(`${inspect(error.details, { colors: true, depth: null })}\n`);
     }
 

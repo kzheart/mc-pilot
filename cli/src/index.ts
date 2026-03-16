@@ -1,5 +1,7 @@
 import { Command } from "commander";
 
+import { createClientCommand } from "./commands/client.js";
+import { createServerCommand } from "./commands/server.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
 const program = new Command();
@@ -23,5 +25,8 @@ program
       };
     })
   );
+
+program.addCommand(createServerCommand());
+program.addCommand(createClientCommand());
 
 program.parseAsync(process.argv);

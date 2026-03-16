@@ -14,6 +14,9 @@ export interface MctConfig {
     wsPort?: number;
     server?: string;
     headless?: boolean;
+    launchCommand?: string[];
+    workingDir?: string;
+    env?: Record<string, string>;
   }>;
   screenshot: {
     outputDir: string;

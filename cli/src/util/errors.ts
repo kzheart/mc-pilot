@@ -1,13 +1,13 @@
 export interface ErrorPayload {
   code: string;
   message: string;
-  details?: Record<string, unknown>;
+  details?: unknown;
 }
 
 export class MctError extends Error {
   readonly code: string;
   readonly exitCode: number;
-  readonly details?: Record<string, unknown>;
+  readonly details?: unknown;
 
   constructor(payload: ErrorPayload, exitCode = 1) {
     super(payload.message);

@@ -7,7 +7,11 @@ import { printError, printSuccess } from "./output.js";
 
 export type CommandAction<TOptions = Record<string, unknown>> = (
   context: Awaited<ReturnType<typeof createCommandContext>>,
-  options: TOptions
+  payload: {
+    args: string[];
+    options: TOptions;
+    command: Command;
+  }
 ) => Promise<unknown>;
 
 export function attachGlobalOptions(command: Command) {
@@ -18,12 +22,19 @@ export function attachGlobalOptions(command: Command) {
 }
 
 export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandAction<TOptions>) {
-  return async function wrappedCommand(this: Command, options: TOptions) {
-    const globalOptions = this.optsWithGlobals() as GlobalOptions;
+  return async function wrappedCommand(this: Command, ...input: unknown[]) {
+    const command = input.at(-1) as Command;
+    const options = input.at(-2) as TOptions;
+    const args = input.slice(0, -2).map((value) => String(value));
+    const globalOptions = command.optsWithGlobals() as GlobalOptions;
 
     try {
       const context = await createCommandContext(globalOptions);
-      const result = await action(context, options);
+      const result = await action(context, {
+        args,
+        options,
+        command
+      });
       printSuccess(result, context.outputMode);
     } catch (error) {
       const normalized = normalizeError(error);
