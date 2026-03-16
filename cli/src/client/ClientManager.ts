@@ -197,8 +197,26 @@ export class ClientManager {
 
   async waitReady(name: string, timeoutSeconds: number) {
     const client = await this.getClient(name);
-    const ws = new WebSocketClient(this.getWsUrl(client.wsPort));
-    return ws.ping(timeoutSeconds);
+    const deadline = Date.now() + timeoutSeconds * 1000;
+
+    while (Date.now() < deadline) {
+      try {
+        const ws = new WebSocketClient(this.getWsUrl(client.wsPort));
+        return await ws.ping(1);
+      } catch {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 500);
+        });
+      }
+    }
+
+    throw new MctError(
+      {
+        code: "TIMEOUT",
+        message: `Timed out waiting for client ${name} to open WebSocket on ${this.getWsUrl(client.wsPort)}`
+      },
+      2
+    );
   }
 
   async getClient(name?: string) {

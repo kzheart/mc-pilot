@@ -109,7 +109,7 @@ test("system e2e: CLI can orchestrate server, client and request flow", async ()
               "node",
               "--input-type=module",
               "-e",
-              "import { WebSocketServer } from 'ws'; const port = Number(process.env.MCT_CLIENT_WS_PORT || 25560); const server = new WebSocketServer({ port }); server.on('connection', (socket) => { socket.on('message', (raw) => { const request = JSON.parse(raw.toString()); socket.send(JSON.stringify({ id: request.id, success: true, data: { echoedAction: request.action, params: request.params } })); }); }); setInterval(() => {}, 1000);"
+              "import { WebSocketServer } from 'ws'; const port = Number(process.env.MCT_CLIENT_WS_PORT || 25560); setTimeout(() => { const server = new WebSocketServer({ port }); server.on('connection', (socket) => { socket.on('message', (raw) => { const request = JSON.parse(raw.toString()); socket.send(JSON.stringify({ id: request.id, success: true, data: { echoedAction: request.action, params: request.params } })); }); }); }, 1500); setInterval(() => {}, 1000);"
             ]
           }
         },
