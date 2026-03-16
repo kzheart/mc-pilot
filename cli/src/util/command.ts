@@ -11,6 +11,7 @@ export type CommandAction<TOptions = Record<string, unknown>> = (
     args: string[];
     options: TOptions;
     command: Command;
+    globalOptions: GlobalOptions;
   }
 ) => Promise<unknown>;
 
@@ -18,7 +19,8 @@ export function attachGlobalOptions(command: Command) {
   return command
     .option("--human", "输出人类可读格式")
     .option("--config <path>", "指定配置文件路径")
-    .option("--state-dir <path>", "指定状态目录");
+    .option("--state-dir <path>", "指定状态目录")
+    .option("--client <name>", "指定客户端名称");
 }
 
 export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandAction<TOptions>) {
@@ -33,7 +35,8 @@ export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandA
       const result = await action(context, {
         args,
         options,
-        command
+        command,
+        globalOptions
       });
       printSuccess(result, context.outputMode);
     } catch (error) {

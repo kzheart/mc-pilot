@@ -8,6 +8,7 @@ export interface GlobalOptions {
   human?: boolean;
   config?: string;
   stateDir?: string;
+  client?: string;
 }
 
 export interface CommandContext {
