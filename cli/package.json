@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/*.test.js dist/**/*.test.js"
+    "test": "npm run build && node --test dist/*.test.js dist/**/*.test.js",
+    "test:e2e": "npm run build && node --test dist/*.e2e.test.js dist/**/*.e2e.test.js"
   },
   "dependencies": {
     "commander": "^14.0.1",
