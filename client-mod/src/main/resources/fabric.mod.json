@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "mct",
+  "version": "0.1.0",
+  "name": "Minecraft Auto Test Client Mod",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "com.mct.ModEntry"
+    ]
+  },
+  "mixins": [
+    "mct.mixins.json"
+  ]
+}
