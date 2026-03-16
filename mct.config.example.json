@@ -1,0 +1,33 @@
+{
+  "server": {
+    "jar": "./server/paper-1.20.4.jar",
+    "dir": "./server",
+    "port": 25565,
+    "jvmArgs": [
+      "-Xmx2G"
+    ]
+  },
+  "clients": {
+    "default": {
+      "version": "1.20.4",
+      "account": "TestPlayer",
+      "server": "localhost:25565",
+      "wsPort": 25560,
+      "headless": false,
+      "launchCommand": [
+        "node",
+        "--input-type=module",
+        "-e",
+        "throw new Error('Replace launchCommand with your real Minecraft launcher command')"
+      ]
+    }
+  },
+  "screenshot": {
+    "outputDir": "./screenshots"
+  },
+  "timeout": {
+    "serverReady": 120,
+    "clientReady": 60,
+    "default": 10
+  }
+}

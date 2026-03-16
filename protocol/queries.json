@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    {
+      "name": "chat.history",
+      "params": ["last"],
+      "description": "获取聊天历史"
+    },
+    {
+      "name": "chat.last",
+      "params": [],
+      "description": "获取最后一条聊天消息"
+    },
+    {
+      "name": "position.get",
+      "params": [],
+      "description": "获取当前位置"
+    },
+    {
+      "name": "rotation.get",
+      "params": [],
+      "description": "获取当前朝向"
+    },
+    {
+      "name": "block.get",
+      "params": ["x", "y", "z"],
+      "description": "查询方块信息"
+    },
+    {
+      "name": "entity.list",
+      "params": ["radius"],
+      "description": "列出范围内实体"
+    },
+    {
+      "name": "entity.info",
+      "params": ["id"],
+      "description": "查询实体详情"
+    },
+    {
+      "name": "inventory.get",
+      "params": [],
+      "description": "获取完整背包"
+    },
+    {
+      "name": "inventory.slot",
+      "params": ["slot"],
+      "description": "获取指定槽位"
+    },
+    {
+      "name": "inventory.held",
+      "params": [],
+      "description": "获取当前手持物品"
+    },
+    {
+      "name": "gui.info",
+      "params": [],
+      "description": "获取 GUI 信息"
+    },
+    {
+      "name": "gui.snapshot",
+      "params": [],
+      "description": "获取 GUI 快照"
+    },
+    {
+      "name": "gui.slot",
+      "params": ["slot"],
+      "description": "获取 GUI 槽位"
+    },
+    {
+      "name": "screen.size",
+      "params": [],
+      "description": "获取屏幕大小"
+    },
+    {
+      "name": "hud.scoreboard",
+      "params": [],
+      "description": "获取侧边栏计分板"
+    },
+    {
+      "name": "hud.tab",
+      "params": [],
+      "description": "获取 Tab 列表"
+    },
+    {
+      "name": "hud.bossbar",
+      "params": [],
+      "description": "获取 BossBar"
+    },
+    {
+      "name": "hud.actionbar",
+      "params": [],
+      "description": "获取 ActionBar"
+    },
+    {
+      "name": "hud.title",
+      "params": [],
+      "description": "获取 Title"
+    },
+    {
+      "name": "hud.nametag",
+      "params": ["player"],
+      "description": "获取指定玩家名牌"
+    },
+    {
+      "name": "status.health",
+      "params": [],
+      "description": "获取生命与饥饿状态"
+    },
+    {
+      "name": "status.effects",
+      "params": [],
+      "description": "获取药水效果"
+    },
+    {
+      "name": "status.experience",
+      "params": [],
+      "description": "获取经验状态"
+    },
+    {
+      "name": "status.gamemode",
+      "params": [],
+      "description": "获取游戏模式"
+    },
+    {
+      "name": "status.world",
+      "params": [],
+      "description": "获取世界状态"
+    },
+    {
+      "name": "status.all",
+      "params": [],
+      "description": "获取聚合状态"
+    },
+    {
+      "name": "sign.read",
+      "params": ["x", "y", "z"],
+      "description": "读取告示牌"
+    },
+    {
+      "name": "book.read",
+      "params": [],
+      "description": "读取书本"
+    },
+    {
+      "name": "resourcepack.status",
+      "params": [],
+      "description": "获取资源包状态"
+    },
+    {
+      "name": "effects.sounds",
+      "params": ["last"],
+      "description": "获取最近音效事件"
+    },
+    {
+      "name": "effects.particles",
+      "params": ["last"],
+      "description": "获取最近粒子事件"
+    }
+  ]
+}
