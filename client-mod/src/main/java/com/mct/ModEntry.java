@@ -1,16 +1,11 @@
 package com.mct;
 
-import com.mct.core.protocol.MessageHandler;
+import net.fabricmc.api.ModInitializer;
 
-public final class ModEntry {
+public final class ModEntry implements ModInitializer {
 
-    private final MessageHandler messageHandler = new MessageHandler();
-
-    public String getModId() {
-        return "mct";
-    }
-
-    public MessageHandler getMessageHandler() {
-        return messageHandler;
+    @Override
+    public void onInitialize() {
+        // Shared entrypoint kept for future cross-environment setup.
     }
 }
