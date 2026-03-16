@@ -1,0 +1,15 @@
+{
+  "name": "minecraft-auto-test",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "cli"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace cli",
+    "test": "npm run test --workspace cli"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
