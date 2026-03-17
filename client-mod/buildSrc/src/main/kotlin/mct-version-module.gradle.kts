@@ -76,8 +76,9 @@ tasks.processResources {
 }
 
 java {
-    sourceCompatibility = JavaVersion.toVersion(javaVersion.toInt())
-    targetCompatibility = JavaVersion.toVersion(javaVersion.toInt())
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(javaVersion.toInt()))
+    }
 }
 
 tasks.withType<JavaCompile>().configureEach {

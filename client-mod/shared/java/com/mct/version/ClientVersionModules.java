@@ -12,6 +12,7 @@ public final class ClientVersionModules {
     private final ActionResultAdapter actionResult;
     private final NetworkAdapter network;
     private final ImageAdapter image;
+    private final InteractionAdapter interaction;
 
     public ClientVersionModules(
         TextAdapter text,
@@ -23,7 +24,8 @@ public final class ClientVersionModules {
         ItemDataAdapter itemData,
         ActionResultAdapter actionResult,
         NetworkAdapter network,
-        ImageAdapter image
+        ImageAdapter image,
+        InteractionAdapter interaction
     ) {
         this.text = text;
         this.scoreboard = scoreboard;
@@ -35,6 +37,7 @@ public final class ClientVersionModules {
         this.actionResult = actionResult;
         this.network = network;
         this.image = image;
+        this.interaction = interaction;
     }
 
     public TextAdapter text() {
@@ -75,5 +78,9 @@ public final class ClientVersionModules {
 
     public ImageAdapter image() {
         return image;
+    }
+
+    public InteractionAdapter interaction() {
+        return interaction;
     }
 }

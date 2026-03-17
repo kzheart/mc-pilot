@@ -91,7 +91,7 @@ public final class GuiInventoryHandler extends ActionHandler {
 
     private Map<String, Object> useHeldItem() {
         ClientPlayerEntity player = requirePlayer();
-        ActionResult result = requireInteractionManager().interactItem(player, Hand.MAIN_HAND);
+        ActionResult result = ClientVersionModulesHolder.get().interaction().interactItem(requireInteractionManager(), player, Hand.MAIN_HAND);
         return Map.of(
             "success", result.isAccepted(),
             "action", ClientVersionModulesHolder.get().actionResult().resultName(result),

@@ -24,7 +24,10 @@ import net.minecraft.scoreboard.ScoreboardDisplaySlot;
 import net.minecraft.scoreboard.ScoreboardEntry;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.text.Text;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -46,7 +49,8 @@ public final class VersionAdaptersImpl {
             createItemDataAdapter(),
             createActionResultAdapter(),
             createNetworkAdapter(),
-            createImageAdapter()
+            createImageAdapter(),
+            createInteractionAdapter()
         );
     }
 
@@ -202,6 +206,33 @@ public final class VersionAdaptersImpl {
             @Override
             public int getPixel(NativeImage image, int x, int y) {
                 return image.getColor(x, y);
+            }
+        };
+    }
+
+    private static InteractionAdapter createInteractionAdapter() {
+        return new InteractionAdapter() {
+            @Override
+            public ActionResult interactItem(ClientPlayerInteractionManager manager, ClientPlayerEntity player, Hand hand) {
+                return manager.interactItem(player, hand);
+            }
+
+            @Override
+            public ActionResult interactBlock(ClientPlayerInteractionManager manager, ClientPlayerEntity player, Hand hand, BlockHitResult hitResult) {
+                return manager.interactBlock(player, hand, hitResult);
+            }
+
+            @Override
+            public void sendCommand(ClientPlayerEntity player, String command) {
+                boolean sent = player.networkHandler.sendCommand(command);
+                if (!sent) {
+                    player.networkHandler.sendChatCommand(command);
+                }
+            }
+
+            @Override
+            public void sendChatMessage(ClientPlayerEntity player, String message) {
+                player.networkHandler.sendChatMessage(message);
             }
         };
     }

@@ -4,6 +4,7 @@ import static com.mct.core.util.ParamHelper.*;
 
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
+import com.mct.version.ClientVersionModulesHolder;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -23,17 +24,14 @@ public final class ChatHandler extends ActionHandler {
         return switch (action) {
             case "chat.send" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
-                player.networkHandler.sendChatMessage(getString(params, "message"));
+                ClientVersionModulesHolder.get().interaction().sendChatMessage(player, getString(params, "message"));
                 return Map.of("sent", true);
             });
             case "chat.command" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
                 String command = stripLeadingSlash(getString(params, "command"));
-                boolean sent = player.networkHandler.sendCommand(command);
-                if (!sent) {
-                    player.networkHandler.sendChatCommand(command);
-                }
-                return Map.of("sent", true, "unsigned", sent);
+                ClientVersionModulesHolder.get().interaction().sendCommand(player, command);
+                return Map.of("sent", true);
             });
             case "chat.history" -> runOnClientThread(() -> Map.of("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
             case "chat.last" -> runOnClientThread(() -> Map.of("message", stateTracker.getLastChatMessage()));

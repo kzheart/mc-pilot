@@ -23,7 +23,10 @@ import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.scoreboard.ScoreboardPlayerScore;
 import net.minecraft.text.Text;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,7 +48,8 @@ public final class VersionAdaptersImpl {
             createItemDataAdapter(),
             createActionResultAdapter(),
             createNetworkAdapter(),
-            createImageAdapter()
+            createImageAdapter(),
+            createInteractionAdapter()
         );
     }
 
@@ -109,7 +113,7 @@ public final class VersionAdaptersImpl {
     private static ReconnectAdapter createReconnectAdapter() {
         return (client, parent, serverAddress, address) -> {
             ServerInfo serverInfo = new ServerInfo("MCT Auto Test", address, false);
-            ConnectScreen.connect(parent, client, serverAddress, serverInfo, false);
+            ConnectScreen.connect(parent, client, serverAddress, serverInfo);
         };
     }
 
@@ -208,6 +212,31 @@ public final class VersionAdaptersImpl {
             @Override
             public int getPixel(NativeImage image, int x, int y) {
                 return image.getColor(x, y);
+            }
+        };
+    }
+
+    private static InteractionAdapter createInteractionAdapter() {
+        return new InteractionAdapter() {
+            @Override
+            public ActionResult interactItem(ClientPlayerInteractionManager manager, ClientPlayerEntity player, Hand hand) {
+                return manager.interactItem(player, player.clientWorld, hand);
+            }
+
+            @Override
+            public ActionResult interactBlock(ClientPlayerInteractionManager manager, ClientPlayerEntity player, Hand hand, BlockHitResult hitResult) {
+                return manager.interactBlock(player, player.clientWorld, hand, hitResult);
+            }
+
+            @Override
+            public void sendCommand(ClientPlayerEntity player, String command) {
+                String msg = command.startsWith("/") ? command : "/" + command;
+                player.sendChatMessage(msg);
+            }
+
+            @Override
+            public void sendChatMessage(ClientPlayerEntity player, String message) {
+                player.sendChatMessage(message);
             }
         };
     }
