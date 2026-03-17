@@ -12,12 +12,14 @@ import { promisify } from "node:util";
 
 import { buildProgram } from "../cli/dist/index.js";
 import { TEST_GROUPS } from "./real-mod-full-test/groups/index.mjs";
+import { getDefaultVariant } from "./mod-variant.mjs";
 
 const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
+const DEFAULT_MOD_VARIANT = getDefaultVariant();
 const CONFIG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/mct.real.config.json");
 const STATE_DIR = path.join(ROOT_DIR, "tmp/real-e2e/state");
 const REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
@@ -29,7 +31,7 @@ const BUILT_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-pape
 const RESOURCEPACK_PATH = path.join(ROOT_DIR, "tmp/real-e2e/resourcepack/test-pack.zip");
 const RESOURCEPACK_PORT = 18080;
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
-const REAL_CLIENT_INSTANCE_ID = "mct-real-1.20.4-fabric";
+const REAL_CLIENT_INSTANCE_ID = `mct-real-${DEFAULT_MOD_VARIANT.id}`;
 const REAL_CLIENT_WS_PORT = 25560;
 const REAL_CLIENT_INSTANCE_PATH_FRAGMENT = path.join("PrismLauncher", "instances", REAL_CLIENT_INSTANCE_ID);
 const LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
