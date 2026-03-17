@@ -6,7 +6,7 @@ import com.mct.mixin.KeyboardInvoker;
 import com.mct.mixin.KeyBindingAccessor;
 import com.mct.mixin.MouseInvoker;
 import com.mct.core.state.ClientStateTracker;
-import com.mct.version.ClientVersionAdapters;
+import com.mct.version.ClientVersionModulesHolder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,6 +100,31 @@ public final class ClientActionExecutor {
     }
 
     public Map<String, Object> execute(String action, Map<String, Object> params) {
+        if (action.startsWith("chat.")) {
+            return executeChatAction(action, params);
+        }
+        if (action.startsWith("status.") || action.startsWith("screen.") || action.equals("position.get") || action.equals("rotation.get") || action.equals("wait.perform")) {
+            return executeStatusAction(action, params);
+        }
+        if (action.startsWith("input.")) {
+            return executeInputAction(action, params);
+        }
+        if (action.startsWith("look.") || action.startsWith("move.")) {
+            return executeMovementAction(action, params);
+        }
+        if (action.startsWith("inventory.") || action.startsWith("gui.") || action.startsWith("capture.screenshot")) {
+            return executeGuiInventoryAction(action, params);
+        }
+        if (action.startsWith("hud.") || action.startsWith("client.") || action.startsWith("resourcepack.")) {
+            return executeSessionAction(action, params);
+        }
+        if (action.startsWith("combat.") || action.startsWith("sign.") || action.startsWith("book.") || action.startsWith("block.") || action.startsWith("entity.") || action.startsWith("craft.")) {
+            return executeWorldAction(action, params);
+        }
+        throw new ActionException("INVALID_ACTION");
+    }
+
+    private Map<String, Object> executeChatAction(String action, Map<String, Object> params) {
         return switch (action) {
             case "chat.send" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
@@ -118,6 +143,12 @@ public final class ClientActionExecutor {
             case "chat.history" -> runOnClientThread(() -> Map.of("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
             case "chat.last" -> runOnClientThread(() -> Map.of("message", stateTracker.getLastChatMessage()));
             case "chat.wait" -> waitForChat(params);
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeStatusAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "position.get" -> runOnClientThread(() -> positionMap(requirePlayer()));
             case "rotation.get" -> runOnClientThread(() -> rotationMap(requirePlayer()));
             case "wait.perform" -> performWait(params);
@@ -128,6 +159,12 @@ public final class ClientActionExecutor {
             case "status.world" -> runOnClientThread(this::worldStatus);
             case "status.all" -> runOnClientThread(this::allStatus);
             case "screen.size" -> runOnClientThread(this::screenSize);
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeInputAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "input.click" -> inputClick(params);
             case "input.double-click" -> inputDoubleClick(params);
             case "input.mouse-move" -> inputMouseMove(params);
@@ -141,6 +178,12 @@ public final class ClientActionExecutor {
             case "input.type" -> inputType(params);
             case "input.mouse-pos" -> runOnClientThread(this::currentMousePosition);
             case "input.keys-down" -> inputKeysDown();
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeMovementAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "look.set" -> runOnClientThread(() -> setRotation(requirePlayer(), (float) getDouble(params, "yaw"), (float) getDouble(params, "pitch")));
             case "look.at" -> runOnClientThread(() -> lookAt(requirePlayer(), getDouble(params, "x"), getDouble(params, "y"), getDouble(params, "z")));
             case "look.entity" -> runOnClientThread(() -> {
@@ -170,6 +213,12 @@ public final class ClientActionExecutor {
             });
             case "move.direction" -> moveDirection(params);
             case "move.to" -> moveTo(params);
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeGuiInventoryAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "inventory.get" -> runOnClientThread(() -> Map.of("slots", ClientDataHelper.slotsToList(requirePlayer().playerScreenHandler.slots)));
             case "inventory.slot" -> runOnClientThread(() -> inventorySlot(params));
             case "inventory.held" -> runOnClientThread(() -> Map.of("item", ClientDataHelper.itemToMap(requirePlayer().getMainHandStack())));
@@ -190,17 +239,29 @@ public final class ClientActionExecutor {
             case "gui.wait-open" -> waitForGuiOpen(params);
             case "gui.wait-update" -> waitForGuiUpdate(params);
             case "gui.screenshot" -> captureScreenshot(getString(params, "output"), null, true);
+            case "capture.screenshot" -> captureScreenshot(getString(params, "output"), getOptionalString(params, "region"), getBoolean(params, "gui", false));
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeSessionAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "hud.scoreboard" -> runOnClientThread(this::scoreboardStatus);
             case "hud.tab" -> runOnClientThread(this::tabStatus);
             case "hud.bossbar" -> runOnClientThread(this::bossBarStatus);
             case "hud.actionbar" -> runOnClientThread(this::actionBarStatus);
             case "hud.title" -> runOnClientThread(this::titleStatus);
             case "hud.nametag" -> runOnClientThread(() -> nameTagStatus(getString(params, "player")));
-            case "capture.screenshot" -> captureScreenshot(getString(params, "output"), getOptionalString(params, "region"), getBoolean(params, "gui", false));
             case "client.reconnect" -> runOnClientThread(() -> reconnectClient(params));
             case "resourcepack.status" -> runOnClientThread(this::resourcePackStatus);
-            case "resourcepack.accept" -> runOnClientThread(() -> ClientVersionAdapters.get().acceptResourcePack(client, stateTracker));
-            case "resourcepack.reject" -> runOnClientThread(() -> ClientVersionAdapters.get().rejectResourcePack(client, stateTracker));
+            case "resourcepack.accept" -> runOnClientThread(() -> ClientVersionModulesHolder.get().resourcePack().accept(client, stateTracker));
+            case "resourcepack.reject" -> runOnClientThread(() -> ClientVersionModulesHolder.get().resourcePack().reject(client, stateTracker));
+            default -> throw new ActionException("INVALID_ACTION");
+        };
+    }
+
+    private Map<String, Object> executeWorldAction(String action, Map<String, Object> params) {
+        return switch (action) {
             case "combat.kill" -> combatKill(params);
             case "combat.clear" -> combatClear(params);
             case "combat.engage" -> combatEngage(params);
@@ -745,7 +806,7 @@ public final class ClientActionExecutor {
     }
 
     private Map<String, Object> scoreboardStatus() {
-        return ClientVersionAdapters.get().scoreboardStatus(requirePlayer().clientWorld.getScoreboard());
+        return ClientVersionModulesHolder.get().scoreboard().scoreboardStatus(requirePlayer().clientWorld.getScoreboard());
     }
 
     private Map<String, Object> tabStatus() {
@@ -827,7 +888,7 @@ public final class ClientActionExecutor {
     }
 
     private Map<String, Object> resourcePackStatus() {
-        return ClientVersionAdapters.get().resourcePackStatus(client, stateTracker);
+        return ClientVersionModulesHolder.get().resourcePack().status(client, stateTracker);
     }
 
     private Map<String, Object> reconnectClient(Map<String, Object> params) {
@@ -841,7 +902,7 @@ public final class ClientActionExecutor {
 
         Screen parent = client.currentScreen != null ? client.currentScreen : new TitleScreen();
         ServerAddress serverAddress = ServerAddress.parse(address);
-        ClientVersionAdapters.get().connect(client, parent, serverAddress, address);
+        ClientVersionModulesHolder.get().reconnect().connect(client, parent, serverAddress, address);
         return Map.of("connecting", true, "address", address);
     }
 
