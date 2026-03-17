@@ -1319,6 +1319,9 @@ minecraft-auto-test/
 │   │   ├── commands/
 │   │   ├── client/
 │   │   ├── server/
+│   │   ├── download/             # 环境搜索与下载
+│   │   │   ├── server/           # 服务端下载（Paper/Purpur/Spigot）
+│   │   │   └── client/           # 客户端下载（MC本体/Loader/Mod）
 │   │   └── util/
 │   └── bin/
 │       └── mct                   # CLI 入口脚本
@@ -1370,7 +1373,288 @@ minecraft-auto-test/
 
 ---
 
-## 11. 开发计划
+## 11. 环境搜索与下载
+
+### 11.1 目标
+
+CLI 内置服务端和客户端的搜索、下载、安装能力，用户无需手动寻找和配置依赖，实现开箱即用。
+
+### 11.2 命令设计
+
+```bash
+# ===== 服务端 =====
+
+# 搜索可用的服务端版本
+mct server search [--type paper|spigot|purpur] [--version <mc-version>]
+
+# 下载服务端 JAR
+mct server download [--type paper] [--version 1.20.4] [--build latest] [--dir ./server]
+
+# ===== 客户端 =====
+
+# 搜索可用的客户端 Loader 版本
+mct client search [--loader fabric|forge|neoforge] [--version <mc-version>]
+
+# 下载并安装客户端环境
+mct client download [--loader fabric] [--version 1.20.4] [--dir ./client]
+```
+
+### 11.3 服务端下载
+
+支持三种服务端类型：
+
+| 类型 | API / 工具 | 说明 |
+|------|-----------|------|
+| **Paper** | `api.papermc.io/v2/projects/paper` | 默认推荐，公开 REST API，直接下载 JAR |
+| **Purpur** | `api.purpurmc.org/v2/purpur` | API 风格兼容 Paper，直接下载 JAR |
+| **Spigot** | BuildTools (`hub.spigotmc.org`) | 需要下载 BuildTools.jar 并执行编译构建，依赖 Git + Java |
+
+**`mct server search` 输出示例**：
+
+```
+Paper:
+  1.21.4  (build 170)
+  1.20.4  (build 496)
+  1.20.1  (build 196)
+  1.18.2  (build 388)
+  1.16.5  (build 794)
+  1.12.2  (build 1620)
+
+Purpur:
+  1.21.4  (build 2406)
+  1.20.4  (build 2176)
+  1.20.1  (build 2062)
+
+Spigot:
+  1.21.4, 1.20.4, 1.20.1, 1.18.2, 1.16.5, 1.12.2
+  (需要 BuildTools 本地构建)
+```
+
+**`mct server download` 流程**：
+
+1. 调用对应 API 获取指定版本的最新 build 号（或使用 `--build` 指定）
+2. 下载 JAR 到 `--dir` 指定目录（默认 `./server/`）
+3. 下载完成后校验 SHA256（Paper/Purpur 提供）
+4. 自动更新 `mct.config.json` 中的 `server.jar` 和 `server.dir`
+5. Spigot 特殊处理：下载 BuildTools.jar → 执行 `java -jar BuildTools.jar --rev <version>` → 产出 spigot-x.x.x.jar
+
+### 11.4 客户端下载
+
+客户端环境由三部分组成：
+
+```
+┌─────────────────────────────────────────────────┐
+│  完整客户端实例                                    │
+│                                                  │
+│  1. Minecraft 本体    ← Mojang Version Manifest  │
+│     (JAR + Libraries + Assets)                   │
+│                                                  │
+│  2. Mod Loader        ← Fabric / Forge /         │
+│     (Loader + 依赖库)    NeoForge Meta API       │
+│                                                  │
+│  3. MCT Mod JAR       ← 本项目 GitHub Release    │
+│                                                  │
+│  版本 × Loader = 一个完整的客户端实例               │
+└─────────────────────────────────────────────────┘
+```
+
+#### 11.4.1 Loader 下载与安装
+
+| Loader | Meta / Maven | 安装方式 |
+|--------|-------------|---------|
+| **Fabric** | `meta.fabricmc.net/v2` | 下载 Loader JAR + Intermediary，拼接到 classpath，无需额外安装步骤 |
+| **Forge** | `files.minecraftforge.net` / Maven | 下载 Installer JAR → 执行 `java -jar forge-installer.jar --installClient`，自动解压 libraries 并 patch 客户端 |
+| **NeoForge** | `maven.neoforged.net` | 类似 Forge，下载 Installer 执行安装 |
+
+#### 11.4.2 MCT Mod 分发
+
+通过本项目的 GitHub Release 分发预编译 JAR，按 `{mc-version}-{loader}` 组合命名：
+
+```
+mct-client-mod-1.21.4-fabric.jar
+mct-client-mod-1.21.4-neoforge.jar
+mct-client-mod-1.20.4-fabric.jar
+mct-client-mod-1.20.4-forge.jar
+mct-client-mod-1.20.1-fabric.jar
+mct-client-mod-1.20.1-forge.jar
+mct-client-mod-1.18.2-fabric.jar
+mct-client-mod-1.18.2-forge.jar
+mct-client-mod-1.16.5-fabric.jar
+mct-client-mod-1.16.5-forge.jar
+mct-client-mod-1.12.2-forge.jar
+```
+
+#### 11.4.3 `mct client search` 输出示例
+
+```bash
+mct client search --version 1.20.4
+```
+
+```
+1.20.4:
+  Fabric:    ✅  Loader 0.16.10  |  MCT Mod 0.1.0
+  Forge:     ✅  Forge 49.0.49   |  MCT Mod 0.1.0
+  NeoForge:  ❌  不支持此版本
+
+mct client search --version 1.21.4
+
+1.21.4:
+  Fabric:    ✅  Loader 0.16.10  |  MCT Mod 0.1.0
+  Forge:     ❌  不支持此版本
+  NeoForge:  ✅  NeoForge 21.4.x |  MCT Mod 0.1.0
+```
+
+#### 11.4.4 `mct client download` 流程
+
+1. **Java 检测**：检查 `java` 命令可用性和版本，给出明确提示
+   - MC 1.16.5: Java 8+
+   - MC 1.17~1.20.4: Java 17+
+   - MC 1.20.5+: Java 21+
+2. **下载 Minecraft 本体**：从 Mojang Version Manifest 下载 client JAR、libraries、assets
+3. **安装 Mod Loader**：根据 `--loader` 参数调用对应的安装流程
+4. **下载 MCT Mod**：从 GitHub Release 下载对应版本的 MCT Mod JAR，放入 `mods/` 目录
+5. **生成启动命令**：根据 Loader 类型生成正确的 classpath 和 mainClass，写入 `mct.config.json` 的 `launchCommand`
+6. **更新配置**：自动写入 `mct.config.json` 中的 `clients` 配置
+
+### 11.5 版本兼容矩阵
+
+| MC 版本 | Fabric | Forge | NeoForge | Paper | Purpur | Spigot |
+|---------|--------|-------|----------|-------|--------|--------|
+| 1.21.x  | ✅     | ❌    | ✅       | ✅    | ✅     | ✅     |
+| 1.20.4  | ✅     | ✅    | ❌       | ✅    | ✅     | ✅     |
+| 1.20.1  | ✅     | ✅    | ❌       | ✅    | ✅     | ✅     |
+| 1.18.2  | ✅     | ✅    | ❌       | ✅    | ❌     | ✅     |
+| 1.16.5  | ✅     | ✅    | ❌       | ✅    | ❌     | ✅     |
+| 1.12.2  | ❌     | ✅    | ❌       | ✅    | ❌     | ✅     |
+
+`search` 命令展示此兼容矩阵，帮助用户选择可用组合。
+
+### 11.6 缓存与校验
+
+- 所有下载文件缓存在 `~/.mct/cache/`，按类型和版本组织：
+
+```
+~/.mct/cache/
+├── server/
+│   ├── paper/
+│   │   ├── 1.20.4-496.jar
+│   │   └── 1.21.4-170.jar
+│   ├── purpur/
+│   └── spigot/
+├── client/
+│   ├── minecraft/
+│   │   ├── 1.20.4/
+│   │   │   ├── client.jar
+│   │   │   ├── libraries/
+│   │   │   └── assets/
+│   │   └── 1.21.4/
+│   ├── fabric/
+│   ├── forge/
+│   └── neoforge/
+└── mod/
+    ├── mct-client-mod-1.20.4-fabric.jar
+    └── mct-client-mod-1.20.4-forge.jar
+```
+
+- Paper/Purpur 提供 SHA256 校验，下载后自动验证
+- Mojang 资源文件自带 hash，按 hash 去重存储
+- 重复下载同版本时直接使用缓存，跳过下载
+
+### 11.7 配置联动
+
+下载完成后自动更新 `mct.config.json`，用户无需手动编辑：
+
+```bash
+# 下载前
+mct.config.json 不存在或为空
+
+# 执行
+mct server download --version 1.20.4
+mct client download --version 1.20.4 --loader forge
+
+# 下载后自动生成
+```
+
+```json
+{
+  "server": {
+    "jar": "./server/paper-1.20.4-496.jar",
+    "dir": "./server",
+    "port": 25565,
+    "jvmArgs": ["-Xmx2G"]
+  },
+  "clients": {
+    "default": {
+      "version": "1.20.4",
+      "account": "TestPlayer",
+      "server": "localhost:25565",
+      "wsPort": 25560,
+      "launchCommand": ["java", "-XstartOnFirstThread", "-Xmx1024m", "-cp", "...", "net.minecraftforge.fml.loading.FMLClientLaunchProvider", "--gameDir", "./client/minecraft", ...]
+    }
+  }
+}
+```
+
+### 11.8 完整使用流程
+
+```bash
+# 1. 查看可用版本
+mct server search
+mct client search --version 1.20.4
+
+# 2. 下载服务端和客户端
+mct server download --version 1.20.4
+mct client download --version 1.20.4 --loader forge
+
+# 3. 启动测试环境
+mct server start --eula
+mct server wait-ready
+mct client launch default
+mct client wait-ready default
+
+# 4. 开始测试
+mct chat command "op TestPlayer"
+mct chat send "Hello from auto test!"
+```
+
+### 11.9 模块架构
+
+```
+cli/src/
+  ├── download/
+  │   ├── index.ts                     # 统一入口
+  │   ├── DownloadUtils.ts             # 通用工具：进度条、SHA256 校验、重试
+  │   ├── CacheManager.ts              # ~/.mct/cache/ 缓存管理
+  │   ├── JavaDetector.ts              # Java 版本检测与提示
+  │   ├── VersionMatrix.ts             # 版本兼容矩阵
+  │   ├── server/
+  │   │   ├── ServerProvider.ts        # 统一接口
+  │   │   ├── PaperProvider.ts         # Paper API 交互 + 下载
+  │   │   ├── PurpurProvider.ts        # Purpur API 交互 + 下载
+  │   │   └── SpigotProvider.ts        # Spigot BuildTools 下载 + 构建
+  │   └── client/
+  │       ├── MinecraftDownloader.ts   # Mojang Version Manifest → 本体 + libs + assets
+  │       ├── LoaderInstaller.ts       # 统一接口
+  │       ├── FabricInstaller.ts       # Fabric Meta API → Loader + Intermediary
+  │       ├── ForgeInstaller.ts        # Forge Maven → Installer → 安装
+  │       ├── NeoForgeInstaller.ts     # NeoForge Maven → Installer → 安装
+  │       ├── ModDownloader.ts         # GitHub Release → MCT Mod JAR
+  │       └── LaunchCommandBuilder.ts  # 根据 Loader 类型生成启动命令
+  └── commands/
+      ├── server.ts                    # 扩展 search / download 子命令
+      └── client.ts                    # 扩展 search / download 子命令
+```
+
+### 11.10 注意事项
+
+1. **Forge 安装需要 Java**：Forge Installer 本身是一个 Java 程序，安装过程需要执行 `java -jar`，因此用户必须预先安装 Java。CLI 在执行前检测 Java 可用性，缺失时给出明确错误提示和安装指引
+2. **Spigot BuildTools 的特殊性**：BuildTools 需要 Git + Java 环境，构建过程耗时较长（首次约 10-20 分钟）。CLI 应提示用户预期等待时间，并在构建过程中显示进度
+3. **网络环境**：Mojang/Fabric/Forge 资源可能在部分地区下载较慢，后续可考虑支持镜像源配置
+4. **磁盘空间**：完整的 Minecraft 客户端实例（含 libraries + assets）约 1-2 GB，CLI 应在下载前提示预计空间占用
+
+---
+
+## 12. 开发计划
 
 ### Phase 1 — 核心骨架
 
@@ -1418,14 +1702,31 @@ minecraft-auto-test/
 - [ ] 1.18.2 / 1.16.5 适配
 - [ ] 1.12.2 独立 Forge 项目
 
-### Phase 7 — CI/CD 与无头模式
+### Phase 7 — 环境搜索与下载
+
+- [ ] 下载基础设施（DownloadUtils、CacheManager、JavaDetector）
+- [ ] 版本兼容矩阵（VersionMatrix）
+- [ ] 服务端下载 — Paper Provider（API 交互 + 下载 + SHA256 校验）
+- [ ] 服务端下载 — Purpur Provider
+- [ ] 服务端下载 — Spigot Provider（BuildTools 下载 + 构建）
+- [ ] `mct server search` / `mct server download` 命令
+- [ ] 客户端下载 — Minecraft 本体下载（Mojang Version Manifest → JAR + libraries + assets）
+- [ ] 客户端下载 — Fabric Installer（Meta API → Loader + Intermediary）
+- [ ] 客户端下载 — Forge Installer（Maven → Installer → 安装）
+- [ ] 客户端下载 — NeoForge Installer（Maven → Installer → 安装）
+- [ ] 客户端下载 — MCT Mod 下载（GitHub Release）
+- [ ] 启动命令生成（LaunchCommandBuilder，按 Loader 类型生成 classpath + mainClass）
+- [ ] `mct client search` / `mct client download` 命令
+- [ ] 配置联动（下载后自动更新 mct.config.json）
+
+### Phase 8 — CI/CD 与无头模式
 
 - [ ] HeadlessMC 集成
 - [ ] Docker 镜像
 - [ ] GitHub Actions 模板
 - [ ] 服务端进程管理完善
 
-### Phase 8 — 多客户端与编排
+### Phase 9 — 多客户端与编排
 
 - [ ] 多客户端实例管理
 - [ ] 客户端间命令路由
