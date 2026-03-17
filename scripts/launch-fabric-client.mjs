@@ -108,11 +108,8 @@ async function readJson(filePath) {
 }
 
 async function syncBuiltMod(instanceRoot, repoRoot, variantId) {
-  const parts = variantId.split("-");
-  const loader = parts.length > 1 ? parts[parts.length - 1] : "fabric";
-  const mcVersion = parts.slice(0, -1).join("-");
-  const artifactName = `mct-client-mod-${loader}-${mcVersion}.jar`;
-  const sourceJar = path.join(repoRoot, "client-mod", loader, "build", "libs", artifactName);
+  const artifactName = `mct-client-mod-${variantId.endsWith("-fabric") ? "fabric" : variantId.split("-").pop()}-${variantId.replace(/-fabric$|-forge$|-neoforge$/, "")}.jar`;
+  const sourceJar = path.join(repoRoot, "client-mod", "versions", variantId, "build", "libs", artifactName);
   const targetDir = path.join(instanceRoot, "minecraft", "mods");
   const targetJar = path.join(targetDir, artifactName);
 

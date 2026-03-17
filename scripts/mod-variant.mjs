@@ -28,7 +28,7 @@ export function getVariantById(variantId) {
 export function getModArtifactPath(variant) {
   const loader = variant.loader || "fabric";
   const mcVersion = variant.minecraftVersion;
-  return path.join(ROOT_DIR, "client-mod", loader, "build", "libs", `mct-client-mod-${loader}-${mcVersion}.jar`);
+  return path.join(ROOT_DIR, "client-mod", "versions", `${mcVersion}-${loader}`, "build", "libs", `mct-client-mod-${loader}-${mcVersion}.jar`);
 }
 
 export function getModArtifactFileName(variant) {

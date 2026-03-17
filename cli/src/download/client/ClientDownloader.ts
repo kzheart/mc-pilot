@@ -67,7 +67,7 @@ function ensureSupportedVariant(variant: ModVariant) {
 
 async function resolveLocalArtifact(context: CommandContext, variant: ModVariant, cacheManager: CacheManager) {
   const artifactFileName = getModArtifactFileName(variant);
-  const buildArtifactPath = path.join(context.cwd, "client-mod", variant.loader, "build", "libs", artifactFileName);
+  const buildArtifactPath = path.join(context.cwd, "client-mod", "versions", variant.id, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   try {
