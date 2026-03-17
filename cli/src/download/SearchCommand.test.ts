@@ -42,7 +42,7 @@ test("buildClientSearchResults groups loader data by Minecraft version", () => {
     loader: "fabric"
   });
 
-  assert.equal(results.length, 6);
+  assert.equal(results.length, 8);
   assert(
     results.every((entry) =>
       Array.isArray(entry.loaders)
@@ -66,8 +66,7 @@ test("buildClientSearchResults carries variant validation metadata into grouped 
         supported: true,
         loaderVersion: "0.16.10",
         modVersion: "0.1.0",
-        validation: "limited",
-        notes: "构建配置已接线，当前环境缺少外网解析能力，未完成完整编译验证。"
+        validation: "verified"
       }
     ]
   });

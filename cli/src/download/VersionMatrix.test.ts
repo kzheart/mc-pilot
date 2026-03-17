@@ -12,8 +12,8 @@ import {
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
-  assert.equal(matrix.length, 6);
-  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.4", "1.20.4", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
+  assert.equal(matrix.length, 8);
+  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.4", "1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
 
   const current = getMinecraftSupport("1.20.4");
   assert.ok(current);
@@ -50,7 +50,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(fabric?.loaderVersion, "0.16.10");
   assert.equal(fabric?.modVersion, "0.1.0");
   assert.equal(fabric?.validation, "planned");
-  assert.equal(fabric?.notes, "目标版本已纳入矩阵，等待后续完成 1.21.x 适配与验证。");
+  assert.equal(fabric?.notes, "目标版本已纳入矩阵，但当前 mod 尚未接入此版本。");
   assert.equal(fabric?.javaVersion, "21+");
 
   assert.equal(forge?.supported, false);
@@ -65,4 +65,31 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(neoforge?.validation, "planned");
   assert.equal(neoforge?.notes, undefined);
   assert.equal(neoforge?.javaVersion, "21+");
+});
+
+test("searchClientVersions exposes newly supported 1.20.x fabric variants", () => {
+  const results = searchClientVersions({ loader: "fabric" }).filter(
+    (entry) => entry.minecraftVersion === "1.20.3" || entry.minecraftVersion === "1.20.2"
+  );
+
+  assert.deepEqual(results, [
+    {
+      loader: "fabric",
+      minecraftVersion: "1.20.3",
+      supported: true,
+      loaderVersion: "0.16.10",
+      modVersion: "0.1.0",
+      validation: "verified",
+      javaVersion: "17+"
+    },
+    {
+      loader: "fabric",
+      minecraftVersion: "1.20.2",
+      supported: true,
+      loaderVersion: "0.16.10",
+      modVersion: "0.1.0",
+      validation: "verified",
+      javaVersion: "17+"
+    }
+  ]);
 });

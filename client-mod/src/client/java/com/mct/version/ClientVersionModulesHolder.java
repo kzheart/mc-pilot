@@ -15,6 +15,8 @@ public final class ClientVersionModulesHolder {
 
     private static ClientVersionModules create() {
         String providerClassName = switch (TargetVariant.id()) {
+            case "1.20.2-fabric" -> "com.mct.version.v1202.Fabric1202ClientVersionModulesProvider";
+            case "1.20.3-fabric" -> "com.mct.version.v1203.Fabric1203ClientVersionModulesProvider";
             case "1.20.1-fabric" -> "com.mct.version.v1201.Fabric1201ClientVersionModulesProvider";
             case "1.20.4-fabric" -> "com.mct.version.v1204.Fabric1204ClientVersionModulesProvider";
             default -> throw new IllegalStateException("Unsupported client variant: " + TargetVariant.id());
