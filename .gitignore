@@ -15,6 +15,9 @@ plan/
 issues/
 
 client-mod/.architectury-transformer/
+client-mod/.gradle-user-home/
 client-mod/run/
 client-mod/build/
 client-mod-legacy/build/
+.narrafork/
+.worktrees/
