@@ -50,7 +50,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(fabric?.loaderVersion, "0.16.10");
   assert.equal(fabric?.modVersion, "0.1.0");
   assert.equal(fabric?.validation, "planned");
-  assert.equal(fabric?.notes, "目标版本已纳入矩阵，但当前 mod 尚未接入此版本。");
+  assert.equal(fabric?.notes, undefined);
   assert.equal(fabric?.javaVersion, "21+");
 
   assert.equal(forge?.supported, false);
@@ -60,7 +60,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(forge?.javaVersion, "21+");
 
   assert.equal(neoforge?.supported, false);
-  assert.equal(neoforge?.loaderVersion, "21.4.x");
+  assert.equal(neoforge?.loaderVersion, "21.4.75");
   assert.equal(neoforge?.modVersion, "0.1.0");
   assert.equal(neoforge?.validation, "planned");
   assert.equal(neoforge?.notes, undefined);

@@ -96,7 +96,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.0" },
+      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.0", validation: "verified" },
       forge: { supported: false, notes: "当前未接入此 loader" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
