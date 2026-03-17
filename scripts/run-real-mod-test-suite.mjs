@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,7 @@ const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 // Shared cache dir: server JARs and client runtime are cached globally
 const GLOBAL_CACHE_DIR = path.join(process.env.HOME, ".minecraft-auto-test");
 const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "servers");
+const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
 const INTER_VERSION_DELAY_MS = 6000;
@@ -232,6 +233,14 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
   const serverPayload = parseJsonMaybe(serverDownload.stdout) ?? parseJsonMaybe(serverDownload.stderr);
   if (!serverDownload.ok || serverPayload?.success !== true) {
     throw new Error(`Failed to download server for ${entry.variantId}: ${serverDownload.stderr || serverDownload.stdout}`);
+  }
+
+  // Install fixture plugin into server's plugins/ directory
+  if (entry.serverType !== "vanilla") {
+    const pluginsDir = path.join(paths.serverDir, "plugins");
+    await mkdir(pluginsDir, { recursive: true });
+    await copyFile(FIXTURE_PLUGIN_JAR, path.join(pluginsDir, path.basename(FIXTURE_PLUGIN_JAR)));
+    await logLine(`fixture plugin installed variant=${entry.variantId}`);
   }
 
   await logLine(`client download start variant=${entry.variantId} wsPort=${wsPort}`);
