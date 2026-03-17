@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  getMinecraftSupport,
+  getSupportedMinecraftVersions,
+  getVersionMatrix,
+  searchClientVersions,
+  searchServerVersions
+} from "./VersionMatrix.js";
+
+test("getVersionMatrix exposes documented server and client support entries", () => {
+  const matrix = getVersionMatrix();
+
+  assert.equal(matrix.length, 6);
+  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.4", "1.20.4", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
+
+  const current = getMinecraftSupport("1.20.4");
+  assert.ok(current);
+  assert.equal(current.servers.paper.latestBuild, 496);
+  assert.equal(current.clients.fabric.supported, true);
+  assert.equal(current.clients.forge.loaderVersion, "49.0.49");
+  assert.equal(current.clients.neoforge.supported, false);
+});
+
+test("searchServerVersions can filter by type and version", () => {
+  const results = searchServerVersions({ type: "paper", version: "1.20.4" });
+
+  assert.deepEqual(results, [
+    {
+      type: "paper",
+      minecraftVersion: "1.20.4",
+      supported: true,
+      latestBuild: 496,
+      requiresBuildTools: undefined
+    }
+  ]);
+});
+
+test("searchClientVersions preserves unsupported loaders and java requirements", () => {
+  const results = searchClientVersions({ version: "1.21.4" });
+
+  assert.equal(results.length, 3);
+
+  const neoforge = results.find((entry) => entry.loader === "neoforge");
+  const fabric = results.find((entry) => entry.loader === "fabric");
+  const forge = results.find((entry) => entry.loader === "forge");
+
+  assert.equal(fabric?.supported, false);
+  assert.equal(fabric?.loaderVersion, "0.16.10");
+  assert.equal(fabric?.modVersion, "0.1.0");
+  assert.equal(fabric?.validation, "planned");
+  assert.equal(fabric?.notes, "目标版本已纳入矩阵，等待后续完成 1.21.x 适配与验证。");
+  assert.equal(fabric?.javaVersion, "21+");
+
+  assert.equal(forge?.supported, false);
+  assert.equal(forge?.loaderVersion, undefined);
+  assert.equal(forge?.modVersion, undefined);
+  assert.equal(forge?.notes, "不支持此版本");
+  assert.equal(forge?.javaVersion, "21+");
+
+  assert.equal(neoforge?.supported, false);
+  assert.equal(neoforge?.loaderVersion, "21.4.x");
+  assert.equal(neoforge?.modVersion, "0.1.0");
+  assert.equal(neoforge?.validation, "planned");
+  assert.equal(neoforge?.notes, undefined);
+  assert.equal(neoforge?.javaVersion, "21+");
+});
