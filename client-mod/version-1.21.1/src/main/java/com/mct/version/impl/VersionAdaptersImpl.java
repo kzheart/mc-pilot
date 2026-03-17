@@ -22,7 +22,6 @@ import net.minecraft.component.type.WrittenBookContentComponent;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.registry.Registries;
 import net.minecraft.scoreboard.ScoreboardDisplaySlot;
 import net.minecraft.scoreboard.ScoreboardEntry;
 import net.minecraft.scoreboard.ScoreboardObjective;
@@ -179,7 +178,7 @@ public final class VersionAdaptersImpl {
                 ArrayList<Map<String, Object>> values = new ArrayList<>();
                 ItemEnchantmentsComponent enchantments = stack.getEnchantments();
                 for (var entry : enchantments.getEnchantmentEntries()) {
-                    String id = Registries.ENCHANTMENT.getKey(entry.getKey().value())
+                    String id = entry.getKey().getKey()
                         .map(key -> key.getValue().toString())
                         .orElse("unknown");
                     values.add(Map.of("id", id, "level", entry.getIntValue()));
