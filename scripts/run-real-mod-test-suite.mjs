@@ -8,19 +8,27 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
+import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
+
 const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
+const CLI_PATH = path.join(ROOT_DIR, "cli", "dist", "index.js");
 const RUNNER_PATH = path.join(ROOT_DIR, "scripts", "real-mod-full-test.mjs");
-const REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
+const CLIENT_MOD_DIR = path.join(ROOT_DIR, "client-mod");
+const MATRIX_ROOT = path.join(ROOT_DIR, "tmp", "real-e2e", "matrix");
+const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
-const INTER_GROUP_DELAY_MS = 6000;
+const INTER_VERSION_DELAY_MS = 6000;
 
 function parseCliOptions(argv) {
   const selectedGroups = [];
+  const selectedVersions = [];
+
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--group") {
@@ -32,15 +40,25 @@ function parseCliOptions(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--version") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --version");
+      }
+      selectedVersions.push(nextValue);
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
-  return { selectedGroups };
+
+  return { selectedGroups, selectedVersions };
 }
 
 async function runCommand(command, args, options = {}) {
   try {
     const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: ROOT_DIR,
+      cwd: options.cwd ?? ROOT_DIR,
       maxBuffer: 32 * 1024 * 1024
     });
     return {
@@ -72,6 +90,183 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function runCommandWithRetry(command, args, options = {}, retryOptions = {}) {
+  const attempts = retryOptions.attempts ?? 3;
+  const delayMs = retryOptions.delayMs ?? 2_000;
+  let lastResult = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await runCommand(command, args, {
+      ...options,
+      allowFailure: true
+    });
+    lastResult = result;
+    if (result.ok) {
+      return result;
+    }
+    if (attempt < attempts) {
+      await sleep(delayMs * attempt);
+    }
+  }
+
+  return lastResult;
+}
+
+function slugify(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function resolveServerType(minecraftVersion) {
+  const support = getMinecraftSupport(minecraftVersion);
+  if (!support) {
+    return null;
+  }
+  if (support.servers.paper.supported) {
+    return "paper";
+  }
+  if (support.servers.purpur.supported) {
+    return "purpur";
+  }
+  if (support.servers.spigot.supported) {
+    return "spigot";
+  }
+  if (support.servers.vanilla.supported) {
+    return "vanilla";
+  }
+  return null;
+}
+
+function resolveVersionMatrix(selectedVersions) {
+  const catalog = loadModVariantCatalogSync();
+  const buildableVariants = getBuildableFabricVariants(catalog);
+  const requestedVersions = new Set(selectedVersions);
+  const runnable = [];
+  const skipped = [];
+
+  for (const variant of buildableVariants) {
+    if (requestedVersions.size > 0 && !requestedVersions.has(variant.minecraftVersion) && !requestedVersions.has(variant.id)) {
+      continue;
+    }
+
+    const serverType = resolveServerType(variant.minecraftVersion);
+    if (!serverType) {
+      skipped.push({
+        variantId: variant.id,
+        minecraftVersion: variant.minecraftVersion,
+        reason: "missing_downloadable_server_provider"
+      });
+      continue;
+    }
+
+    runnable.push({
+      variantId: variant.id,
+      minecraftVersion: variant.minecraftVersion,
+      loader: variant.loader || "fabric",
+      serverType
+    });
+  }
+
+  return { runnable, skipped };
+}
+
+function getVersionPaths(variantId) {
+  const rootDir = path.join(MATRIX_ROOT, variantId);
+  return {
+    rootDir,
+    configPath: path.join(rootDir, "mct.config.json"),
+    stateDir: path.join(rootDir, "state"),
+    reportDir: path.join(rootDir, "reports"),
+    screenshotDir: path.join(rootDir, "screenshots"),
+    serverDir: path.join(rootDir, "server"),
+    clientDir: path.join(rootDir, "client")
+  };
+}
+
+async function prepareVersionEnvironment(entry, wsPort, logLine) {
+  const paths = getVersionPaths(entry.variantId);
+  await mkdir(paths.rootDir, { recursive: true });
+  await mkdir(paths.reportDir, { recursive: true });
+  await mkdir(paths.screenshotDir, { recursive: true });
+
+  await logLine(`variant build start variant=${entry.variantId}`);
+  const loader = entry.loader || "fabric";
+  const buildResult = await runCommand("./gradlew", [`chiseledBuild`, "-q"], {
+    cwd: CLIENT_MOD_DIR,
+    allowFailure: true
+  });
+  if (!buildResult.ok) {
+    throw new Error(`Failed to build ${entry.variantId}: ${buildResult.stderr || buildResult.stdout}`);
+  }
+
+  await logLine(`server download start variant=${entry.variantId} provider=${entry.serverType}`);
+  const serverDownload = await runCommandWithRetry(
+    process.execPath,
+    [
+      CLI_PATH,
+      "--config",
+      paths.configPath,
+      "--state-dir",
+      paths.stateDir,
+      "server",
+      "download",
+      "--type",
+      entry.serverType,
+      "--version",
+      entry.minecraftVersion,
+      "--dir",
+      paths.serverDir
+    ]
+  );
+  const serverPayload = parseJsonMaybe(serverDownload.stdout) ?? parseJsonMaybe(serverDownload.stderr);
+  if (!serverDownload.ok || serverPayload?.success !== true) {
+    throw new Error(`Failed to download server for ${entry.variantId}: ${serverDownload.stderr || serverDownload.stdout}`);
+  }
+
+  await logLine(`client download start variant=${entry.variantId} wsPort=${wsPort}`);
+  const clientDownload = await runCommandWithRetry(
+    process.execPath,
+    [
+      CLI_PATH,
+      "--config",
+      paths.configPath,
+      "--state-dir",
+      paths.stateDir,
+      "client",
+      "download",
+      "--loader",
+      entry.loader || "fabric",
+      "--version",
+      entry.minecraftVersion,
+      "--dir",
+      paths.clientDir,
+      "--name",
+      "real",
+      "--ws-port",
+      String(wsPort),
+      "--server",
+      "127.0.0.1:25565"
+    ]
+  );
+  const clientPayload = parseJsonMaybe(clientDownload.stdout) ?? parseJsonMaybe(clientDownload.stderr);
+  if (!clientDownload.ok || clientPayload?.success !== true) {
+    throw new Error(`Failed to download client for ${entry.variantId}: ${clientDownload.stderr || clientDownload.stdout}`);
+  }
+
+  return {
+    paths,
+    wsPort,
+    build: {
+      ok: true
+    },
+    serverDownload: serverPayload?.data ?? serverPayload,
+    clientDownload: clientPayload?.data ?? clientPayload
+  };
+}
+
 async function main() {
   const options = parseCliOptions(process.argv.slice(2));
   await mkdir(REPORT_DIR, { recursive: true });
@@ -90,12 +285,17 @@ async function main() {
     assert.equal(knownGroups.has(group), true, `Unknown group: ${group}`);
   }
 
+  const matrix = resolveVersionMatrix(options.selectedVersions);
+  assert.notEqual(matrix.runnable.length, 0, "No runnable multi-version E2E targets were resolved");
+
   const summary = {
     startedAt: new Date().toISOString(),
     logPath: SUITE_LOG_PATH,
     reportPath: SUITE_REPORT_PATH,
     selectedGroups,
-    groups: []
+    selectedVersions: matrix.runnable.map((entry) => entry.variantId),
+    skippedVersions: matrix.skipped,
+    versions: []
   };
 
   const coveredRequestLeafCommands = new Set();
@@ -103,25 +303,77 @@ async function main() {
   let requestLeafCommands = [];
   let nonRequestLeafCommands = [];
 
-  await logLine(`suite start groups=${selectedGroups.join(",")}`);
+  await logLine(`suite start groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);
 
-  for (const group of selectedGroups) {
+  for (const [index, entry] of matrix.runnable.entries()) {
     const startedAt = Date.now();
-    await logLine(`group start id=${group}`);
-    const runResult = await runCommand(process.execPath, [RUNNER_PATH, "--group", group], { allowFailure: true });
-    const payload = parseJsonMaybe(runResult.stdout) ?? parseJsonMaybe(runResult.stderr);
-    const groupRecord = {
-      id: group,
-      ok: runResult.ok && payload?.success === true,
-      durationMs: Date.now() - startedAt,
-      reportPath: payload?.reportPath ?? null,
-      logPath: payload?.logPath ?? null,
-      error: payload?.error ?? null
+    const versionRecord = {
+      variantId: entry.variantId,
+      minecraftVersion: entry.minecraftVersion,
+      serverType: entry.serverType,
+      ok: false,
+      durationMs: 0,
+      reportPath: null,
+      logPath: null,
+      error: null
     };
-    summary.groups.push(groupRecord);
+    summary.versions.push(versionRecord);
 
-    if (!groupRecord.ok) {
-      await logLine(`group fail id=${group} error=${groupRecord.error ?? "unknown error"}`);
+    try {
+      await logLine(`variant start variant=${entry.variantId}`);
+      const environment = await prepareVersionEnvironment(entry, 25560 + index, logLine);
+      versionRecord.prepare = {
+        wsPort: environment.wsPort,
+        configPath: environment.paths.configPath,
+        stateDir: environment.paths.stateDir,
+        serverDownload: environment.serverDownload,
+        clientDownload: environment.clientDownload
+      };
+
+      const runnerArgs = [RUNNER_PATH];
+      for (const group of selectedGroups) {
+        runnerArgs.push("--group", group);
+      }
+      runnerArgs.push(
+        "--config",
+        environment.paths.configPath,
+        "--state-dir",
+        environment.paths.stateDir,
+        "--report-dir",
+        environment.paths.reportDir,
+        "--screenshot-dir",
+        environment.paths.screenshotDir,
+        "--run-label",
+        entry.variantId
+      );
+
+      const runResult = await runCommand(process.execPath, runnerArgs, { allowFailure: true });
+      const payload = parseJsonMaybe(runResult.stdout) ?? parseJsonMaybe(runResult.stderr);
+      versionRecord.ok = runResult.ok && payload?.success === true;
+      versionRecord.durationMs = Date.now() - startedAt;
+      versionRecord.reportPath = payload?.reportPath ?? null;
+      versionRecord.logPath = payload?.logPath ?? null;
+      versionRecord.error = payload?.error ?? null;
+
+      if (!versionRecord.ok) {
+        throw new Error(versionRecord.error ?? `Unknown run failure for ${entry.variantId}`);
+      }
+
+      requestLeafCommands = payload.summary?.supportMatrix?.requestLeafCommands ?? requestLeafCommands;
+      nonRequestLeafCommands = payload.summary?.supportMatrix?.nonRequestLeafCommands ?? nonRequestLeafCommands;
+      for (const leaf of payload.summary?.supportMatrix?.coveredRequestLeafCommands ?? []) {
+        coveredRequestLeafCommands.add(leaf);
+      }
+      for (const leaf of payload.summary?.supportMatrix?.coveredNonRequestLeafCommands ?? []) {
+        coveredNonRequestLeafCommands.add(leaf);
+      }
+      versionRecord.groups = payload.summary?.groups ?? [];
+
+      await logLine(`variant pass variant=${entry.variantId} report=${versionRecord.reportPath}`);
+    } catch (error) {
+      versionRecord.durationMs = Date.now() - startedAt;
+      versionRecord.error = error instanceof Error ? error.stack : String(error);
+      await logLine(`variant fail variant=${entry.variantId} error=${versionRecord.error}`);
       const failure = {
         success: false,
         summary
@@ -131,35 +383,29 @@ async function main() {
       process.exit(1);
     }
 
-    await logLine(`group pass id=${group} report=${groupRecord.reportPath}`);
-    requestLeafCommands = payload.summary?.supportMatrix?.requestLeafCommands ?? requestLeafCommands;
-    nonRequestLeafCommands = payload.summary?.supportMatrix?.nonRequestLeafCommands ?? nonRequestLeafCommands;
-    for (const leaf of payload.summary?.supportMatrix?.coveredRequestLeafCommands ?? []) {
-      coveredRequestLeafCommands.add(leaf);
-    }
-    for (const leaf of payload.summary?.supportMatrix?.coveredNonRequestLeafCommands ?? []) {
-      coveredNonRequestLeafCommands.add(leaf);
-    }
-
-    if (group !== selectedGroups[selectedGroups.length - 1]) {
-      await logLine(`group settle id=${group} delayMs=${INTER_GROUP_DELAY_MS}`);
-      await sleep(INTER_GROUP_DELAY_MS);
+    if (entry !== matrix.runnable[matrix.runnable.length - 1]) {
+      await logLine(`variant settle variant=${entry.variantId} delayMs=${INTER_VERSION_DELAY_MS}`);
+      await sleep(INTER_VERSION_DELAY_MS);
     }
   }
 
   const missingRequestLeafCommands = requestLeafCommands.filter((leaf) => !coveredRequestLeafCommands.has(leaf));
-  assert.deepEqual(missingRequestLeafCommands, [], `Missing request leaf coverage: ${missingRequestLeafCommands.join(", ")}`);
+  const isFullSuite = selectedGroups.length === allGroups.length;
+  if (isFullSuite) {
+    assert.deepEqual(missingRequestLeafCommands, [], `Missing request leaf coverage: ${missingRequestLeafCommands.join(", ")}`);
+  }
 
   summary.supportMatrix = {
     requestLeafCommands,
     nonRequestLeafCommands,
     coveredRequestLeafCommands: [...coveredRequestLeafCommands].sort(),
     coveredNonRequestLeafCommands: [...coveredNonRequestLeafCommands].sort(),
-    missingRequestLeafCommands
+    missingRequestLeafCommands,
+    fullSuite: isFullSuite
   };
   summary.finishedAt = new Date().toISOString();
 
-  await logLine(`suite pass groups=${selectedGroups.join(",")}`);
+  await logLine(`suite pass groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);
   const payload = {
     success: true,
     reportPath: SUITE_REPORT_PATH,

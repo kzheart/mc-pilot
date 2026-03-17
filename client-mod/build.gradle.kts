@@ -1,120 +1,62 @@
-import groovy.json.JsonSlurper
-import org.gradle.api.tasks.bundling.AbstractArchiveTask
-
 plugins {
-    id("fabric-loom") version "1.6.12"
-    id("maven-publish")
+    id("dev.kikugie.stonecutter")
+    id("fabric-loom") version "1.9-SNAPSHOT" apply false
+    id("dev.architectury.loom") version "1.7-SNAPSHOT" apply false
 }
 
-val variantCatalog = JsonSlurper().parseText(rootProject.file("variants.json").readText()) as Map<*, *>
-val variantEntries = variantCatalog["variants"] as? List<Map<*, *>>
-  ?: error("variants.json 缺少 variants")
-val defaultVariantId = variantCatalog["defaultVariant"]?.toString()
-  ?: error("variants.json 缺少 defaultVariant")
-val targetVariantId = (findProperty("target_variant") as String?) ?: defaultVariantId
-val selectedVariant = variantEntries.firstOrNull { entry -> entry["id"]?.toString() == targetVariantId }
-  ?: error("未知变体: $targetVariantId")
+val mcVersion = stonecutter.current.version
 
-fun variantValue(key: String): String {
-    return selectedVariant[key]?.toString()
-      ?: error("变体 $targetVariantId 缺少字段 $key")
-}
+val versionConfig = mapOf(
+    "1.20.1" to mapOf(
+        "yarn_mappings" to "1.20.1+build.10",
+        "fabric_loader" to "0.16.10",
+        "forge_version" to "47.3.0",
+        "java_version" to 17,
+        "loaders" to listOf("fabric", "forge")
+    ),
+    "1.20.2" to mapOf(
+        "yarn_mappings" to "1.20.2+build.4",
+        "fabric_loader" to "0.16.10",
+        "forge_version" to "48.1.0",
+        "java_version" to 17,
+        "loaders" to listOf("fabric", "forge")
+    ),
+    "1.20.4" to mapOf(
+        "yarn_mappings" to "1.20.4+build.3",
+        "fabric_loader" to "0.16.10",
+        "forge_version" to "49.0.49",
+        "neoforge_version" to "20.4.237",
+        "java_version" to 17,
+        "loaders" to listOf("fabric", "forge", "neoforge")
+    ),
+    "1.21.1" to mapOf(
+        "yarn_mappings" to "1.21.1+build.3",
+        "fabric_loader" to "0.16.10",
+        "neoforge_version" to "21.1.77",
+        "java_version" to 21,
+        "loaders" to listOf("fabric", "neoforge")
+    ),
+    "1.21.4" to mapOf(
+        "yarn_mappings" to "1.21.4+build.1",
+        "fabric_loader" to "0.16.10",
+        "neoforge_version" to "21.4.75",
+        "java_version" to 21,
+        "loaders" to listOf("fabric", "neoforge")
+    )
+)
 
-val loader = variantValue("loader")
-require(loader == "fabric") {
-    "当前 Fabric 工程只支持 fabric 变体，收到: $targetVariantId"
-}
+val config = versionConfig[mcVersion] ?: error("Unknown version: $mcVersion")
+val enabledLoaders = config["loaders"] as List<*>
 
-val minecraftVersion = variantValue("minecraftVersion")
-val yarnMappings = variantValue("yarnMappings")
-val fabricLoaderVersion = variantValue("fabricLoaderVersion")
-val javaVersion = variantValue("javaVersion").toInt()
-val variantMainJavaDir = "src/versions/$targetVariantId/main/java"
-val variantMainResourcesDir = "src/versions/$targetVariantId/main/resources"
-val variantClientJavaDir = "src/versions/$targetVariantId/client/java"
-val variantClientResourcesDir = "src/versions/$targetVariantId/client/resources"
+extra["mcVersion"] = mcVersion
+extra["yarnMappings"] = config["yarn_mappings"]
+extra["fabricLoader"] = config["fabric_loader"]
+extra["javaVersion"] = config["java_version"]
+extra["enabledLoaders"] = enabledLoaders
+if (config.containsKey("forge_version")) extra["forgeVersion"] = config["forge_version"]
+if (config.containsKey("neoforge_version")) extra["neoforgeVersion"] = config["neoforge_version"]
 
-version = selectedVariant["modVersion"]?.toString() ?: project.property("mod_version") as String
-group = project.property("maven_group") as String
-
-base {
-    archivesName.set("${project.property("archives_base_name") as String}-$targetVariantId")
-}
-
-loom {
-    splitEnvironmentSourceSets()
-    mixin {
-        defaultRefmapName.set("mct.refmap.json")
-    }
-
-    mods {
-        create("mct") {
-            sourceSet(sourceSets.main.get())
-            sourceSet(sourceSets.getByName("client"))
-        }
-    }
-}
-
-sourceSets.named("main") {
-    java.setSrcDirs(listOf("src/main/java", variantMainJavaDir))
-    resources.setSrcDirs(listOf("src/main/resources", variantMainResourcesDir))
-}
-
-sourceSets.named("client") {
-    java.setSrcDirs(listOf("src/client/java", variantClientJavaDir))
-    resources.setSrcDirs(listOf("src/client/resources", variantClientResourcesDir))
-}
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    minecraft("com.mojang:minecraft:$minecraftVersion")
-    mappings("net.fabricmc:yarn:$yarnMappings:v2")
-    modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
-    implementation("org.java-websocket:Java-WebSocket:${project.property("java_websocket_version")}")
-    include("org.java-websocket:Java-WebSocket:${project.property("java_websocket_version")}")
-}
-
-tasks.processResources {
-    inputs.property("version", project.version)
-    inputs.property("minecraftVersion", minecraftVersion)
-    inputs.property("fabricLoaderVersion", fabricLoaderVersion)
-    inputs.property("javaVersion", javaVersion)
-
-    filesMatching("fabric.mod.json") {
-        expand(
-            "version" to project.version,
-            "minecraft_version_range" to "~$minecraftVersion",
-            "fabric_loader_version" to fabricLoaderVersion,
-            "java_version" to javaVersion
-        )
-    }
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(javaVersion)
-    options.encoding = "UTF-8"
-}
-
-tasks.withType<AbstractArchiveTask>().configureEach {
-    archiveVersion.set("")
-}
-
-java {
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.toVersion(javaVersion)
-    targetCompatibility = JavaVersion.toVersion(javaVersion)
-}
-
-tasks.register("printVariantInfo") {
-    doLast {
-        println("variant=$targetVariantId")
-        println("minecraftVersion=$minecraftVersion")
-        println("yarnMappings=$yarnMappings")
-        println("fabricLoaderVersion=$fabricLoaderVersion")
-        println("javaVersion=$javaVersion")
-        println("archivesName=${base.archivesName.get()}")
-    }
+subprojects {
+    group = rootProject.property("maven_group") as String
+    version = rootProject.property("mod_version") as String
 }

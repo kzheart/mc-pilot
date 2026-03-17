@@ -69,5 +69,5 @@ export function getSupportedMinecraftVersions(catalog: ModVariantCatalog) {
 }
 
 export function getModArtifactFileName(variant: ModVariant) {
-  return `mct-client-mod-${variant.id}.jar`;
+  return `mct-client-mod-${variant.loader}-${variant.minecraftVersion}.jar`;
 }

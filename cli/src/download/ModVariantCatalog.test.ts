@@ -19,7 +19,7 @@ test("getBuildableFabricVariants only returns variants with build metadata", asy
 
   assert.deepEqual(
     variants.map((variant) => variant.id),
-    ["1.20.4-fabric", "1.20.3-fabric", "1.20.2-fabric", "1.20.1-fabric"]
+    ["1.21.4-fabric", "1.21.1-fabric", "1.20.4-fabric", "1.20.2-fabric", "1.20.1-fabric"]
   );
 });
 
@@ -28,5 +28,5 @@ test("getModArtifactFileName matches the local build artifact naming convention"
   const variant = catalog.variants.find((entry) => entry.id === "1.20.1-fabric");
 
   assert.ok(variant);
-  assert.equal(getModArtifactFileName(variant), "mct-client-mod-1.20.1-fabric.jar");
+  assert.equal(getModArtifactFileName(variant), "mct-client-mod-fabric-1.20.1.jar");
 });

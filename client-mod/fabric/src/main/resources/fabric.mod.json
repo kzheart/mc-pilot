@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "mct",
+  "version": "${version}",
+  "name": "Minecraft Auto Test Client Mod",
+  "description": "Real client bridge for Minecraft Auto Test.",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.mct.platform.FabricEntrypoint"
+    ]
+  },
+  "mixins": [
+    "mct.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${fabric_loader}",
+    "minecraft": "~${mc_version}",
+    "java": ">=${java_version}"
+  }
+}

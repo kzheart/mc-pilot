@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { createQuickPlayMultiplayer, launch as launchMinecraft } from "@xmcl/core";
 
 import { getDefaultVariant, getVariantById } from "./mod-variant.mjs";
 
@@ -107,8 +108,11 @@ async function readJson(filePath) {
 }
 
 async function syncBuiltMod(instanceRoot, repoRoot, variantId) {
-  const artifactName = `mct-client-mod-${variantId}.jar`;
-  const sourceJar = path.join(repoRoot, "client-mod", "build", "libs", artifactName);
+  const parts = variantId.split("-");
+  const loader = parts.length > 1 ? parts[parts.length - 1] : "fabric";
+  const mcVersion = parts.slice(0, -1).join("-");
+  const artifactName = `mct-client-mod-${loader}-${mcVersion}.jar`;
+  const sourceJar = path.join(repoRoot, "client-mod", loader, "build", "libs", artifactName);
   const targetDir = path.join(instanceRoot, "minecraft", "mods");
   const targetJar = path.join(targetDir, artifactName);
 
@@ -120,6 +124,56 @@ async function syncBuiltMod(instanceRoot, repoRoot, variantId) {
 
   await mkdir(targetDir, { recursive: true });
   await copyFile(sourceJar, targetJar);
+}
+
+async function syncConfiguredMod(gameDir) {
+  const configuredJar = process.env.MCT_CLIENT_MOD_JAR;
+  if (!configuredJar) {
+    return;
+  }
+
+  const sourceJar = path.isAbsolute(configuredJar) ? configuredJar : path.resolve(process.cwd(), configuredJar);
+  const targetDir = path.join(gameDir, "mods");
+  const targetJar = path.join(targetDir, path.basename(sourceJar));
+
+  try {
+    await access(sourceJar);
+  } catch {
+    return;
+  }
+
+  await mkdir(targetDir, { recursive: true });
+  await copyFile(sourceJar, targetJar);
+}
+
+async function ensureAutomationOptions(gameDir, server) {
+  const optionsPath = path.join(gameDir, "options.txt");
+  const values = new Map();
+
+  try {
+    const content = await readFile(optionsPath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const separator = line.indexOf(":");
+      if (separator < 0) {
+        continue;
+      }
+      values.set(line.slice(0, separator), line.slice(separator + 1));
+    }
+  } catch {}
+
+  values.set("onboardAccessibility", "false");
+  values.set("skipMultiplayerWarning", "true");
+  values.set("skipRealms32bitWarning", "true");
+  values.set("joinedFirstServer", "true");
+  values.set("tutorialStep", "none");
+  values.set("pauseOnLostFocus", "false");
+  if (server) {
+    values.set("lastServer", server);
+  }
+
+  const lines = [...values.entries()].map(([key, value]) => `${key}:${value}`);
+  await mkdir(gameDir, { recursive: true });
+  await writeFile(optionsPath, `${lines.join("\n")}\n`, "utf8");
 }
 
 async function buildLaunchSpec(options) {
@@ -185,6 +239,7 @@ async function buildLaunchSpec(options) {
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName);
   const server = process.env.MCT_CLIENT_SERVER || "";
+  await ensureAutomationOptions(gameDir, server);
   const [serverHost, serverPort = "25565"] = server.split(":");
   const classpath = [
     path.join(librariesRoot, mainJarPath),
@@ -229,18 +284,151 @@ async function buildLaunchSpec(options) {
   };
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
-  const instanceDir = options["instance-dir"];
-  const metaDir = options["meta-dir"];
-  const librariesDir = options["libraries-dir"];
-  const assetsDir = options["assets-dir"];
-
-  if (!instanceDir || !metaDir || !librariesDir || !assetsDir) {
-    throw new Error("Missing required arguments: --instance-dir, --meta-dir, --libraries-dir and --assets-dir");
+async function buildManifestLaunchSpec(options) {
+  const manifestPath = options.manifest;
+  if (!manifestPath) {
+    throw new Error("Missing required argument: --manifest");
   }
 
-  const launch = await buildLaunchSpec(options);
+  const manifest = await readJson(manifestPath);
+  const gameDir = manifest.gameDir;
+  await syncConfiguredMod(gameDir);
+
+  const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
+  const accountUuid = offlineUuid(accountName);
+  const server = process.env.MCT_CLIENT_SERVER || "";
+  await ensureAutomationOptions(gameDir, server);
+  const [serverHost, serverPort = "25565"] = server.split(":");
+  const substitutions = {
+    auth_player_name: accountName,
+    version_name: `fabric-loader-${manifest.fabricLoaderVersion}-${manifest.minecraftVersion}`,
+    game_directory: gameDir,
+    assets_root: manifest.assetsDir,
+    assets_index_name: manifest.assetsIndexId,
+    auth_uuid: accountUuid,
+    auth_access_token: "0",
+    user_type: "legacy",
+    version_type: "release",
+    natives_directory: path.join(manifest.runtimeRootDir ?? path.dirname(manifestPath), "natives")
+  };
+  const gameArgs = manifest.gameArgs.map((entry) => substitute(entry, substitutions));
+  if (serverHost && !gameArgs.includes("--quickPlayMultiplayer")) {
+    gameArgs.push("--quickPlayMultiplayer", `${serverHost}:${serverPort}`);
+  }
+
+  const javaArgs = manifest.javaArgs
+    .map((entry) => substitute(entry, substitutions))
+    .filter((entry) => !entry.includes("${"));
+
+  return {
+    cwd: gameDir,
+    classpathEntries: manifest.classpathEntries,
+    classpath: manifest.classpathEntries.join(path.delimiter),
+    gameArgs,
+    mainClass: manifest.mainClass,
+    javaBin: options.java || process.env.MCT_CLIENT_JAVA || "java",
+    javaArgs
+  };
+}
+
+function parseMaxMemory(value) {
+  if (!value) {
+    return 1024;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized.endsWith("g")) {
+    return Number.parseInt(normalized.slice(0, -1), 10) * 1024;
+  }
+  if (normalized.endsWith("m")) {
+    return Number.parseInt(normalized.slice(0, -1), 10);
+  }
+  return Number.parseInt(normalized, 10);
+}
+
+async function launchXmclManagedClient(options) {
+  const runtimeRoot = options["runtime-root"];
+  const versionId = options["version-id"];
+  const gameDir = options["game-dir"];
+
+  if (!runtimeRoot || !versionId || !gameDir) {
+    throw new Error("Missing required arguments: --runtime-root, --version-id and --game-dir");
+  }
+
+  await syncConfiguredMod(gameDir);
+
+  const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
+  const accountUuid = offlineUuid(accountName).replaceAll("-", "");
+  const server = process.env.MCT_CLIENT_SERVER || "";
+  await ensureAutomationOptions(gameDir, server);
+  const [serverHost, serverPort = "25565"] = server.split(":");
+
+  return launchMinecraft({
+    gamePath: gameDir,
+    resourcePath: runtimeRoot,
+    javaPath: options.java || process.env.MCT_CLIENT_JAVA || "java",
+    minMemory: 512,
+    maxMemory: parseMaxMemory(options["max-mem"]),
+    version: versionId,
+    gameProfile: {
+      name: accountName,
+      id: accountUuid
+    },
+    accessToken: "0",
+    userType: "legacy",
+    launcherName: "mct",
+    launcherBrand: "mct",
+    ...(serverHost
+      ? {
+          quickPlayMultiplayer: createQuickPlayMultiplayer(serverHost, Number.parseInt(serverPort, 10))
+        }
+      : {}),
+    extraExecOption: {
+      cwd: gameDir,
+      env: {
+        ...process.env
+      },
+      stdio: "inherit"
+    }
+  });
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  if (options["runtime-root"]) {
+    const child = await launchXmclManagedClient(options);
+
+    const forwardSignal = (signal) => {
+      if (!child.killed) {
+        child.kill(signal);
+      }
+    };
+
+    process.on("SIGINT", forwardSignal);
+    process.on("SIGTERM", forwardSignal);
+
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        process.kill(process.pid, signal);
+        return;
+      }
+      process.exit(code ?? 0);
+    });
+    return;
+  }
+
+  const launch = options.manifest
+    ? await buildManifestLaunchSpec(options)
+    : await (async () => {
+        const instanceDir = options["instance-dir"];
+        const metaDir = options["meta-dir"];
+        const librariesDir = options["libraries-dir"];
+        const assetsDir = options["assets-dir"];
+        if (!instanceDir || !metaDir || !librariesDir || !assetsDir) {
+          throw new Error("Missing required arguments: --manifest or --instance-dir, --meta-dir, --libraries-dir and --assets-dir");
+        }
+        return buildLaunchSpec(options);
+      })();
   console.log(`[mct-launch] mainClass=${launch.mainClass}`);
   console.log(`[mct-launch] classpathEntries=${launch.classpathEntries.length}`);
   console.log(

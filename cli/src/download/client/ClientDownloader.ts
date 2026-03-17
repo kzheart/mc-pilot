@@ -1,5 +1,6 @@
 import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 
 import type { CommandContext } from "../../util/context.js";
 import { loadConfig, writeConfig } from "../../util/config.js";
@@ -14,6 +15,7 @@ import {
   loadModVariantCatalog
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
+import { prepareManagedFabricRuntime } from "./FabricRuntimeDownloader.js";
 
 export interface DownloadClientOptions {
   loader?: LoaderType;
@@ -33,6 +35,8 @@ export interface DownloadClientOptions {
 export interface DownloadClientDependencies {
   cacheManager?: CacheManager;
   detectJavaImpl?: typeof detectJava;
+  fetchImpl?: typeof fetch;
+  prepareManagedRuntimeImpl?: typeof prepareManagedFabricRuntime;
 }
 
 function ensureSupportedVariant(variant: ModVariant) {
@@ -63,7 +67,7 @@ function ensureSupportedVariant(variant: ModVariant) {
 
 async function resolveLocalArtifact(context: CommandContext, variant: ModVariant, cacheManager: CacheManager) {
   const artifactFileName = getModArtifactFileName(variant);
-  const buildArtifactPath = path.join(context.cwd, "client-mod", "build", "libs", artifactFileName);
+  const buildArtifactPath = path.join(context.cwd, "client-mod", variant.loader, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   try {
@@ -158,7 +162,7 @@ function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadCli
 
 function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
   return [
-    "node",
+    process.execPath,
     path.join(context.cwd, "scripts", "launch-fabric-client.mjs"),
     "--instance-dir",
     runtimePaths.instanceDir,
@@ -173,6 +177,19 @@ function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchR
     variant.minecraftVersion,
     "--fabric-loader-version",
     variant.fabricLoaderVersion ?? "0.16.10"
+  ];
+}
+
+function buildManagedLaunchCommand(context: CommandContext, runtimeRootDir: string, versionId: string, gameDir: string) {
+  return [
+    process.execPath,
+    path.join(context.cwd, "scripts", "launch-fabric-client.mjs"),
+    "--runtime-root",
+    runtimeRootDir,
+    "--version-id",
+    versionId,
+    "--game-dir",
+    gameDir
   ];
 }
 
@@ -218,6 +235,8 @@ export async function downloadClientMod(
   const loader = options.loader ?? "fabric";
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
   const detectJavaImpl = dependencies.detectJavaImpl ?? detectJava;
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const prepareManagedRuntimeImpl = dependencies.prepareManagedRuntimeImpl ?? prepareManagedFabricRuntime;
   const catalog = await loadModVariantCatalog();
   const variant = options.version
     ? findVariantByVersionAndLoader(catalog, options.version, loader)
@@ -239,7 +258,7 @@ export async function downloadClientMod(
   const artifact = await resolveLocalArtifact(context, variant, cacheManager);
   const clientRootDir = path.resolve(context.cwd, options.dir ?? "./client");
   const minecraftDir = path.join(clientRootDir, "minecraft");
-  const modsDir = path.join(clientRootDir, "mods");
+  const modsDir = path.join(minecraftDir, "mods");
   await mkdir(minecraftDir, { recursive: true });
   await mkdir(modsDir, { recursive: true });
   const targetJarPath = path.join(modsDir, artifact.artifactFileName);
@@ -249,7 +268,12 @@ export async function downloadClientMod(
   const latestConfig = await loadConfig(context.configPath, context.cwd);
   const configuredClient = latestConfig.clients[clientName] ?? {};
   const runtimePaths = resolveLaunchRuntimePaths(context, options);
-  const generatedLaunchCommand = runtimePaths ? buildLaunchCommand(context, runtimePaths, variant) : undefined;
+  const managedRuntime = runtimePaths
+    ? undefined
+    : await prepareManagedRuntimeImpl(variant, clientRootDir, { fetchImpl });
+  const generatedLaunchCommand = runtimePaths
+    ? buildLaunchCommand(context, runtimePaths, variant)
+    : buildManagedLaunchCommand(context, managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);
 
   latestConfig.clients[clientName] = {
     ...configuredClient,
@@ -280,6 +304,8 @@ export async function downloadClientMod(
     jar: targetJarPath,
     cachePath: artifact.cachePath,
     clientName,
-    launchCommandConfigured: Boolean(generatedLaunchCommand)
+    launchCommandConfigured: Boolean(generatedLaunchCommand),
+    runtimeRootDir: managedRuntime?.runtimeRootDir,
+    runtimeVersionId: managedRuntime?.versionId
   };
 }

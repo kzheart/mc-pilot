@@ -19,11 +19,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: |
+            17
+            21
 
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 7.4
 
       - name: Install Node dependencies
         run: npm ci
@@ -34,8 +34,8 @@ jobs:
       - name: Run system E2E
         run: npm run test:e2e
 
-      - name: Validate client-mod skeleton
-        run: gradle -q classes
+      - name: Validate client-mod (all versions)
+        run: ./gradlew chiseledBuild -q
         working-directory: client-mod
 
       - name: Validate legacy mod skeleton
