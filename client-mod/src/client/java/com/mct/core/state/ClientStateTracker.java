@@ -1,5 +1,6 @@
 package com.mct.core.state;
 
+import com.mct.version.ClientVersionAdapters;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -43,7 +44,7 @@ public final class ClientStateTracker {
                 sender,
                 content,
                 plain,
-                Text.Serialization.toJsonString(message)
+                ClientVersionAdapters.get().toJsonString(message)
             ),
             MAX_CHAT_MESSAGES
         );
@@ -65,7 +66,7 @@ public final class ClientStateTracker {
     public synchronized void recordActionBar(Text message) {
         hudActionBarState = new HudActionBarState(
             message != null ? message.getString() : "",
-            message != null ? Text.Serialization.toJsonString(message) : ""
+            message != null ? ClientVersionAdapters.get().toJsonString(message) : ""
         );
     }
 

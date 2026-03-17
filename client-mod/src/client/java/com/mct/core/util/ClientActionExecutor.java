@@ -6,6 +6,7 @@ import com.mct.mixin.KeyboardInvoker;
 import com.mct.mixin.KeyBindingAccessor;
 import com.mct.mixin.MouseInvoker;
 import com.mct.core.state.ClientStateTracker;
+import com.mct.version.ClientVersionAdapters;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +33,6 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.hud.BossBarHud;
 import net.minecraft.client.gui.hud.ClientBossBar;
 import net.minecraft.client.gui.hud.InGameHud;
@@ -44,9 +44,6 @@ import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.client.resource.server.ServerResourcePackLoader;
-import net.minecraft.client.resource.server.ServerResourcePackManager;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.ScreenshotRecorder;
@@ -71,8 +68,6 @@ import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.scoreboard.Scoreboard;
-import net.minecraft.scoreboard.ScoreboardDisplaySlot;
-import net.minecraft.scoreboard.ScoreboardEntry;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.scoreboard.Team;
 import net.minecraft.text.Text;
@@ -204,14 +199,8 @@ public final class ClientActionExecutor {
             case "capture.screenshot" -> captureScreenshot(getString(params, "output"), getOptionalString(params, "region"), getBoolean(params, "gui", false));
             case "client.reconnect" -> runOnClientThread(() -> reconnectClient(params));
             case "resourcepack.status" -> runOnClientThread(this::resourcePackStatus);
-            case "resourcepack.accept" -> runOnClientThread(() -> {
-                requireResourcePackLoader().acceptAll();
-                return resourcePackStatus();
-            });
-            case "resourcepack.reject" -> runOnClientThread(() -> {
-                requireResourcePackLoader().declineAll();
-                return resourcePackStatus();
-            });
+            case "resourcepack.accept" -> runOnClientThread(() -> ClientVersionAdapters.get().acceptResourcePack(client, stateTracker));
+            case "resourcepack.reject" -> runOnClientThread(() -> ClientVersionAdapters.get().rejectResourcePack(client, stateTracker));
             case "combat.kill" -> combatKill(params);
             case "combat.clear" -> combatClear(params);
             case "combat.engage" -> combatEngage(params);
@@ -756,17 +745,7 @@ public final class ClientActionExecutor {
     }
 
     private Map<String, Object> scoreboardStatus() {
-        Scoreboard scoreboard = requirePlayer().clientWorld.getScoreboard();
-        ScoreboardObjective objective = scoreboard.getObjectiveForSlot(ScoreboardDisplaySlot.SIDEBAR);
-        if (objective == null) {
-            return Map.of("title", "", "entries", List.of());
-        }
-        ArrayList<Map<String, Object>> entries = new ArrayList<>();
-        scoreboard.getScoreboardEntries(objective).stream()
-            .filter(entry -> !entry.hidden())
-            .sorted(Comparator.comparingInt(ScoreboardEntry::value).reversed())
-            .forEach(entry -> entries.add(Map.of("name", entry.name().getString(), "score", entry.value())));
-        return Map.of("title", objective.getDisplayName().getString(), "entries", entries);
+        return ClientVersionAdapters.get().scoreboardStatus(requirePlayer().clientWorld.getScoreboard());
     }
 
     private Map<String, Object> tabStatus() {
@@ -848,8 +827,7 @@ public final class ClientActionExecutor {
     }
 
     private Map<String, Object> resourcePackStatus() {
-        requireResourcePackLoader();
-        return stateTracker.getResourcePackState();
+        return ClientVersionAdapters.get().resourcePackStatus(client, stateTracker);
     }
 
     private Map<String, Object> reconnectClient(Map<String, Object> params) {
@@ -863,8 +841,7 @@ public final class ClientActionExecutor {
 
         Screen parent = client.currentScreen != null ? client.currentScreen : new TitleScreen();
         ServerAddress serverAddress = ServerAddress.parse(address);
-        ServerInfo serverInfo = new ServerInfo("MCT Auto Test", address, ServerInfo.ServerType.OTHER);
-        ConnectScreen.connect(parent, client, serverAddress, serverInfo, false);
+        ClientVersionAdapters.get().connect(client, parent, serverAddress, address);
         return Map.of("connecting", true, "address", address);
     }
 
@@ -1774,14 +1751,6 @@ public final class ClientActionExecutor {
             throw new ActionException("INVALID_STATE");
         }
         return stack;
-    }
-
-    private ServerResourcePackLoader requireResourcePackLoader() {
-        ServerResourcePackLoader loader = client.getServerResourcePackProvider();
-        if (loader == null) {
-            throw new ActionException("INVALID_STATE");
-        }
-        return loader;
     }
 
     private HandledScreen<?> requireHandledScreen() {

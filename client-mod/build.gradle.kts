@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 plugins {
     id("fabric-loom") version "1.6.12"
@@ -28,6 +29,10 @@ val minecraftVersion = variantValue("minecraftVersion")
 val yarnMappings = variantValue("yarnMappings")
 val fabricLoaderVersion = variantValue("fabricLoaderVersion")
 val javaVersion = variantValue("javaVersion").toInt()
+val variantMainJavaDir = "src/versions/$targetVariantId/main/java"
+val variantMainResourcesDir = "src/versions/$targetVariantId/main/resources"
+val variantClientJavaDir = "src/versions/$targetVariantId/client/java"
+val variantClientResourcesDir = "src/versions/$targetVariantId/client/resources"
 
 version = selectedVariant["modVersion"]?.toString() ?: project.property("mod_version") as String
 group = project.property("maven_group") as String
@@ -48,6 +53,16 @@ loom {
             sourceSet(sourceSets.getByName("client"))
         }
     }
+}
+
+sourceSets.named("main") {
+    java.setSrcDirs(listOf("src/main/java", variantMainJavaDir))
+    resources.setSrcDirs(listOf("src/main/resources", variantMainResourcesDir))
+}
+
+sourceSets.named("client") {
+    java.setSrcDirs(listOf("src/client/java", variantClientJavaDir))
+    resources.setSrcDirs(listOf("src/client/resources", variantClientResourcesDir))
 }
 
 repositories {
@@ -81,6 +96,10 @@ tasks.processResources {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(javaVersion)
     options.encoding = "UTF-8"
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    archiveVersion.set("")
 }
 
 java {
