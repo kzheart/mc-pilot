@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { createQuickPlayMultiplayer, launch as launchMinecraft } from "@xmcl/core";
+import { createQuickPlayMultiplayer, launch as launchMinecraft, LaunchPrecheck, MinecraftFolder, Version } from "@xmcl/core";
 
 import { getDefaultVariant, getVariantById } from "./mod-variant.mjs";
 
@@ -343,6 +345,175 @@ function parseMaxMemory(value) {
   return Number.parseInt(normalized, 10);
 }
 
+// LWJGL arm64 patch for old MC versions (shipped x86-only LWJGL 3.2.x).
+// Based on HMCL's NativePatcher approach: replace LWJGL 3.2.x with 3.3.1 arm64 builds.
+// lwjgl-glfw Java JAR uses a community patch (org.glavo.hmcl.mmachina) for macOS arm64 compat.
+// See: https://github.com/HMCL-dev/HMCL (HMCL/src/main/java/org/jackhuang/hmcl/util/NativePatcher.java)
+const LWJGL_ARM64_PATCH = {
+  patchVersion: "3.3.1",
+  // Java JARs (classpath entries) — sha1 left empty to skip strict validation
+  jars: {
+    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", sha1: "", size: 0 },
+    // glfw uses community patch jar for arm64 compat (same as HMCL)
+    "org.lwjgl:lwjgl-glfw": { path: "org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", url: "https://repo1.maven.org/maven2/org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", sha1: "", size: 0 }
+  },
+  // Native JARs — sha1 empty to skip validation
+  natives: {
+    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl-glfw": { path: "org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 }
+  }
+};
+
+async function ensureArm64Natives(runtimeRoot, versionId) {
+  if (os.arch() !== "arm64" || os.platform() !== "darwin") {
+    return null;
+  }
+
+  const mc = MinecraftFolder.from(runtimeRoot);
+  const nativesDir = mc.getNativesRoot(versionId);
+  const nativesMarker = path.join(nativesDir, ".arm64-patched");
+
+  // Check if the version JSON needs patch (look for old x86 LWJGL in raw JSON)
+  let targetJsonPath = mc.getVersionJson(versionId);
+  let needsJsonPatch = false;
+  for (let depth = 0; depth < 5; depth++) {
+    const raw = await readFile(targetJsonPath, "utf-8").catch(() => null);
+    if (!raw) { break; }
+    const json2 = JSON.parse(raw);
+    if ((json2.libraries || []).some((lib) => lib.name?.startsWith("org.lwjgl:lwjgl:3.2"))) {
+      needsJsonPatch = true;
+      break;
+    }
+    if ((json2.libraries || []).some((lib) => lib.name?.startsWith("org.lwjgl:lwjgl:3.3"))) {
+      break; // already patched
+    }
+    if (!json2.inheritsFrom) { break; }
+    targetJsonPath = mc.getVersionJson(json2.inheritsFrom);
+  }
+
+  if (!needsJsonPatch) {
+    // Check if natives already extracted
+    try {
+      await access(nativesMarker);
+      return nativesDir;
+    } catch {
+      // fall through to extract natives without re-patching JSON
+    }
+  }
+
+  console.log("[MCT] Applying LWJGL 3.3.1 arm64 patch (based on HMCL NativePatcher)...");
+
+  const { open, walkEntriesGenerator, openEntryReadStream } = await import("@xmcl/unzip");
+  const { createWriteStream } = await import("node:fs");
+  const { pipeline } = await import("node:stream");
+  const { promisify } = await import("node:util");
+  const pipelineAsync = promisify(pipeline);
+
+  async function downloadJar(entry) {
+    const localPath = mc.getLibraryByPath(entry.path);
+    try {
+      await access(localPath);
+      return localPath;
+    } catch {
+      console.log(`[MCT]   Downloading ${path.basename(entry.path)}...`);
+      const response = await fetch(entry.url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${entry.url}`);
+      }
+      await mkdir(path.dirname(localPath), { recursive: true });
+      await writeFile(localPath, Buffer.from(await response.arrayBuffer()));
+      return localPath;
+    }
+  }
+
+  // 1. Download and extract arm64 natives into nativesDir
+  await mkdir(nativesDir, { recursive: true });
+  for (const [libKey, entry] of Object.entries(LWJGL_ARM64_PATCH.natives)) {
+    const localJar = await downloadJar(entry).catch((e) => { console.log(`[MCT]   Skip ${libKey}: ${e.message}`); return null; });
+    if (!localJar) { continue; }
+    const zip = await open(localJar, { lazyEntries: true, autoClose: false });
+    for await (const zipEntry of walkEntriesGenerator(zip)) {
+      const name = zipEntry.fileName;
+      if (!name.endsWith(".dylib") || name.endsWith("/")) { continue; }
+      const dest = path.join(nativesDir, path.basename(name));
+      await pipelineAsync(await openEntryReadStream(zip, zipEntry), createWriteStream(dest));
+    }
+  }
+
+  // 2. Download Java JARs
+  for (const [libKey, entry] of Object.entries(LWJGL_ARM64_PATCH.jars)) {
+    await downloadJar(entry).catch((e) => console.log(`[MCT]   Skip ${libKey}: ${e.message}`));
+  }
+
+  // 3. Patch the vanilla version JSON to swap LWJGL 3.2.x -> 3.3.1
+  let curJsonPath = mc.getVersionJson(versionId);
+  for (let depth = 0; depth < 5; depth++) {
+    const targetJsonPath = curJsonPath;
+    const raw = await readFile(targetJsonPath, "utf-8").catch(() => null);
+    if (!raw) { break; }
+    const json2 = JSON.parse(raw);
+    const hasOldLwjgl = (json2.libraries || []).some(
+      (lib) => lib.name?.startsWith("org.lwjgl:lwjgl:3.2")
+    );
+    if (hasOldLwjgl) {
+      const newLibraries = [];
+      for (const lib of json2.libraries) {
+        const name = lib.name || "";
+        const parts = name.split(":");
+        const baseKey = parts.slice(0, 2).join(":");
+
+        if (!LWJGL_ARM64_PATCH.jars[baseKey] && !LWJGL_ARM64_PATCH.natives[baseKey]) {
+          newLibraries.push(lib);
+          continue;
+        }
+
+        // Build new library entry
+        const newLib = { ...lib };
+
+        // Replace Java JAR (artifact)
+        if (LWJGL_ARM64_PATCH.jars[baseKey] && lib.downloads?.artifact) {
+          const jarEntry = LWJGL_ARM64_PATCH.jars[baseKey];
+          const newName = baseKey === "org.lwjgl:lwjgl-glfw"
+            ? "org.glavo.hmcl.mmachina:lwjgl-glfw:3.3.1-mmachina.1"
+            : `${baseKey}:3.3.1`;
+          newLib.name = newName;
+          newLib.downloads = { ...lib.downloads, artifact: { path: jarEntry.path, sha1: jarEntry.sha1, size: jarEntry.size, url: jarEntry.url } };
+        }
+
+        // Replace native classifiers with arm64 variant
+        if (LWJGL_ARM64_PATCH.natives[baseKey] && lib.downloads?.classifiers?.["natives-macos"]) {
+          const nativeEntry = LWJGL_ARM64_PATCH.natives[baseKey];
+          newLib.downloads = {
+            ...newLib.downloads,
+            classifiers: { "natives-macos": { path: nativeEntry.path, sha1: nativeEntry.sha1, size: nativeEntry.size, url: nativeEntry.url } }
+          };
+        }
+
+        newLibraries.push(newLib);
+      }
+      json2.libraries = newLibraries;
+      await writeFile(targetJsonPath, JSON.stringify(json2, null, 2), "utf-8");
+      break;
+    }
+    if (!json2.inheritsFrom) { break; }
+    curJsonPath = mc.getVersionJson(json2.inheritsFrom);
+  }
+
+  await writeFile(nativesMarker, "3.3.1");
+  console.log("[MCT] arm64 LWJGL 3.3.1 patch applied");
+  return nativesDir;
+}
+
 async function launchXmclManagedClient(options) {
   const runtimeRoot = options["runtime-root"];
   const versionId = options["version-id"];
@@ -353,12 +524,32 @@ async function launchXmclManagedClient(options) {
   }
 
   await syncConfiguredMod(gameDir);
+  const arm64NativesDir = await ensureArm64Natives(runtimeRoot, versionId);
 
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName).replaceAll("-", "");
   const server = process.env.MCT_CLIENT_SERVER || "";
   await ensureAutomationOptions(gameDir, server);
   const [serverHost, serverPort = "25565"] = server.split(":");
+
+  let prechecks;
+  if (arm64NativesDir) {
+    // Insert arm64 patch AFTER checkVersion (which downloads version JSONs)
+    // but BEFORE checkLibraries (which validates jar sha1s) and checkNatives
+    prechecks = [];
+    for (const fn of LaunchPrecheck.DEFAULT_PRECHECKS) {
+      if (fn === LaunchPrecheck.checkNatives) {
+        continue; // skip — we already extracted arm64 natives
+      }
+      prechecks.push(fn);
+      if (fn === LaunchPrecheck.checkVersion) {
+        // Apply arm64 patch right after version JSON is downloaded
+        prechecks.push(async () => {
+          await ensureArm64Natives(runtimeRoot, versionId);
+        });
+      }
+    }
+  }
 
   return launchMinecraft({
     gamePath: gameDir,
@@ -367,6 +558,8 @@ async function launchXmclManagedClient(options) {
     minMemory: 512,
     maxMemory: parseMaxMemory(options["max-mem"]),
     version: versionId,
+    nativeRoot: arm64NativesDir || undefined,
+    prechecks,
     gameProfile: {
       name: accountName,
       id: accountUuid
@@ -377,7 +570,9 @@ async function launchXmclManagedClient(options) {
     launcherBrand: "mct",
     ...(serverHost
       ? {
-          quickPlayMultiplayer: createQuickPlayMultiplayer(serverHost, Number.parseInt(serverPort, 10))
+          quickPlayMultiplayer: createQuickPlayMultiplayer(serverHost, Number.parseInt(serverPort, 10)),
+          // Legacy fallback for MC < 1.20 that ignores --quickPlayMultiplayer
+          extraMCArgs: ["--server", serverHost, "--port", serverPort]
         }
       : {}),
     extraExecOption: {
