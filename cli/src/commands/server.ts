@@ -1,10 +1,28 @@
 import { Command } from "commander";
 
+import { buildServerSearchResults } from "../download/SearchCommand.js";
+import type { ServerType } from "../download/VersionMatrix.js";
 import { wrapCommand } from "../util/command.js";
 import { ServerManager } from "../server/ServerManager.js";
 
 export function createServerCommand() {
   const command = new Command("server").description("管理 Paper 服务端");
+
+  command
+    .command("search")
+    .description("搜索可用服务端版本")
+    .option("--type <type>", "服务端类型：paper|purpur|spigot")
+    .option("--version <version>", "Minecraft 版本")
+    .action(
+      wrapCommand(async (_context, { options }: { options: { type?: ServerType; version?: string } }) => {
+        return {
+          results: buildServerSearchResults({
+            type: options.type,
+            version: options.version
+          })
+        };
+      })
+    );
 
   command
     .command("start")

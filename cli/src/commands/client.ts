@@ -1,11 +1,29 @@
 import { Command } from "commander";
 
 import { ClientManager } from "../client/ClientManager.js";
+import { buildClientSearchResults } from "../download/SearchCommand.js";
+import type { ClientLoader } from "../download/VersionMatrix.js";
 import { createRequestAction } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
 
 export function createClientCommand() {
   const command = new Command("client").description("管理 Minecraft 客户端");
+
+  command
+    .command("search")
+    .description("搜索可用客户端版本与 Loader 组合")
+    .option("--loader <loader>", "客户端 Loader：fabric|forge|neoforge")
+    .option("--version <version>", "Minecraft 版本")
+    .action(
+      wrapCommand(async (_context, { options }: { options: { loader?: ClientLoader; version?: string } }) => {
+        return {
+          results: buildClientSearchResults({
+            loader: options.loader,
+            version: options.version
+          })
+        };
+      })
+    );
 
   command
     .command("launch")
