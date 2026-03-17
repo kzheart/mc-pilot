@@ -38,8 +38,8 @@ function createContext(cwd: string, configPath: string): CommandContext {
 test("downloadClientMod copies a local variant jar and writes client config", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
   const configPath = path.join(tempDir, "mct.config.json");
-  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
-  const jarPath = path.join(buildDir, "mct-client-mod-1.20.4-fabric.jar");
+  const buildDir = path.join(tempDir, "client-mod", "version-1.20.4", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-fabric-1.20.4.jar");
 
   await mkdir(buildDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
@@ -89,7 +89,7 @@ test("downloadClientMod copies a local variant jar and writes client config", as
     assert.equal(config.clients.default.server, "localhost:25565");
     assert.equal(config.clients.default.workingDir, "downloaded-client/minecraft");
     assert.equal(config.clients.default.env.MCT_CLIENT_MOD_VARIANT, "1.20.4-fabric");
-    assert.equal(config.clients.default.env.MCT_CLIENT_MOD_JAR, "downloaded-client/minecraft/mods/mct-client-mod-1.20.4-fabric.jar");
+    assert.equal(config.clients.default.env.MCT_CLIENT_MOD_JAR, "downloaded-client/minecraft/mods/mct-client-mod-fabric-1.20.4.jar");
     assert.equal(config.clients.default.launchCommand[0], process.execPath);
     assert.equal(config.clients.default.launchCommand[1], path.join(tempDir, "scripts", "launch-fabric-client.mjs"));
     assert.deepEqual(config.clients.default.launchCommand.slice(2, 10), [
@@ -110,8 +110,8 @@ test("downloadClientMod copies a local variant jar and writes client config", as
 test("downloadClientMod prepares a self-managed runtime when no external runtime directories are provided", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
   const configPath = path.join(tempDir, "mct.config.json");
-  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
-  const jarPath = path.join(buildDir, "mct-client-mod-1.20.2-fabric.jar");
+  const buildDir = path.join(tempDir, "client-mod", "version-1.20.2", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-fabric-1.20.2.jar");
 
   await mkdir(buildDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
@@ -185,8 +185,8 @@ test("downloadClientMod prepares a self-managed runtime when no external runtime
 test("downloadClientMod can resolve and configure the 1.20.1 fabric variant", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
   const configPath = path.join(tempDir, "mct.config.json");
-  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
-  const jarPath = path.join(buildDir, "mct-client-mod-1.20.1-fabric.jar");
+  const buildDir = path.join(tempDir, "client-mod", "version-1.20.1", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-fabric-1.20.1.jar");
 
   await mkdir(buildDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
@@ -233,7 +233,7 @@ test("downloadClientMod can resolve and configure the 1.20.1 fabric variant", as
     assert.equal(config.clients.legacy.wsPort, 26660);
     assert.equal(config.clients.legacy.server, "mc.example.net:25570");
     assert.equal(config.clients.legacy.env.MCT_CLIENT_MOD_VARIANT, "1.20.1-fabric");
-    assert.equal(config.clients.legacy.env.MCT_CLIENT_MOD_JAR, "downloaded-client-1201/minecraft/mods/mct-client-mod-1.20.1-fabric.jar");
+    assert.equal(config.clients.legacy.env.MCT_CLIENT_MOD_JAR, "downloaded-client-1201/minecraft/mods/mct-client-mod-fabric-1.20.1.jar");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -271,8 +271,8 @@ test("downloadClientMod rejects missing local build artifacts", async () => {
 test("downloadClientMod rejects partial client runtime directory configuration", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
   const configPath = path.join(tempDir, "mct.config.json");
-  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
-  const jarPath = path.join(buildDir, "mct-client-mod-1.20.4-fabric.jar");
+  const buildDir = path.join(tempDir, "client-mod", "version-1.20.4", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-fabric-1.20.4.jar");
 
   await mkdir(buildDir, { recursive: true });
   await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");

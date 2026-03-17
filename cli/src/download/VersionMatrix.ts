@@ -60,15 +60,24 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: {
-        supported: false,
-        loaderVersion: "0.16.10",
-        modVersion: "0.1.0",
-        validation: "planned",
-        notes: "目标版本已纳入矩阵，但当前 mod 尚未接入此版本。"
-      },
+      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.0", validation: "verified" },
       forge: { supported: false, notes: "不支持此版本" },
       neoforge: { supported: true, loaderVersion: "21.4.x", modVersion: "0.1.0" }
+    }
+  },
+  {
+    minecraftVersion: "1.21.1",
+    javaVersion: "21+",
+    servers: {
+      vanilla: { supported: true },
+      paper: { supported: true, latestBuild: 119 },
+      purpur: { supported: true, latestBuild: 2324 },
+      spigot: { supported: true, requiresBuildTools: true }
+    },
+    clients: {
+      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.0", validation: "verified" },
+      forge: { supported: false, notes: "不支持此版本" },
+      neoforge: { supported: true, loaderVersion: "21.1.x", modVersion: "0.1.0" }
     }
   },
   {
@@ -141,7 +150,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: false, notes: "当前未接入此版本 mod" },
+      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.0", validation: "verified" },
       forge: { supported: true, loaderVersion: "40.x", modVersion: "0.1.0" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }

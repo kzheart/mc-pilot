@@ -67,7 +67,8 @@ function ensureSupportedVariant(variant: ModVariant) {
 
 async function resolveLocalArtifact(context: CommandContext, variant: ModVariant, cacheManager: CacheManager) {
   const artifactFileName = getModArtifactFileName(variant);
-  const buildArtifactPath = path.join(context.cwd, "client-mod", "versions", variant.id, "build", "libs", artifactFileName);
+  const gradleModule = (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
+  const buildArtifactPath = path.join(context.cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   try {

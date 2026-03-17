@@ -19,7 +19,7 @@ test("getBuildableFabricVariants only returns variants with build metadata", asy
 
   assert.deepEqual(
     variants.map((variant) => variant.id),
-    ["1.20.4-fabric", "1.20.2-fabric", "1.20.1-fabric"]
+    ["1.21.4-fabric", "1.21.1-fabric", "1.20.4-fabric", "1.20.2-fabric", "1.20.1-fabric", "1.18.2-fabric"]
   );
 });
 

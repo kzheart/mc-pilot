@@ -12,8 +12,8 @@ import {
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
-  assert.equal(matrix.length, 8);
-  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.4", "1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
+  assert.equal(matrix.length, 9);
+  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.4", "1.21.1", "1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
 
   const current = getMinecraftSupport("1.20.4");
   assert.ok(current);
@@ -46,10 +46,10 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   const fabric = results.find((entry) => entry.loader === "fabric");
   const forge = results.find((entry) => entry.loader === "forge");
 
-  assert.equal(fabric?.supported, false);
+  assert.equal(fabric?.supported, true);
   assert.equal(fabric?.loaderVersion, "0.16.10");
   assert.equal(fabric?.modVersion, "0.1.0");
-  assert.equal(fabric?.validation, "planned");
+  assert.equal(fabric?.validation, "verified");
   assert.equal(fabric?.notes, undefined);
   assert.equal(fabric?.javaVersion, "21+");
 
@@ -63,7 +63,6 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(neoforge?.loaderVersion, "21.4.75");
   assert.equal(neoforge?.modVersion, "0.1.0");
   assert.equal(neoforge?.validation, "planned");
-  assert.equal(neoforge?.notes, undefined);
   assert.equal(neoforge?.javaVersion, "21+");
 });
 

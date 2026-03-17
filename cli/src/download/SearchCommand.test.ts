@@ -42,7 +42,7 @@ test("buildClientSearchResults groups loader data by Minecraft version", () => {
     loader: "fabric"
   });
 
-  assert.equal(results.length, 8);
+  assert.equal(results.length, 9);
   assert(
     results.every((entry) =>
       Array.isArray(entry.loaders)
