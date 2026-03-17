@@ -21,6 +21,9 @@ const RUNNER_PATH = path.join(ROOT_DIR, "scripts", "real-mod-full-test.mjs");
 const CLIENT_MOD_DIR = path.join(ROOT_DIR, "client-mod");
 const MATRIX_ROOT = path.join(ROOT_DIR, "tmp", "real-e2e", "matrix");
 const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
+// Shared cache dir: server JARs and client runtime are cached globally
+const GLOBAL_CACHE_DIR = path.join(process.env.HOME, ".minecraft-auto-test");
+const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "servers");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
 const INTER_VERSION_DELAY_MS = 6000;
@@ -173,7 +176,7 @@ function resolveVersionMatrix(selectedVersions) {
   return { runnable, skipped };
 }
 
-function getVersionPaths(variantId) {
+function getVersionPaths(variantId, minecraftVersion, serverType) {
   const rootDir = path.join(MATRIX_ROOT, variantId);
   return {
     rootDir,
@@ -181,16 +184,21 @@ function getVersionPaths(variantId) {
     stateDir: path.join(rootDir, "state"),
     reportDir: path.join(rootDir, "reports"),
     screenshotDir: path.join(rootDir, "screenshots"),
-    serverDir: path.join(rootDir, "server"),
-    clientDir: path.join(rootDir, "client")
+    // Server: cached globally by type+version (same server jar for all runs)
+    serverDir: path.join(SHARED_SERVERS_DIR, `${serverType ?? "vanilla"}-${minecraftVersion ?? variantId}`),
+    // Client runtime: cached globally per MC version (libraries, assets, version JARs).
+    // The mod JAR is always freshly copied in from the local build artifact.
+    clientDir: path.join(GLOBAL_CACHE_DIR, "client-runtime", minecraftVersion ?? variantId)
   };
 }
 
 async function prepareVersionEnvironment(entry, wsPort, logLine) {
-  const paths = getVersionPaths(entry.variantId);
+  const paths = getVersionPaths(entry.variantId, entry.minecraftVersion, entry.serverType);
   await mkdir(paths.rootDir, { recursive: true });
   await mkdir(paths.reportDir, { recursive: true });
   await mkdir(paths.screenshotDir, { recursive: true });
+  await mkdir(paths.serverDir, { recursive: true });
+  await mkdir(paths.clientDir, { recursive: true });
 
   await logLine(`variant build start variant=${entry.variantId}`);
   const gradleModule = `version-${entry.minecraftVersion}`;
