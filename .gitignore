@@ -10,6 +10,7 @@ tmp/
 
 .mct-state/
 screenshots/
+mct.config.json
 
 plan/
 issues/
