@@ -92,6 +92,59 @@ test("downloadClientMod copies a local variant jar and writes client config", as
   }
 });
 
+test("downloadClientMod can resolve and configure the 1.20.1 fabric variant", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
+  const configPath = path.join(tempDir, "mct.config.json");
+  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-1.20.1-fabric.jar");
+
+  await mkdir(buildDir, { recursive: true });
+  await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
+  await writeFile(jarPath, "mod-jar-1201", "utf8");
+
+  try {
+    const result = await downloadClientMod(
+      createContext(tempDir, configPath),
+      {
+        version: "1.20.1",
+        loader: "fabric",
+        dir: "./downloaded-client-1201",
+        name: "legacy",
+        wsPort: 26660,
+        server: "mc.example.net:25570"
+      },
+      {
+        cacheManager: new CacheManager(path.join(tempDir, "cache")),
+        detectJavaImpl: async () => ({
+          available: true,
+          command: "java",
+          majorVersion: 17
+        })
+      }
+    );
+
+    assert.equal(result.variantId, "1.20.1-fabric");
+    assert.equal(await readFile(result.jar, "utf8"), "mod-jar-1201");
+
+    const config = JSON.parse(await readFile(configPath, "utf8")) as {
+      clients: Record<string, {
+        version: string;
+        wsPort: number;
+        server: string;
+        env: Record<string, string>;
+      }>;
+    };
+
+    assert.equal(config.clients.legacy.version, "1.20.1");
+    assert.equal(config.clients.legacy.wsPort, 26660);
+    assert.equal(config.clients.legacy.server, "mc.example.net:25570");
+    assert.equal(config.clients.legacy.env.MCT_CLIENT_MOD_VARIANT, "1.20.1-fabric");
+    assert.equal(config.clients.legacy.env.MCT_CLIENT_MOD_JAR, "downloaded-client-1201/mods/mct-client-mod-1.20.1-fabric.jar");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadClientMod rejects missing local build artifacts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
   const configPath = path.join(tempDir, "mct.config.json");

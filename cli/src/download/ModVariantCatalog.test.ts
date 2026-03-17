@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getBuildableFabricVariants, getDefaultVariant, loadModVariantCatalog } from "./ModVariantCatalog.js";
+import { getBuildableFabricVariants, getDefaultVariant, getModArtifactFileName, loadModVariantCatalog } from "./ModVariantCatalog.js";
 
 test("loadModVariantCatalog loads shared mod variants and default variant", async () => {
   const catalog = await loadModVariantCatalog();
@@ -21,4 +21,12 @@ test("getBuildableFabricVariants only returns variants with build metadata", asy
     variants.map((variant) => variant.id),
     ["1.20.4-fabric", "1.20.1-fabric"]
   );
+});
+
+test("getModArtifactFileName matches the local build artifact naming convention", async () => {
+  const catalog = await loadModVariantCatalog();
+  const variant = catalog.variants.find((entry) => entry.id === "1.20.1-fabric");
+
+  assert.ok(variant);
+  assert.equal(getModArtifactFileName(variant), "mct-client-mod-1.20.1-fabric.jar");
 });

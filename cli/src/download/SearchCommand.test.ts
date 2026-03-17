@@ -51,6 +51,28 @@ test("buildClientSearchResults groups loader data by Minecraft version", () => {
   );
 });
 
+test("buildClientSearchResults carries variant validation metadata into grouped output", () => {
+  const [result] = buildClientSearchResults({
+    loader: "fabric",
+    version: "1.20.1"
+  });
+
+  assert.deepEqual(result, {
+    version: "1.20.1",
+    javaVersion: "17+",
+    loaders: [
+      {
+        loader: "fabric",
+        supported: true,
+        loaderVersion: "0.16.10",
+        modVersion: "0.1.0",
+        validation: "limited",
+        notes: "构建配置已接线，当前环境缺少外网解析能力，未完成完整编译验证。"
+      }
+    ]
+  });
+});
+
 test("buildProgram registers server/client search and download commands", () => {
   const leaves = collectLeafCommands();
 
