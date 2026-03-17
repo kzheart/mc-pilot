@@ -60,6 +60,7 @@ export function getBuildableFabricVariants(catalog: ModVariantCatalog) {
   return sortVariants(
     catalog.variants.filter(
       (variant) => variant.loader === "fabric" && variant.yarnMappings && variant.fabricLoaderVersion
+        && (variant.support === "ready" || variant.support === "configured")
     )
   );
 }
