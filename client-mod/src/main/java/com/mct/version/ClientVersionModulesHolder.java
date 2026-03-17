@@ -2,11 +2,20 @@ package com.mct.version;
 
 public final class ClientVersionModulesHolder {
 
-    private static final ClientVersionModules INSTANCE = VersionAdapters.create();
+    private static volatile ClientVersionModules instance;
 
     private ClientVersionModulesHolder() {}
 
+    public static void init(ClientVersionModules modules) {
+        instance = modules;
+    }
+
     public static ClientVersionModules get() {
-        return INSTANCE;
+        ClientVersionModules modules = instance;
+        if (modules == null) {
+            modules = VersionAdapters.create();
+            instance = modules;
+        }
+        return modules;
     }
 }

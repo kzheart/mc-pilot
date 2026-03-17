@@ -1,37 +1,17 @@
-import dev.kikugie.stonecutter.settings.StonecutterSettingsExtension
-
 pluginManagement {
     repositories {
         gradlePluginPortal()
         maven("https://maven.fabricmc.net/")
-        maven("https://maven.architectury.dev")
-        maven("https://maven.neoforged.net/releases/")
-        maven("https://maven.minecraftforge.net/")
-        maven("https://maven.kikugie.dev/releases/")
-        mavenCentral()
     }
-}
-
-plugins {
-    id("dev.kikugie.stonecutter") version "0.7.11"
-}
-
-extensions.configure<StonecutterSettingsExtension> {
-    kotlinController = true
-    centralScript = "build.gradle.kts"
-
-    shared {
-        fun mc(mcVersion: String, loaders: List<String>) =
-            loaders.forEach { loader -> version("$mcVersion-$loader", mcVersion) }
-
-        mc("1.20.1", listOf("fabric"))
-        mc("1.20.2", listOf("fabric"))
-        mc("1.20.4", listOf("fabric"))
-
-        vcsVersion = "1.20.4-fabric"
-    }
-
-    create(rootProject)
 }
 
 rootProject.name = "client-mod"
+
+include(
+    "version-1.18.2",
+    "version-1.20.1",
+    "version-1.20.2",
+    "version-1.20.4",
+    "version-1.21.1",
+    "version-1.21.4"
+)

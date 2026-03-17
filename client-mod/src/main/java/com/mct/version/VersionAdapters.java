@@ -14,13 +14,28 @@ import net.minecraft.client.gui.screen.ConnectScreen;*/
 //? if >=1.20.2
 import net.minecraft.scoreboard.ScoreboardDisplaySlot;
 
-import com.mct.core.state.ClientStateTracker;
-import com.mct.core.util.ClientActionExecutor.ActionException;
+//? if >=1.19.4 {
+import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+//?} else {
+/*import net.minecraft.client.gui.screen.ingame.SignEditScreen;*/
+//?}
+
+import com.mct.core.util.ActionException;
+import com.mct.mixin.AbstractSignEditScreenAccessor;
+import net.minecraft.block.entity.SignBlockEntity;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardObjective;
+import net.minecraft.util.ActionResult;
+import com.mct.core.state.ClientStateTracker;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -35,15 +50,24 @@ public final class VersionAdapters {
             createTextAdapter(),
             createScoreboardAdapter(),
             createResourcePackAdapter(),
-            createReconnectAdapter()
+            createReconnectAdapter(),
+            createSignAdapter(),
+            createBookAdapter(),
+            createItemDataAdapter(),
+            createActionResultAdapter(),
+            createNetworkAdapter(),
+            createImageAdapter()
         );
     }
 
     private static TextAdapter createTextAdapter() {
-        //? if >=1.20.3
+        //? if >=1.20.5 {
+        /*return text -> Text.Serialization.toJsonString(text, MinecraftClient.getInstance().world.getRegistryManager());*/
+        //?} else if >=1.20.3 {
         return Text.Serialization::toJsonString;
-        //? if <1.20.3
+        //?} else {
         /*return text -> Text.Serializer.toJson(text);*/
+        //?}
     }
 
     private static ScoreboardAdapter createScoreboardAdapter() {
@@ -150,7 +174,198 @@ public final class VersionAdapters {
             //?} else {
             /*ServerInfo serverInfo = new ServerInfo("MCT Auto Test", address, false);*/
             //?}
+            //? if >=1.20.5 {
+            /*ConnectScreen.connect(parent, client, serverAddress, serverInfo, false, null);*/
+            //?} else {
             ConnectScreen.connect(parent, client, serverAddress, serverInfo, false);
+            //?}
+        };
+    }
+
+    private static SignAdapter createSignAdapter() {
+        return new SignAdapter() {
+            @Override
+            public Map<String, Object> readSign(SignBlockEntity sign) {
+                //? if >=1.20 {
+                return Map.of(
+                    "front", signText(sign, true, false),
+                    "back", signText(sign, false, false),
+                    "waxed", sign.isWaxed()
+                );
+                //?} else {
+                /*return Map.of(
+                    "front", signText(sign, true, false),
+                    "back", List.of("", "", "", ""),
+                    "waxed", false
+                );*/
+                //?}
+            }
+
+            @Override
+            public List<String> signText(SignBlockEntity sign, boolean front, boolean filtered) {
+                ArrayList<String> lines = new ArrayList<>();
+                //? if >=1.20 {
+                for (int index = 0; index < 4; index++) {
+                    lines.add(sign.getText(front).getMessage(index, filtered).getString());
+                }
+                //?} else {
+                /*for (int index = 0; index < 4; index++) {
+                    lines.add(sign.getTextOnRow(index, filtered).getString());
+                }*/
+                //?}
+                return lines;
+            }
+
+            @Override
+            public boolean isSignEditScreen(Screen screen) {
+                //? if >=1.19.4 {
+                return screen instanceof AbstractSignEditScreen;
+                //?} else {
+                /*return screen instanceof SignEditScreen;*/
+                //?}
+            }
+
+            @Override
+            public void editSignLine(Object accessor, int row, String message) {
+                AbstractSignEditScreenAccessor signAccessor = (AbstractSignEditScreenAccessor) accessor;
+                signAccessor.mct$setCurrentRow(row);
+                //? if >=1.19.4 {
+                signAccessor.mct$setCurrentRowMessage(message);
+                //?} else {
+                /*signAccessor.mct$getText()[row] = message;*/
+                //?}
+            }
+        };
+    }
+
+    private static BookAdapter createBookAdapter() {
+        return stack -> {
+            ArrayList<String> pages = new ArrayList<>();
+            //? if >=1.20.5 {
+            /*net.minecraft.component.type.WritableBookContentComponent writable = stack.get(net.minecraft.component.DataComponentTypes.WRITABLE_BOOK_CONTENT);
+            if (writable != null) {
+                writable.stream(false).forEach(pages::add);
+            } else {
+                net.minecraft.component.type.WrittenBookContentComponent written = stack.get(net.minecraft.component.DataComponentTypes.WRITTEN_BOOK_CONTENT);
+                if (written != null) {
+                    written.pages().forEach(page -> pages.add(page.raw().getString()));
+                }
+            }*/
+            //?} else {
+            if (stack.hasNbt() && stack.getNbt() != null) {
+                net.minecraft.client.gui.screen.ingame.BookScreen.filterPages(stack.getNbt(), pages::add);
+            }
+            //?}
+            return pages;
+        };
+    }
+
+    private static ItemDataAdapter createItemDataAdapter() {
+        return new ItemDataAdapter() {
+            @Override
+            public void appendCustomData(ItemStack stack, Map<String, Object> result) {
+                //? if >=1.20.5 {
+                /*net.minecraft.component.type.NbtComponent customData = stack.getOrDefault(
+                    net.minecraft.component.DataComponentTypes.CUSTOM_DATA,
+                    net.minecraft.component.type.NbtComponent.DEFAULT
+                );
+                if (!customData.equals(net.minecraft.component.type.NbtComponent.DEFAULT)) {
+                    result.put("nbt", customData.toString());
+                }*/
+                //?} else {
+                if (stack.hasNbt()) {
+                    net.minecraft.nbt.NbtCompound nbt = stack.getNbt();
+                    result.put("nbt", nbt != null ? nbt.toString() : null);
+                }
+                //?}
+            }
+
+            @Override
+            public List<Map<String, Object>> getEnchantments(ItemStack stack) {
+                ArrayList<Map<String, Object>> values = new ArrayList<>();
+                //? if >=1.20.5 {
+                /*net.minecraft.component.type.ItemEnchantmentsComponent enchantments = stack.getEnchantments();
+                if (!enchantments.isEmpty()) {
+                    for (var entry : enchantments.getEnchantmentEntries()) {
+                        values.add(
+                            Map.of(
+                                "id", String.valueOf(net.minecraft.registry.Registries.ENCHANTMENT.getKey(entry.getKey().value())
+                                    .map(key -> key.getValue().toString()).orElse("unknown")),
+                                "level", entry.getIntValue()
+                            )
+                        );
+                    }
+                }*/
+                //?} else {
+                net.minecraft.nbt.NbtList enchantments = stack.getEnchantments();
+                if (!enchantments.isEmpty()) {
+                    for (net.minecraft.nbt.NbtElement element : enchantments) {
+                        if (!(element instanceof net.minecraft.nbt.NbtCompound compound)) {
+                            continue;
+                        }
+                        values.add(
+                            Map.of(
+                                "id", compound.getString("id"),
+                                "level", compound.getShort("lvl")
+                            )
+                        );
+                    }
+                }
+                //?}
+                return values;
+            }
+
+            @Override
+            public String statusEffectId(StatusEffectInstance effect) {
+                //? if >=1.20.5 {
+                /*return String.valueOf(effect.getEffectType().getKey()
+                    .map(key -> key.getValue().toString()).orElse("unknown"));*/
+                //?} else {
+                return String.valueOf(McRegistries.statusEffectId(effect.getEffectType()));
+                //?}
+            }
+        };
+    }
+
+    private static ActionResultAdapter createActionResultAdapter() {
+        return actionResult -> {
+            //? if >=1.21.2 {
+            /*return actionResult.toString();*/
+            //?} else {
+            return actionResult.name();
+            //?}
+        };
+    }
+
+    private static NetworkAdapter createNetworkAdapter() {
+        return (player, yaw, pitch) -> {
+            //? if >=1.21.2 {
+            /*player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, player.isOnGround(), player.horizontalCollision));*/
+            //?} else {
+            player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, player.isOnGround()));
+            //?}
+        };
+    }
+
+    private static ImageAdapter createImageAdapter() {
+        return new ImageAdapter() {
+            @Override
+            public void setPixel(NativeImage image, int x, int y, int color) {
+                //? if >=1.21.2 {
+                /*image.setColorArgb(x, y, color);*/
+                //?} else {
+                image.setColor(x, y, color);
+                //?}
+            }
+
+            @Override
+            public int getPixel(NativeImage image, int x, int y) {
+                //? if >=1.21.2 {
+                /*return image.getColorArgb(x, y);*/
+                //?} else {
+                return image.getColor(x, y);
+                //?}
+            }
         };
     }
 }
