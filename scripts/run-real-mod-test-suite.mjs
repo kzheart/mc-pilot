@@ -193,7 +193,8 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
   await mkdir(paths.screenshotDir, { recursive: true });
 
   await logLine(`variant build start variant=${entry.variantId}`);
-  const buildResult = await runCommand("./gradlew", [`:${entry.variantId}:build`, "-q"], {
+  const gradleModule = `version-${entry.minecraftVersion}`;
+  const buildResult = await runCommand("./gradlew", [`:${gradleModule}:build`, "-q"], {
     cwd: CLIENT_MOD_DIR,
     allowFailure: true
   });
