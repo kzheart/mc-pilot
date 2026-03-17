@@ -1,6 +1,6 @@
 import { loadModVariantCatalogSync } from "./ModVariantCatalog.js";
 
-export type ServerType = "paper" | "purpur" | "spigot";
+export type ServerType = "paper" | "purpur" | "spigot" | "vanilla";
 export type ClientLoader = "fabric" | "forge" | "neoforge";
 
 export interface ServerSupportInfo {
@@ -54,6 +54,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.21.4",
     javaVersion: "21+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 170 },
       purpur: { supported: true, latestBuild: 2406 },
       spigot: { supported: true, requiresBuildTools: true }
@@ -74,6 +75,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.20.4",
     javaVersion: "17+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 496 },
       purpur: { supported: true, latestBuild: 2176 },
       spigot: { supported: true, requiresBuildTools: true }
@@ -88,6 +90,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.20.3",
     javaVersion: "17+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: false },
       purpur: { supported: false },
       spigot: { supported: true, requiresBuildTools: true }
@@ -102,6 +105,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.20.2",
     javaVersion: "17+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 318 },
       purpur: { supported: true, latestBuild: 2095 },
       spigot: { supported: true, requiresBuildTools: true }
@@ -116,6 +120,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.20.1",
     javaVersion: "17+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 196 },
       purpur: { supported: true, latestBuild: 2062 },
       spigot: { supported: true, requiresBuildTools: true }
@@ -130,6 +135,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.18.2",
     javaVersion: "17+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 388 },
       purpur: { supported: false },
       spigot: { supported: true, requiresBuildTools: true }
@@ -144,6 +150,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.16.5",
     javaVersion: "8+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 794 },
       purpur: { supported: false },
       spigot: { supported: true, requiresBuildTools: true }
@@ -158,6 +165,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "1.12.2",
     javaVersion: "8+",
     servers: {
+      vanilla: { supported: true },
       paper: { supported: true, latestBuild: 1620 },
       purpur: { supported: false },
       spigot: { supported: true, requiresBuildTools: true }
@@ -273,6 +281,7 @@ export function getServerVersionCatalog(): Record<ServerType, ServerCatalogEntry
       return catalog;
     },
     {
+      vanilla: [],
       paper: [],
       purpur: [],
       spigot: []
@@ -281,7 +290,7 @@ export function getServerVersionCatalog(): Record<ServerType, ServerCatalogEntry
 }
 
 export function getServerTypes(): ServerType[] {
-  return ["paper", "purpur", "spigot"];
+  return ["vanilla", "paper", "purpur", "spigot"];
 }
 
 export function getClientLoaders(): ClientLoader[] {

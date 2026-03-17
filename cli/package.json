@@ -8,10 +8,13 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/*.test.js dist/**/*.test.js",
-    "test:e2e": "npm run build && node --test dist/*.e2e.test.js dist/**/*.e2e.test.js"
+    "test": "tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js",
+    "test:e2e": "tsc -p tsconfig.json && node --test dist/*.e2e.test.js dist/**/*.e2e.test.js"
   },
   "dependencies": {
+    "@xmcl/core": "^2.15.1",
+    "@xmcl/file-transfer": "^2.0.3",
+    "@xmcl/installer": "^6.1.2",
     "commander": "^14.0.1",
     "ws": "^8.19.0"
   },

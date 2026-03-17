@@ -18,19 +18,20 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
-const CONFIG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/mct.real.config.json");
-const STATE_DIR = path.join(ROOT_DIR, "tmp/real-e2e/state");
-const REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
-const SCREENSHOT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/screenshots");
-const CLIENT_LOG_PATH = path.join(STATE_DIR, "logs", "client-real.log");
-const SERVER_LOG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/logs/latest.log");
-const SERVER_PLUGIN_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/plugins/mct-paper-fixture-0.1.0.jar");
 const BUILT_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-paper-fixture-0.1.0.jar");
 const RESOURCEPACK_PATH = path.join(ROOT_DIR, "tmp/real-e2e/resourcepack/test-pack.zip");
 const RESOURCEPACK_PORT = 18080;
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
-const REAL_CLIENT_WS_PORT = 25560;
-const LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
+let CONFIG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/mct.real.config.json");
+let STATE_DIR = path.join(ROOT_DIR, "tmp/real-e2e/state");
+let REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
+let SCREENSHOT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/screenshots");
+let CLIENT_LOG_PATH = path.join(STATE_DIR, "logs", "client-real.log");
+let SERVER_DIR = path.join(ROOT_DIR, "tmp/real-e2e/server");
+let SERVER_LOG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/logs/latest.log");
+let SERVER_PLUGIN_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/plugins/mct-paper-fixture-0.1.0.jar");
+let REAL_CLIENT_WS_PORT = 25560;
+let LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
 
 const NON_REQUEST_LEAF_COMMANDS = [
   "client launch",
@@ -69,6 +70,11 @@ function parseCliOptions(argv) {
   const selectedGroups = [];
   let listGroups = false;
   let json = false;
+  let configPath = CONFIG_PATH;
+  let stateDir = STATE_DIR;
+  let reportDir = REPORT_DIR;
+  let screenshotDir = SCREENSHOT_DIR;
+  let runLabelOverride = undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -89,6 +95,51 @@ function parseCliOptions(argv) {
       json = true;
       continue;
     }
+    if (arg === "--config") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --config");
+      }
+      configPath = path.resolve(ROOT_DIR, nextValue);
+      index += 1;
+      continue;
+    }
+    if (arg === "--state-dir") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --state-dir");
+      }
+      stateDir = path.resolve(ROOT_DIR, nextValue);
+      index += 1;
+      continue;
+    }
+    if (arg === "--report-dir") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --report-dir");
+      }
+      reportDir = path.resolve(ROOT_DIR, nextValue);
+      index += 1;
+      continue;
+    }
+    if (arg === "--screenshot-dir") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --screenshot-dir");
+      }
+      screenshotDir = path.resolve(ROOT_DIR, nextValue);
+      index += 1;
+      continue;
+    }
+    if (arg === "--run-label") {
+      const nextValue = argv[index + 1];
+      if (!nextValue) {
+        throw new Error("Missing value for --run-label");
+      }
+      runLabelOverride = nextValue;
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -100,16 +151,46 @@ function parseCliOptions(argv) {
   }
 
   const effectiveGroups = selectedGroups.length > 0 ? selectedGroups : TEST_GROUPS.map((group) => group.id);
-  const runLabel = effectiveGroups.length === TEST_GROUPS.length ? "all" : effectiveGroups.join("+");
+  const runLabel = runLabelOverride ?? (effectiveGroups.length === TEST_GROUPS.length ? "all" : effectiveGroups.join("+"));
 
   return {
     listGroups,
     json,
     selectedGroups: effectiveGroups,
     selectedGroupSet: new Set(effectiveGroups),
+    configPath,
+    stateDir,
+    reportDir,
+    screenshotDir,
     runLabel,
     runSlug: slugify(runLabel) || "all"
   };
+}
+
+async function applyRuntimePathsFromConfig(configPath, stateDir, reportDir, screenshotDir) {
+  CONFIG_PATH = configPath;
+  STATE_DIR = stateDir;
+  REPORT_DIR = reportDir;
+  SCREENSHOT_DIR = screenshotDir;
+  CLIENT_LOG_PATH = path.join(STATE_DIR, "logs", "client-real.log");
+  LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
+  cachedClientResiduePatterns = null;
+
+  try {
+    const config = JSON.parse(await readFile(CONFIG_PATH, "utf8"));
+    const serverDir = path.isAbsolute(config?.server?.dir)
+      ? config.server.dir
+      : path.resolve(ROOT_DIR, config?.server?.dir ?? "./server");
+    SERVER_DIR = serverDir;
+    SERVER_LOG_PATH = path.join(serverDir, "logs", "latest.log");
+    SERVER_PLUGIN_PATH = path.join(serverDir, "plugins", "mct-paper-fixture-0.1.0.jar");
+    REAL_CLIENT_WS_PORT = Number(config?.clients?.real?.wsPort ?? 25560);
+  } catch {
+    SERVER_DIR = path.join(ROOT_DIR, "tmp/real-e2e/server");
+    SERVER_LOG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/logs/latest.log");
+    SERVER_PLUGIN_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/plugins/mct-paper-fixture-0.1.0.jar");
+    REAL_CLIENT_WS_PORT = 25560;
+  }
 }
 
 function collectLeafCommands(command, parents = []) {
@@ -418,7 +499,7 @@ async function syncBuiltFixturePlugin() {
 }
 
 async function updateServerProperties(resourcePackUrl = null, resourcePackSha1 = null) {
-  const filePath = path.join(ROOT_DIR, "tmp/real-e2e/server/server.properties");
+  const filePath = path.join(SERVER_DIR, "server.properties");
   let content = "";
 
   try {
@@ -437,6 +518,9 @@ async function updateServerProperties(resourcePackUrl = null, resourcePackSha1 =
     }
     values.set(line.slice(0, separator), line.slice(separator + 1));
   }
+
+  values.set("online-mode", "false");
+  values.set("enforce-secure-profile", "false");
 
   if (resourcePackUrl && resourcePackSha1) {
     values.set("resource-pack", resourcePackUrl);
@@ -692,6 +776,7 @@ function buildSupportMatrix() {
 
 async function main() {
   const options = parseCliOptions(process.argv.slice(2));
+  await applyRuntimePathsFromConfig(options.configPath, options.stateDir, options.reportDir, options.screenshotDir);
   if (options.listGroups) {
     const payload = {
       groups: TEST_GROUPS,

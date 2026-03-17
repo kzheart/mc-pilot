@@ -6,9 +6,12 @@
     "cli"
   ],
   "scripts": {
-    "build": "npm run build --workspace cli",
-    "test": "npm run test --workspace cli",
-    "test:e2e": "npm run test:e2e --workspace cli",
+    "build": "npm --prefix cli run build",
+    "test:cli": "npm --prefix cli test",
+    "test:cli:e2e": "npm --prefix cli run test:e2e",
+    "test": "npm run test:cli && npm run test:cli:e2e && npm run test:real:smoke",
+    "test:e2e": "npm run test:cli:e2e",
+    "test:real:smoke": "node scripts/run-real-mod-test-suite.mjs --group status-input-move",
     "test:real": "node scripts/run-real-mod-test-suite.mjs",
     "test:real:group": "node scripts/real-mod-full-test.mjs",
     "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups"

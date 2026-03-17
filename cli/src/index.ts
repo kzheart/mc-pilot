@@ -31,7 +31,7 @@ export function buildProgram() {
   program
     .name("mct")
     .description("Minecraft Auto Test CLI")
-    .version("0.1.0");
+    .version("0.1.0", "--cli-version", "显示 CLI 版本");
 
   attachGlobalOptions(program);
 

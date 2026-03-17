@@ -1,5 +1,5 @@
 export type LoaderType = "fabric" | "forge" | "neoforge";
-export type ServerType = "paper" | "purpur" | "spigot";
+export type ServerType = "paper" | "purpur" | "spigot" | "vanilla";
 export type SupportLevel = "ready" | "configured" | "planned" | "unsupported";
 export type ValidationLevel = "verified" | "limited" | "planned";
 

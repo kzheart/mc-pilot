@@ -7,12 +7,12 @@ import { wrapCommand } from "../util/command.js";
 import { ServerManager } from "../server/ServerManager.js";
 
 export function createServerCommand() {
-  const command = new Command("server").description("管理 Paper 服务端");
+  const command = new Command("server").description("管理 Minecraft 服务端");
 
   command
     .command("search")
     .description("搜索可用服务端版本")
-    .option("--type <type>", "服务端类型：paper|purpur|spigot")
+    .option("--type <type>", "服务端类型：vanilla|paper|purpur|spigot")
     .option("--version <version>", "Minecraft 版本")
     .action(
       wrapCommand(async (_context, { options }: { options: { type?: ServerType; version?: string } }) => {
@@ -28,7 +28,7 @@ export function createServerCommand() {
   command
     .command("download")
     .description("下载服务端 jar 并更新配置")
-    .option("--type <type>", "服务端类型：paper|purpur|spigot")
+    .option("--type <type>", "服务端类型：vanilla|paper|purpur|spigot")
     .option("--version <version>", "Minecraft 版本")
     .option("--build <build>", "指定构建号")
     .option("--dir <path>", "下载目标目录")
@@ -40,8 +40,8 @@ export function createServerCommand() {
 
   command
     .command("start")
-    .description("启动 Paper 服务端")
-    .option("--jar <path>", "Paper jar 路径")
+    .description("启动服务端")
+    .option("--jar <path>", "服务端 jar 路径")
     .option("--dir <path>", "服务端目录")
     .option("--port <number>", "服务端端口", Number)
     .option("--eula", "自动同意 EULA")

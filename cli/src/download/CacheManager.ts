@@ -27,6 +27,34 @@ export class CacheManager {
     return path.join(this.rootDir, "client", "minecraft", version);
   }
 
+  getClientMetadataFile(scope: "version-manifest" | "minecraft-version" | "fabric-loader-profile", id: string) {
+    return path.join(this.rootDir, "client", "metadata", scope, `${id}.json`);
+  }
+
+  getClientLibraryFile(relativePath: string) {
+    return path.join(this.rootDir, "client", "libraries", relativePath);
+  }
+
+  getClientJarPath(version: string) {
+    return path.join(this.rootDir, "client", "jars", `minecraft-client-${version}.jar`);
+  }
+
+  getClientAssetIndexPath(assetIndexId: string) {
+    return path.join(this.rootDir, "client", "assets", "indexes", `${assetIndexId}.json`);
+  }
+
+  getClientAssetObjectPath(hash: string) {
+    return path.join(this.rootDir, "client", "assets", "objects", hash.slice(0, 2), hash);
+  }
+
+  getClientAssetsRoot() {
+    return path.join(this.rootDir, "client", "assets");
+  }
+
+  getClientLoggingConfigPath(fileName: string) {
+    return path.join(this.rootDir, "client", "logging", fileName);
+  }
+
   getLoaderDir(loader: LoaderType) {
     return path.join(this.rootDir, "client", loader);
   }
