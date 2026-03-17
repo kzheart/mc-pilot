@@ -35,8 +35,11 @@ export function createClientCommand() {
     .option("--name <name>", "客户端配置名称")
     .option("--ws-port <port>", "客户端 WebSocket 端口", Number)
     .option("--server <address>", "默认服务器地址")
-    .option("--prism-root <path>", "PrismLauncher 根目录")
-    .option("--instance-id <id>", "PrismLauncher 实例 ID")
+    .option("--instance-dir <path>", "客户端实例目录")
+    .option("--meta-dir <path>", "运行时元数据目录")
+    .option("--libraries-dir <path>", "运行时库目录")
+    .option("--assets-dir <path>", "运行时资源目录")
+    .option("--natives-dir <path>", "运行时本地库目录")
     .action(
       wrapCommand(
         async (
@@ -51,8 +54,11 @@ export function createClientCommand() {
               name?: string;
               wsPort?: number;
               server?: string;
-              prismRoot?: string;
-              instanceId?: string;
+              instanceDir?: string;
+              metaDir?: string;
+              librariesDir?: string;
+              assetsDir?: string;
+              nativesDir?: string;
             };
           }
         ) => {

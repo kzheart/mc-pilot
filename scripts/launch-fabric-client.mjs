@@ -123,20 +123,18 @@ async function syncBuiltMod(instanceRoot, repoRoot, variantId) {
 }
 
 async function buildLaunchSpec(options) {
-  const prismRoot = options["prism-root"];
-  const instanceId = options["instance-id"];
   const repoRoot = process.cwd();
   const defaultVariant = getDefaultVariant();
   const minecraftVersion = process.env.MCT_CLIENT_VERSION || options["minecraft-version"] || defaultVariant.minecraftVersion;
   const modVariantId = process.env.MCT_CLIENT_MOD_VARIANT || options["mod-variant"] || `${minecraftVersion}-fabric`;
   const selectedVariant = getVariantById(modVariantId) ?? defaultVariant;
   const fabricLoaderVersion = options["fabric-loader-version"] || selectedVariant.fabricLoaderVersion || "0.16.10";
-  const instanceRoot = path.join(prismRoot, "instances", instanceId);
+  const instanceRoot = options["instance-dir"];
+  const metaRoot = options["meta-dir"];
+  const librariesRoot = options["libraries-dir"];
+  const assetsRoot = options["assets-dir"];
+  const nativesDir = options["natives-dir"] || path.join(instanceRoot, "natives");
   const gameDir = path.join(instanceRoot, "minecraft");
-  const metaRoot = path.join(prismRoot, "meta");
-  const librariesRoot = path.join(prismRoot, "libraries");
-  const assetsRoot = path.join(prismRoot, "assets");
-  const nativesDir = path.join(instanceRoot, "natives");
   const packMeta = await readJson(path.join(instanceRoot, "mmc-pack.json"));
   await syncBuiltMod(instanceRoot, repoRoot, modVariantId);
   const componentMetas = new Map();
@@ -233,11 +231,13 @@ async function buildLaunchSpec(options) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const prismRoot = options["prism-root"];
-  const instanceId = options["instance-id"];
+  const instanceDir = options["instance-dir"];
+  const metaDir = options["meta-dir"];
+  const librariesDir = options["libraries-dir"];
+  const assetsDir = options["assets-dir"];
 
-  if (!prismRoot || !instanceId) {
-    throw new Error("Missing required arguments: --prism-root and --instance-id");
+  if (!instanceDir || !metaDir || !librariesDir || !assetsDir) {
+    throw new Error("Missing required arguments: --instance-dir, --meta-dir, --libraries-dir and --assets-dir");
   }
 
   const launch = await buildLaunchSpec(options);

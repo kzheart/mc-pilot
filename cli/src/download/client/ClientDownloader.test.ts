@@ -51,8 +51,10 @@ test("downloadClientMod copies a local variant jar and writes client config", as
         version: "1.20.4",
         loader: "fabric",
         dir: "./downloaded-client",
-        prismRoot: "/Applications/PrismLauncher",
-        instanceId: "mct-1.20.4-fabric"
+        instanceDir: "./runtime/instances/mct-1.20.4-fabric",
+        metaDir: "./runtime/meta",
+        librariesDir: "./runtime/libraries",
+        assetsDir: "./runtime/assets"
       },
       {
         cacheManager: new CacheManager(path.join(tempDir, "cache")),
@@ -87,6 +89,17 @@ test("downloadClientMod copies a local variant jar and writes client config", as
     assert.equal(config.clients.default.workingDir, "downloaded-client/minecraft");
     assert.equal(config.clients.default.env.MCT_CLIENT_MOD_VARIANT, "1.20.4-fabric");
     assert.equal(config.clients.default.launchCommand[0], "node");
+    assert.equal(config.clients.default.launchCommand[1], path.join(tempDir, "scripts", "launch-fabric-client.mjs"));
+    assert.deepEqual(config.clients.default.launchCommand.slice(2, 10), [
+      "--instance-dir",
+      path.join(tempDir, "runtime", "instances", "mct-1.20.4-fabric"),
+      "--meta-dir",
+      path.join(tempDir, "runtime", "meta"),
+      "--libraries-dir",
+      path.join(tempDir, "runtime", "libraries"),
+      "--assets-dir",
+      path.join(tempDir, "runtime", "assets")
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -157,6 +170,7 @@ test("downloadClientMod rejects missing local build artifacts", async () => {
         version: "1.20.4",
         loader: "fabric"
       }, {
+        cacheManager: new CacheManager(path.join(tempDir, "cache")),
         detectJavaImpl: async () => ({
           available: true,
           command: "java",
@@ -166,6 +180,44 @@ test("downloadClientMod rejects missing local build artifacts", async () => {
       {
         name: "MctError",
         code: "ARTIFACT_NOT_FOUND"
+      }
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadClientMod rejects partial client runtime directory configuration", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
+  const configPath = path.join(tempDir, "mct.config.json");
+  const buildDir = path.join(tempDir, "client-mod", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-1.20.4-fabric.jar");
+
+  await mkdir(buildDir, { recursive: true });
+  await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
+  await writeFile(jarPath, "mod-jar", "utf8");
+
+  try {
+    await assert.rejects(
+      downloadClientMod(
+        createContext(tempDir, configPath),
+        {
+          version: "1.20.4",
+          loader: "fabric",
+          instanceDir: "./runtime/instances/mct-1.20.4-fabric"
+        },
+        {
+          cacheManager: new CacheManager(path.join(tempDir, "cache")),
+          detectJavaImpl: async () => ({
+            available: true,
+            command: "java",
+            majorVersion: 17
+          })
+        }
+      ),
+      {
+        name: "MctError",
+        code: "INVALID_PARAMS"
       }
     );
   } finally {

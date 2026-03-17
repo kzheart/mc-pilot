@@ -22,8 +22,11 @@ export interface DownloadClientOptions {
   name?: string;
   wsPort?: number;
   server?: string;
-  prismRoot?: string;
-  instanceId?: string;
+  instanceDir?: string;
+  metaDir?: string;
+  librariesDir?: string;
+  assetsDir?: string;
+  nativesDir?: string;
   java?: string;
 }
 
@@ -95,18 +98,77 @@ async function resolveLocalArtifact(context: CommandContext, variant: ModVariant
   }
 }
 
-function buildLaunchCommand(options: DownloadClientOptions, variant: ModVariant) {
-  if (!options.prismRoot || !options.instanceId) {
+interface ClientLaunchRuntimePaths {
+  instanceDir: string;
+  metaDir: string;
+  librariesDir: string;
+  assetsDir: string;
+  nativesDir?: string;
+}
+
+function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadClientOptions): ClientLaunchRuntimePaths | undefined {
+  const runtimePaths = {
+    instanceDir: options.instanceDir,
+    metaDir: options.metaDir,
+    librariesDir: options.librariesDir,
+    assetsDir: options.assetsDir,
+    nativesDir: options.nativesDir
+  };
+  const requiredEntries = Object.entries({
+    instanceDir: runtimePaths.instanceDir,
+    metaDir: runtimePaths.metaDir,
+    librariesDir: runtimePaths.librariesDir,
+    assetsDir: runtimePaths.assetsDir
+  });
+  const providedRequired = requiredEntries.filter(([, value]) => Boolean(value));
+
+  if (providedRequired.length === 0) {
     return undefined;
   }
 
+  const missing = requiredEntries
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    throw new MctError(
+      {
+        code: "INVALID_PARAMS",
+        message: "Client runtime directories must be configured together",
+        details: {
+          missing
+        }
+      },
+      4
+    );
+  }
+
+  return {
+    instanceDir: path.resolve(context.cwd, runtimePaths.instanceDir!),
+    metaDir: path.resolve(context.cwd, runtimePaths.metaDir!),
+    librariesDir: path.resolve(context.cwd, runtimePaths.librariesDir!),
+    assetsDir: path.resolve(context.cwd, runtimePaths.assetsDir!),
+    ...(runtimePaths.nativesDir
+      ? {
+          nativesDir: path.resolve(context.cwd, runtimePaths.nativesDir)
+        }
+      : {})
+  };
+}
+
+function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
   return [
     "node",
-    path.join("scripts", "launch-real-fabric-client.mjs"),
-    "--prism-root",
-    options.prismRoot,
-    "--instance-id",
-    options.instanceId,
+    path.join(context.cwd, "scripts", "launch-fabric-client.mjs"),
+    "--instance-dir",
+    runtimePaths.instanceDir,
+    "--meta-dir",
+    runtimePaths.metaDir,
+    "--libraries-dir",
+    runtimePaths.librariesDir,
+    "--assets-dir",
+    runtimePaths.assetsDir,
+    ...(runtimePaths.nativesDir ? ["--natives-dir", runtimePaths.nativesDir] : []),
     "--minecraft-version",
     variant.minecraftVersion,
     "--fabric-loader-version",
@@ -186,7 +248,8 @@ export async function downloadClientMod(
   const clientName = options.name ?? "default";
   const latestConfig = await loadConfig(context.configPath, context.cwd);
   const configuredClient = latestConfig.clients[clientName] ?? {};
-  const generatedLaunchCommand = buildLaunchCommand(options, variant);
+  const runtimePaths = resolveLaunchRuntimePaths(context, options);
+  const generatedLaunchCommand = runtimePaths ? buildLaunchCommand(context, runtimePaths, variant) : undefined;
 
   latestConfig.clients[clientName] = {
     ...configuredClient,
