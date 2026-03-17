@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { buildServerSearchResults } from "../download/SearchCommand.js";
+import { downloadServerJar } from "../download/server/ServerDownloader.js";
 import type { ServerType } from "../download/VersionMatrix.js";
 import { wrapCommand } from "../util/command.js";
 import { ServerManager } from "../server/ServerManager.js";
@@ -21,6 +22,19 @@ export function createServerCommand() {
             version: options.version
           })
         };
+      })
+    );
+
+  command
+    .command("download")
+    .description("下载服务端 jar 并更新配置")
+    .option("--type <type>", "服务端类型：paper|purpur|spigot")
+    .option("--version <version>", "Minecraft 版本")
+    .option("--build <build>", "指定构建号")
+    .option("--dir <path>", "下载目标目录")
+    .action(
+      wrapCommand(async (context, { options }: { options: { type?: ServerType; version?: string; build?: string; dir?: string } }) => {
+        return downloadServerJar(context, options);
       })
     );
 

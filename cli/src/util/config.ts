@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface MctConfig {
@@ -28,22 +28,24 @@ export interface MctConfig {
   };
 }
 
-const defaultConfig: MctConfig = {
-  server: {
-    dir: "./server",
-    port: 25565,
-    jvmArgs: []
-  },
-  clients: {},
-  screenshot: {
-    outputDir: "./screenshots"
-  },
-  timeout: {
-    serverReady: 120,
-    clientReady: 60,
-    default: 10
-  }
-};
+function createDefaultConfig(): MctConfig {
+  return {
+    server: {
+      dir: "./server",
+      port: 25565,
+      jvmArgs: []
+    },
+    clients: {},
+    screenshot: {
+      outputDir: "./screenshots"
+    },
+    timeout: {
+      serverReady: 120,
+      clientReady: 60,
+      default: 10
+    }
+  };
+}
 
 export function resolveConfigPath(configPath: string | undefined, cwd: string) {
   if (!configPath) {
@@ -55,6 +57,7 @@ export function resolveConfigPath(configPath: string | undefined, cwd: string) {
 
 export async function loadConfig(configPath: string | undefined, cwd: string): Promise<MctConfig> {
   const resolvedPath = resolveConfigPath(configPath, cwd);
+  const defaultConfig = createDefaultConfig();
 
   try {
     await access(resolvedPath);
@@ -80,4 +83,10 @@ export async function loadConfig(configPath: string | undefined, cwd: string): P
       ...parsed.timeout
     }
   };
+}
+
+export async function writeConfig(configPath: string | undefined, cwd: string, config: MctConfig) {
+  const resolvedPath = resolveConfigPath(configPath, cwd);
+  await mkdir(path.dirname(resolvedPath), { recursive: true });
+  await writeFile(resolvedPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }

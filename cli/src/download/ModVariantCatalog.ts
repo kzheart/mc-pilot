@@ -50,6 +50,12 @@ export function getDefaultVariant(catalog: ModVariantCatalog) {
   return findVariant(catalog, catalog.defaultVariant);
 }
 
+export function findVariantByVersionAndLoader(catalog: ModVariantCatalog, minecraftVersion: string, loader: ModVariant["loader"]) {
+  return catalog.variants.find(
+    (variant) => variant.minecraftVersion === minecraftVersion && variant.loader === loader
+  );
+}
+
 export function getBuildableFabricVariants(catalog: ModVariantCatalog) {
   return sortVariants(
     catalog.variants.filter(
@@ -60,4 +66,8 @@ export function getBuildableFabricVariants(catalog: ModVariantCatalog) {
 
 export function getSupportedMinecraftVersions(catalog: ModVariantCatalog) {
   return [...new Set(catalog.variants.map((variant) => variant.minecraftVersion))].sort(compareVersions).reverse();
+}
+
+export function getModArtifactFileName(variant: ModVariant) {
+  return `mct-client-mod-${variant.id}.jar`;
 }

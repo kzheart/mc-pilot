@@ -28,12 +28,14 @@ interface CliResult {
 }
 
 const NON_REQUEST_LEAF_COMMANDS = [
+  "client download",
   "client search",
   "client launch",
   "client list",
   "client stop",
   "client wait-ready",
   "config-show",
+  "server download",
   "server search",
   "server start",
   "server status",

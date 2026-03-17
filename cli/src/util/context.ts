@@ -1,6 +1,6 @@
 import process from "node:process";
 
-import { loadConfig, type MctConfig } from "./config.js";
+import { loadConfig, resolveConfigPath, type MctConfig } from "./config.js";
 import { type OutputMode } from "./output.js";
 import { resolveStateDir, StateStore } from "./state.js";
 
@@ -13,6 +13,7 @@ export interface GlobalOptions {
 
 export interface CommandContext {
   cwd: string;
+  configPath: string;
   config: MctConfig;
   state: StateStore;
   outputMode: OutputMode;
@@ -20,11 +21,13 @@ export interface CommandContext {
 
 export async function createCommandContext(options: GlobalOptions): Promise<CommandContext> {
   const cwd = process.cwd();
-  const config = await loadConfig(options.config, cwd);
+  const configPath = resolveConfigPath(options.config, cwd);
+  const config = await loadConfig(configPath, cwd);
   const state = new StateStore(resolveStateDir(options.stateDir, cwd));
 
   return {
     cwd,
+    configPath,
     config,
     state,
     outputMode: options.human ? "human" : "json"
