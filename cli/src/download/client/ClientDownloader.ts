@@ -6,7 +6,7 @@ import type { CommandContext } from "../../util/context.js";
 import { DEFAULT_WS_PORT_BASE, loadConfig, writeConfig } from "../../util/config.js";
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
-import { copyFileIfMissing } from "../DownloadUtils.js";
+import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
 import { detectJava } from "../JavaDetector.js";
 import {
   findVariantByVersionAndLoader,
@@ -16,6 +16,9 @@ import {
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
 import { prepareManagedFabricRuntime } from "./FabricRuntimeDownloader.js";
+
+const GITHUB_RELEASE_BASE_URL =
+  process.env.MCT_MOD_DOWNLOAD_BASE_URL || "https://github.com/kzheart/mc-pilot/releases/download";
 
 export interface DownloadClientOptions {
   loader?: LoaderType;
@@ -65,41 +68,52 @@ function ensureSupportedVariant(variant: ModVariant) {
   }
 }
 
-async function resolveLocalArtifact(context: CommandContext, variant: ModVariant, cacheManager: CacheManager) {
+async function resolveArtifact(
+  context: CommandContext,
+  variant: ModVariant,
+  cacheManager: CacheManager,
+  fetchImpl: typeof fetch = fetch
+) {
   const artifactFileName = getModArtifactFileName(variant);
   const gradleModule = (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
   const buildArtifactPath = path.join(context.cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
+  // 1. Check local build artifact
   try {
     await access(buildArtifactPath);
     await copyFileIfMissing(buildArtifactPath, cacheArtifactPath);
-    return {
-      sourcePath: buildArtifactPath,
-      cachePath: cacheArtifactPath,
-      artifactFileName
-    };
-  } catch {
-    try {
-      await access(cacheArtifactPath);
-      return {
-        sourcePath: cacheArtifactPath,
-        cachePath: cacheArtifactPath,
-        artifactFileName
-      };
-    } catch {
-      throw new MctError(
-        {
-          code: "ARTIFACT_NOT_FOUND",
-          message: `Missing local build artifact for ${variant.id}`,
-          details: {
-            expectedBuildArtifact: buildArtifactPath,
-            expectedCacheArtifact: cacheArtifactPath
-          }
-        },
-        4
-      );
-    }
+    return { sourcePath: buildArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "local-build" as const };
+  } catch {}
+
+  // 2. Check cache
+  try {
+    await access(cacheArtifactPath);
+    return { sourcePath: cacheArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "cache" as const };
+  } catch {}
+
+  // 3. Download from GitHub Releases
+  const modVersion = variant.modVersion ?? "0.1.0";
+  const releaseTag = `v${modVersion}`;
+  const downloadUrl = `${GITHUB_RELEASE_BASE_URL}/${releaseTag}/${artifactFileName}`;
+
+  try {
+    await downloadFile(downloadUrl, cacheArtifactPath, fetchImpl);
+    return { sourcePath: cacheArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "github-release" as const };
+  } catch (error) {
+    throw new MctError(
+      {
+        code: "ARTIFACT_NOT_FOUND",
+        message: `Could not find mod artifact for ${variant.id}. Tried local build, cache, and GitHub Releases.`,
+        details: {
+          localBuild: buildArtifactPath,
+          cache: cacheArtifactPath,
+          downloadUrl,
+          downloadError: error instanceof Error ? error.message : String(error)
+        }
+      },
+      4
+    );
   }
 }
 
@@ -256,7 +270,7 @@ export async function downloadClientMod(
   ensureSupportedVariant(variant);
   const java = await ensureJavaReady(variant, detectJavaImpl, options.java);
 
-  const artifact = await resolveLocalArtifact(context, variant, cacheManager);
+  const artifact = await resolveArtifact(context, variant, cacheManager, fetchImpl);
   const clientRootDir = path.resolve(context.cwd, options.dir ?? "./client");
   const minecraftDir = path.join(clientRootDir, "minecraft");
   const modsDir = path.join(minecraftDir, "mods");
