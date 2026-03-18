@@ -351,26 +351,26 @@ function parseMaxMemory(value) {
 // See: https://github.com/HMCL-dev/HMCL (HMCL/src/main/java/org/jackhuang/hmcl/util/NativePatcher.java)
 const LWJGL_ARM64_PATCH = {
   patchVersion: "3.3.1",
-  // Java JARs (classpath entries) — sha1 left empty to skip strict validation
+  // Java JARs (classpath entries) — with real sha1 so checkLibraries passes without re-download
   jars: {
-    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", sha1: "", size: 0 },
+    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", sha1: "ae58664f88e18a9bb2c77b063833ca7aaec484cb", size: 0 },
+    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1.jar", sha1: "a817bcf213db49f710603677457567c37d53e103", size: 0 },
+    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1.jar", sha1: "2623a6b8ae1dfcd880738656a9f0243d2e6840bd", size: 0 },
+    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1.jar", sha1: "831a5533a21a5f4f81bbc51bb13e9899319b5411", size: 0 },
+    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1.jar", sha1: "b119297cf8ed01f247abe8685857f8e7fcf5980f", size: 0 },
+    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", url: "https://repo1.maven.org/maven2/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1.jar", sha1: "0ff1914111ef2e3e0110ef2dabc8d8cdaad82347", size: 0 },
     // glfw uses community patch jar for arm64 compat (same as HMCL)
-    "org.lwjgl:lwjgl-glfw": { path: "org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", url: "https://repo1.maven.org/maven2/org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", sha1: "", size: 0 }
+    "org.lwjgl:lwjgl-glfw": { path: "org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", url: "https://repo1.maven.org/maven2/org/glavo/hmcl/mmachina/lwjgl-glfw/3.3.1-mmachina.1/lwjgl-glfw-3.3.1-mmachina.1.jar", sha1: "e9a101bca4fa30d26b21b526ff28e7c2d8927f1b", size: 0 }
   },
-  // Native JARs — sha1 empty to skip validation
+  // Native JARs — with real sha1
   natives: {
-    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 },
-    "org.lwjgl:lwjgl-glfw": { path: "org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", sha1: "", size: 0 }
+    "org.lwjgl:lwjgl": { path: "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-macos-arm64.jar", sha1: "71d0d5e469c9c95351eb949064497e3391616ac9", size: 0 },
+    "org.lwjgl:lwjgl-jemalloc": { path: "org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-jemalloc/3.3.1/lwjgl-jemalloc-3.3.1-natives-macos-arm64.jar", sha1: "e577b87d8ad2ade361aaea2fcf226c660b15dee8", size: 0 },
+    "org.lwjgl:lwjgl-openal": { path: "org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-openal/3.3.1/lwjgl-openal-3.3.1-natives-macos-arm64.jar", sha1: "23d55e7490b57495320f6c9e1936d78fd72c4ef8", size: 0 },
+    "org.lwjgl:lwjgl-opengl": { path: "org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-opengl/3.3.1/lwjgl-opengl-3.3.1-natives-macos-arm64.jar", sha1: "eafe34b871d966292e8db0f1f3d6b8b110d4e91d", size: 0 },
+    "org.lwjgl:lwjgl-stb": { path: "org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-stb/3.3.1/lwjgl-stb-3.3.1-natives-macos-arm64.jar", sha1: "fcf073ed911752abdca5f0b00a53cfdf17ff8e8b", size: 0 },
+    "org.lwjgl:lwjgl-tinyfd": { path: "org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-tinyfd/3.3.1/lwjgl-tinyfd-3.3.1-natives-macos-arm64.jar", sha1: "972ecc17bad3571e81162153077b4d47b7b9eaa9", size: 0 },
+    "org.lwjgl:lwjgl-glfw": { path: "org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", url: "https://libraries.minecraft.net/org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar", sha1: "cac0d3f712a3da7641fa174735a5f315de7ffe0a", size: 0 }
   }
 };
 
@@ -535,9 +535,6 @@ async function launchXmclManagedClient(options) {
     for (const fn of LaunchPrecheck.DEFAULT_PRECHECKS) {
       if (fn === LaunchPrecheck.checkNatives) {
         continue; // skip — we already extracted arm64 natives
-      }
-      if (fn === LaunchPrecheck.checkLibraries) {
-        continue; // skip — our patched 3.3.1 libs have empty sha1, let MC load them directly
       }
       prechecks.push(fn);
       if (fn === LaunchPrecheck.checkVersion) {
