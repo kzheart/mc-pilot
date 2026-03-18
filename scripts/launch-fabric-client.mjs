@@ -566,8 +566,11 @@ async function launchXmclManagedClient(options) {
     ...(serverHost
       ? {
           quickPlayMultiplayer: createQuickPlayMultiplayer(serverHost, Number.parseInt(serverPort, 10)),
-          // Legacy fallback for MC < 1.20 that ignores --quickPlayMultiplayer
-          extraMCArgs: ["--server", serverHost, "--port", serverPort]
+          // Legacy fallback for MC < 1.19.1 that ignores --quickPlayMultiplayer.
+          // Don't pass both to 1.19.1+ to avoid "Attempt to connect while already connecting".
+          extraMCArgs: versionId.startsWith("1.18.") || versionId.startsWith("1.12.")
+            ? ["--server", serverHost, "--port", serverPort]
+            : []
         }
       : {}),
     extraExecOption: {
