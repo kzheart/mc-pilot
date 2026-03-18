@@ -338,7 +338,7 @@ async function main() {
 
     try {
       await logLine(`variant start variant=${entry.variantId}`);
-      const environment = await prepareVersionEnvironment(entry, 25560 + index, logLine);
+      const environment = await prepareVersionEnvironment(entry, 25580 + index, logLine);
       versionRecord.prepare = {
         wsPort: environment.wsPort,
         configPath: environment.paths.configPath,
