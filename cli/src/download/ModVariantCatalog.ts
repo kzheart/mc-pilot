@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import type { ModVariantCatalog, ModVariant } from "./types.js";
 
-const DEFAULT_VARIANTS_PATH = fileURLToPath(new URL("../../../client-mod/variants.json", import.meta.url));
+const DEFAULT_VARIANTS_PATH = fileURLToPath(new URL("../../data/variants.json", import.meta.url));
 
 function compareVersions(left: string, right: string) {
   const leftParts = left.split(".").map((value) => Number.parseInt(value, 10));

@@ -1,9 +1,37 @@
 {
   "name": "mc-pilot",
   "version": "0.1.0",
+  "description": "Minecraft plugin/mod automated testing CLI – control a real Minecraft client to simulate player actions",
   "type": "module",
   "bin": {
     "mct": "./bin/mct"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "data/",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*.e2e.test.js",
+    "!dist/**/*.e2e.test.d.ts"
+  ],
+  "keywords": [
+    "minecraft",
+    "testing",
+    "automation",
+    "fabric",
+    "plugin",
+    "mod",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kzheart/mc-pilot.git",
+    "directory": "cli"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
