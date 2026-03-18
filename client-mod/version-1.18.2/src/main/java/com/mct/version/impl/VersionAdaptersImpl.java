@@ -105,24 +105,24 @@ public final class VersionAdaptersImpl {
 
             @Override
             public Map<String, Object> accept(MinecraftClient client, ClientStateTracker stateTracker) {
-                requireServerInfo(client).setResourcePackPolicy(ServerInfo.ResourcePackPolicy.ENABLED);
-                stateTracker.recordResourcePackState("enabled", 0);
+                if (client.currentScreen != null) {
+                    ServerInfo si = client.getCurrentServerEntry();
+                    if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.ENABLED);
+                    client.setScreen(null);
+                }
+                stateTracker.recordResourcePackState("allowed", 0);
                 return stateTracker.getResourcePackState();
             }
 
             @Override
             public Map<String, Object> reject(MinecraftClient client, ClientStateTracker stateTracker) {
-                requireServerInfo(client).setResourcePackPolicy(ServerInfo.ResourcePackPolicy.DISABLED);
-                stateTracker.recordResourcePackState("disabled", 0);
-                return stateTracker.getResourcePackState();
-            }
-
-            private ServerInfo requireServerInfo(MinecraftClient client) {
-                ServerInfo si = client.getCurrentServerEntry();
-                if (si == null) {
-                    throw new ActionException("INVALID_STATE");
+                if (client.currentScreen != null) {
+                    ServerInfo si = client.getCurrentServerEntry();
+                    if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.PROMPT);
+                    client.setScreen(null);
                 }
-                return si;
+                stateTracker.recordResourcePackState("declined", 0);
+                return stateTracker.getResourcePackState();
             }
         };
     }
