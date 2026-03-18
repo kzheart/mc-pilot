@@ -77,15 +77,23 @@ public final class VersionAdaptersImpl {
             @Override
             public Map<String, Object> status(MinecraftClient client, ClientStateTracker stateTracker) {
                 if (client.currentScreen != null) {
-                    String screenClass = client.currentScreen.getClass().getSimpleName();
-                    String title = client.currentScreen.getTitle() != null
-                        ? client.currentScreen.getTitle().getString() : "";
-                    if (screenClass.contains("Confirm") || title.toLowerCase(java.util.Locale.ROOT).contains("resource pack")) {
+                    String screenFullClass = client.currentScreen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+                    net.minecraft.text.Text titleText = client.currentScreen.getTitle();
+                    String title = titleText != null ? titleText.getString().toLowerCase(java.util.Locale.ROOT) : "";
+                    if (screenFullClass.contains("resource") || screenFullClass.contains("confirm")
+                            || title.contains("resource pack") || title.contains("server pack")) {
                         stateTracker.recordResourcePackState("pending", 1);
                         return stateTracker.getResourcePackState();
                     }
                 }
-                ServerInfo si = requireServerInfo(client);
+                Map<String, Object> current = stateTracker.getResourcePackState();
+                if ("pending".equals(current.get("acceptanceStatus"))) {
+                    return current;
+                }
+                ServerInfo si = client.getCurrentServerEntry();
+                if (si == null) {
+                    return stateTracker.getResourcePackState();
+                }
                 String s = switch (si.getResourcePackPolicy()) {
                     case ENABLED -> "enabled";
                     case DISABLED -> "disabled";
