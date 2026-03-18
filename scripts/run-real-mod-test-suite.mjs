@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { appendFile, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 
 import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
+import { DEFAULT_WS_PORT_BASE } from "../cli/dist/util/config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,9 +22,9 @@ const RUNNER_PATH = path.join(ROOT_DIR, "scripts", "real-mod-full-test.mjs");
 const CLIENT_MOD_DIR = path.join(ROOT_DIR, "client-mod");
 const MATRIX_ROOT = path.join(ROOT_DIR, "tmp", "real-e2e", "matrix");
 const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
-// Shared cache dir: server JARs and client runtime are cached globally
-const GLOBAL_CACHE_DIR = path.join(process.env.HOME, ".minecraft-auto-test");
-const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "servers");
+// Shared cache dir: use CLI's cache hierarchy
+const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(process.env.HOME, ".mct", "cache");
+const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "server");
 const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
@@ -186,10 +187,10 @@ function getVersionPaths(variantId, minecraftVersion, serverType) {
     reportDir: path.join(rootDir, "reports"),
     screenshotDir: path.join(rootDir, "screenshots"),
     // Server: cached globally by type+version (same server jar for all runs)
-    serverDir: path.join(SHARED_SERVERS_DIR, `${serverType ?? "vanilla"}-${minecraftVersion ?? variantId}`),
+    serverDir: path.join(SHARED_SERVERS_DIR, `${serverType ?? "vanilla"}`, minecraftVersion ?? variantId),
     // Client runtime: cached globally per MC version (libraries, assets, version JARs).
     // The mod JAR is always freshly copied in from the local build artifact.
-    clientDir: path.join(GLOBAL_CACHE_DIR, "client-runtime", minecraftVersion ?? variantId)
+    clientDir: path.join(GLOBAL_CACHE_DIR, "client", "runtime", minecraftVersion ?? variantId)
   };
 }
 
@@ -227,20 +228,13 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
       "--version",
       entry.minecraftVersion,
       "--dir",
-      paths.serverDir
+      paths.serverDir,
+      ...(entry.serverType !== "vanilla" ? ["--fixtures", FIXTURE_PLUGIN_JAR] : [])
     ]
   );
   const serverPayload = parseJsonMaybe(serverDownload.stdout) ?? parseJsonMaybe(serverDownload.stderr);
   if (!serverDownload.ok || serverPayload?.success !== true) {
     throw new Error(`Failed to download server for ${entry.variantId}: ${serverDownload.stderr || serverDownload.stdout}`);
-  }
-
-  // Install fixture plugin into server's plugins/ directory
-  if (entry.serverType !== "vanilla") {
-    const pluginsDir = path.join(paths.serverDir, "plugins");
-    await mkdir(pluginsDir, { recursive: true });
-    await copyFile(FIXTURE_PLUGIN_JAR, path.join(pluginsDir, path.basename(FIXTURE_PLUGIN_JAR)));
-    await logLine(`fixture plugin installed variant=${entry.variantId}`);
   }
 
   await logLine(`client download start variant=${entry.variantId} wsPort=${wsPort}`);
@@ -338,7 +332,7 @@ async function main() {
 
     try {
       await logLine(`variant start variant=${entry.variantId}`);
-      const environment = await prepareVersionEnvironment(entry, 25580 + index, logLine);
+      const environment = await prepareVersionEnvironment(entry, DEFAULT_WS_PORT_BASE + index, logLine);
       versionRecord.prepare = {
         wsPort: environment.wsPort,
         configPath: environment.paths.configPath,

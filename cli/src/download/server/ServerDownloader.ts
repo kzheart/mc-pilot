@@ -40,6 +40,7 @@ export interface DownloadServerOptions {
   version?: string;
   build?: string;
   dir?: string;
+  fixtures?: string;
 }
 
 export interface DownloadServerDependencies {
@@ -261,6 +262,13 @@ export async function downloadServerJar(
   const targetDir = path.resolve(context.cwd, options.dir ?? context.config.server.dir);
   const targetJarPath = path.join(targetDir, spec.fileName);
   await copyFileIfMissing(cachePath, targetJarPath);
+
+  if (options.fixtures) {
+    const fixturesPath = path.resolve(context.cwd, options.fixtures);
+    const pluginsDir = path.join(targetDir, "plugins");
+    await mkdir(pluginsDir, { recursive: true });
+    await copyFileIfMissing(fixturesPath, path.join(pluginsDir, path.basename(fixturesPath)));
+  }
 
   const latestConfig = await loadConfig(context.configPath, context.cwd);
   latestConfig.server.jar = path.relative(context.cwd, targetJarPath);

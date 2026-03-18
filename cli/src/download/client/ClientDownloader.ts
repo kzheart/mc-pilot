@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 import type { CommandContext } from "../../util/context.js";
-import { loadConfig, writeConfig } from "../../util/config.js";
+import { DEFAULT_WS_PORT_BASE, loadConfig, writeConfig } from "../../util/config.js";
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing } from "../DownloadUtils.js";
@@ -279,7 +279,7 @@ export async function downloadClientMod(
   latestConfig.clients[clientName] = {
     ...configuredClient,
     version: variant.minecraftVersion,
-    wsPort: options.wsPort ?? configuredClient.wsPort ?? 25560,
+    wsPort: options.wsPort ?? configuredClient.wsPort ?? DEFAULT_WS_PORT_BASE,
     server: options.server ?? configuredClient.server ?? "localhost:25565",
     workingDir: path.relative(context.cwd, minecraftDir) || ".",
     env: {

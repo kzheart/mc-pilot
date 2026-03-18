@@ -85,7 +85,7 @@ test("downloadClientMod copies a local variant jar and writes client config", as
       }>;
     };
     assert.equal(config.clients.default.version, "1.20.4");
-    assert.equal(config.clients.default.wsPort, 25560);
+    assert.equal(config.clients.default.wsPort, 25580);
     assert.equal(config.clients.default.server, "localhost:25565");
     assert.equal(config.clients.default.workingDir, "downloaded-client/minecraft");
     assert.equal(config.clients.default.env.MCT_CLIENT_MOD_VARIANT, "1.20.4-fabric");

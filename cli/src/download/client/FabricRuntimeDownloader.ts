@@ -8,6 +8,7 @@ import { Agent, interceptors } from "undici";
 
 import { MctError } from "../../util/errors.js";
 import type { ModVariant } from "../types.js";
+import { applyArm64LwjglPatch } from "./Arm64LwjglPatcher.js";
 
 export interface PrepareFabricRuntimeDependencies {
   fetchImpl?: typeof fetch;
@@ -116,6 +117,8 @@ export async function prepareManagedFabricRuntime(
     assetsDownloadConcurrency: 2,
     librariesDownloadConcurrency: 2
   });
+
+  await applyArm64LwjglPatch(runtimeRootDir, versionId, { fetchImpl });
 
   return {
     runtimeRootDir,

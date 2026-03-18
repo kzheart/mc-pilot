@@ -32,8 +32,9 @@ export function createServerCommand() {
     .option("--version <version>", "Minecraft 版本")
     .option("--build <build>", "指定构建号")
     .option("--dir <path>", "下载目标目录")
+    .option("--fixtures <path>", "fixture 插件 jar 路径，自动复制到 plugins/")
     .action(
-      wrapCommand(async (context, { options }: { options: { type?: ServerType; version?: string; build?: string; dir?: string } }) => {
+      wrapCommand(async (context, { options }: { options: { type?: ServerType; version?: string; build?: string; dir?: string; fixtures?: string } }) => {
         return downloadServerJar(context, options);
       })
     );

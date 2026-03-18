@@ -1,6 +1,8 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+export const DEFAULT_WS_PORT_BASE = 25580;
+
 export interface MctConfig {
   server: {
     jar?: string;
