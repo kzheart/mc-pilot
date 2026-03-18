@@ -3,14 +3,14 @@ import { Command } from "commander";
 import { createRequestAction } from "./request-helpers.js";
 
 export function createSignCommand() {
-  const command = new Command("sign").description("告示牌操作");
+  const command = new Command("sign").description("Sign block operations (reads/writes directly, no GUI interaction needed)");
 
   command
     .command("read")
-    .description("读取告示牌")
-    .argument("<x>")
-    .argument("<y>")
-    .argument("<z>")
+    .description("Read sign text")
+    .argument("<x>", "X coordinate")
+    .argument("<y>", "Y coordinate")
+    .argument("<z>", "Z coordinate")
     .action(
       createRequestAction("sign.read", ({ args }) => ({
         x: Number(args[0]),
@@ -21,11 +21,11 @@ export function createSignCommand() {
 
   command
     .command("edit")
-    .description("编辑告示牌")
-    .argument("<x>")
-    .argument("<y>")
-    .argument("<z>")
-    .requiredOption("--lines <lines...>", "四行文本")
+    .description("Edit sign text")
+    .argument("<x>", "X coordinate")
+    .argument("<y>", "Y coordinate")
+    .argument("<z>", "Z coordinate")
+    .requiredOption("--lines <lines...>", "Four lines of text, e.g. --lines \"Line 1\" \"Line 2\" \"Line 3\" \"Line 4\"")
     .action(
       createRequestAction("sign.edit", ({ args, options }) => ({
         x: Number(args[0]),

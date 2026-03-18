@@ -17,10 +17,10 @@ export type CommandAction<TOptions = Record<string, unknown>> = (
 
 export function attachGlobalOptions(command: Command) {
   return command
-    .option("--human", "输出人类可读格式")
-    .option("--config <path>", "指定配置文件路径")
-    .option("--state-dir <path>", "指定状态目录")
-    .option("--client <name>", "指定客户端名称");
+    .option("--human", "Human-readable output (default: JSON)")
+    .option("--config <path>", "Config file path (default: ./mct.config.json)")
+    .option("--state-dir <path>", "State directory (default: ./.mct-state/)")
+    .option("--client <name>", "Target client name (required when multiple clients are running)");
 }
 
 export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandAction<TOptions>) {

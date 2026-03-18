@@ -8,13 +8,13 @@ import { createRequestAction } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
 
 export function createClientCommand() {
-  const command = new Command("client").description("管理 Minecraft 客户端");
+  const command = new Command("client").description("Manage Minecraft client");
 
   command
     .command("search")
-    .description("搜索可用客户端版本与 Loader 组合")
-    .option("--loader <loader>", "客户端 Loader：fabric|forge|neoforge")
-    .option("--version <version>", "Minecraft 版本")
+    .description("Search available client version and loader combinations")
+    .option("--loader <loader>", "Client loader: fabric|forge|neoforge")
+    .option("--version <version>", "Minecraft version")
     .action(
       wrapCommand(async (_context, { options }: { options: { loader?: ClientLoader; version?: string } }) => {
         return {
@@ -28,18 +28,18 @@ export function createClientCommand() {
 
   command
     .command("download")
-    .description("下载客户端 Mod 变体并更新配置")
-    .option("--loader <loader>", "客户端 Loader：fabric|forge|neoforge")
-    .option("--version <version>", "Minecraft 版本")
-    .option("--dir <path>", "Mod 下载目录")
-    .option("--name <name>", "客户端配置名称")
-    .option("--ws-port <port>", "客户端 WebSocket 端口", Number)
-    .option("--server <address>", "默认服务器地址")
-    .option("--instance-dir <path>", "客户端实例目录")
-    .option("--meta-dir <path>", "运行时元数据目录")
-    .option("--libraries-dir <path>", "运行时库目录")
-    .option("--assets-dir <path>", "运行时资源目录")
-    .option("--natives-dir <path>", "运行时本地库目录")
+    .description("Download client mod and update config")
+    .option("--loader <loader>", "Client loader: fabric|forge|neoforge (default: fabric)")
+    .option("--version <version>", "Minecraft version (default: 1.20.4)")
+    .option("--dir <path>", "Mod download directory")
+    .option("--name <name>", "Client config name (default: \"default\"); use this name with \"client launch\"")
+    .option("--ws-port <port>", "WebSocket port for CLI-to-mod communication (default: 25560)", Number)
+    .option("--server <address>", "Default server address (e.g. localhost:25565)")
+    .option("--instance-dir <path>", "Client instance directory")
+    .option("--meta-dir <path>", "Runtime metadata directory")
+    .option("--libraries-dir <path>", "Runtime libraries directory")
+    .option("--assets-dir <path>", "Runtime assets directory")
+    .option("--natives-dir <path>", "Runtime natives directory")
     .action(
       wrapCommand(
         async (
@@ -69,13 +69,13 @@ export function createClientCommand() {
 
   command
     .command("launch")
-    .description("启动客户端")
-    .argument("<name>", "客户端名称")
-    .option("--version <version>", "Minecraft 版本")
-    .option("--server <address>", "目标服务器地址")
-    .option("--account <account>", "离线用户名或账号标识")
-    .option("--ws-port <port>", "客户端 WebSocket 端口", Number)
-    .option("--headless", "以无头模式启动")
+    .description("Launch a client instance")
+    .argument("<name>", "Client name (matches a key in config \"clients\", e.g. \"default\")")
+    .option("--version <version>", "Minecraft version")
+    .option("--server <address>", "Target server address (e.g. localhost:25565)")
+    .option("--account <account>", "Offline username or account identifier")
+    .option("--ws-port <port>", "WebSocket port (default: 25560)", Number)
+    .option("--headless", "Launch in headless mode (window hidden)")
     .action(
       wrapCommand(async (context, { args, options }) => {
         const manager = new ClientManager(context);
@@ -88,8 +88,8 @@ export function createClientCommand() {
 
   command
     .command("stop")
-    .description("停止客户端")
-    .argument("<name>", "客户端名称")
+    .description("Stop a client instance")
+    .argument("<name>", "Client name")
     .action(
       wrapCommand(async (context, { args }) => {
         const manager = new ClientManager(context);
@@ -99,7 +99,7 @@ export function createClientCommand() {
 
   command
     .command("list")
-    .description("列出客户端状态")
+    .description("List all client instances and their status")
     .action(
       wrapCommand(async (context) => {
         const manager = new ClientManager(context);
@@ -109,9 +109,9 @@ export function createClientCommand() {
 
   command
     .command("wait-ready")
-    .description("等待客户端 WebSocket 就绪")
-    .argument("<name>", "客户端名称")
-    .option("--timeout <seconds>", "等待超时秒数", Number)
+    .description("Wait until client WebSocket is connected")
+    .argument("<name>", "Client name")
+    .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       wrapCommand(async (context, { args, options }) => {
         const manager = new ClientManager(context);
@@ -124,8 +124,8 @@ export function createClientCommand() {
 
   command
     .command("reconnect")
-    .description("让当前客户端重新连接到服务器")
-    .option("--address <address>", "目标服务器地址，默认使用启动配置中的 server")
+    .description("Reconnect the client to the server")
+    .option("--address <address>", "Target server address (default: from launch config)")
     .action(
       createRequestAction("client.reconnect", ({ options }) => ({
         address: options.address

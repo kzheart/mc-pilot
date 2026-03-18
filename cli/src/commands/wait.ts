@@ -4,13 +4,13 @@ import { createRequestAction, withTransportTimeoutBuffer } from "./request-helpe
 
 export function createWaitCommand() {
   return new Command("wait")
-    .description("等待与同步")
-    .argument("[seconds]", "等待秒数")
-    .option("--ticks <ticks>", "等待 tick 数", Number)
-    .option("--until-health-above <value>", "等待生命值高于指定值", Number)
-    .option("--until-gui-open", "等待 GUI 打开")
-    .option("--until-on-ground", "等待落地")
-    .option("--timeout <seconds>", "等待超时秒数", Number)
+    .description("Wait and synchronization")
+    .argument("[seconds]", "Wait for a number of seconds")
+    .option("--ticks <ticks>", "Wait for a number of game ticks", Number)
+    .option("--until-health-above <value>", "Wait until health is above this value", Number)
+    .option("--until-gui-open", "Wait until a GUI opens")
+    .option("--until-on-ground", "Wait until the player is on the ground")
+    .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       createRequestAction(
         "wait.perform",

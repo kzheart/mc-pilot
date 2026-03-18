@@ -3,21 +3,21 @@ import { Command } from "commander";
 import { createRequestAction } from "./request-helpers.js";
 
 export function createBookCommand() {
-  const command = new Command("book").description("书本操作");
+  const command = new Command("book").description("Book and quill operations (must hold a writable book)");
 
-  command.command("read").description("读取书本").action(createRequestAction("book.read", () => ({})));
+  command.command("read").description("Read book contents").action(createRequestAction("book.read", () => ({})));
 
   command
     .command("write")
-    .description("写入书本页面")
-    .requiredOption("--pages <pages...>", "页面列表")
+    .description("Write book pages")
+    .requiredOption("--pages <pages...>", "Page contents, e.g. --pages \"Page 1 text\" \"Page 2 text\"")
     .action(createRequestAction("book.write", ({ options }) => ({ pages: options.pages })));
 
   command
     .command("sign")
-    .description("签名书本")
-    .requiredOption("--title <title>", "书名")
-    .requiredOption("--author <author>", "作者")
+    .description("Sign and close the book")
+    .requiredOption("--title <title>", "Book title")
+    .requiredOption("--author <author>", "Author name")
     .action(
       createRequestAction("book.sign", ({ options }) => ({
         title: options.title,

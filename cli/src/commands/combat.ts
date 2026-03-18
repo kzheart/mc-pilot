@@ -3,18 +3,24 @@ import { Command } from "commander";
 import { buildEntityFilter, createRequestAction, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createCombatCommand() {
-  const command = new Command("combat").description("战斗组合操作");
+  const command = new Command("combat").description("Combat combo operations");
+
+  const combatActionLabels = {
+    kill: "Attack target repeatedly until it dies",
+    engage: "Approach and attack target once",
+    chase: "Chase target without attacking"
+  } as const;
 
   for (const actionName of ["kill", "engage", "chase"] as const) {
     command
       .command(actionName)
-      .description(`${actionName} 目标实体`)
-      .option("--type <type>", "实体类型")
-      .option("--name <name>", "实体名称")
-      .option("--nearest", "使用最近实体")
-      .option("--id <id>", "实体 ID", Number)
-      .option("--max-distance <distance>", "最大距离", Number)
-      .option("--timeout <seconds>", "超时秒数", Number)
+      .description(combatActionLabels[actionName])
+      .option("--type <type>", "Entity type (e.g. zombie, skeleton)")
+      .option("--name <name>", "Entity custom name")
+      .option("--nearest", "Target the nearest matching entity")
+      .option("--id <id>", "Entity network ID", Number)
+      .option("--max-distance <distance>", "Max search distance in blocks", Number)
+      .option("--timeout <seconds>", "Timeout in seconds (default: 30)", Number)
       .action(
         createRequestAction(
           `combat.${actionName}`,
@@ -30,10 +36,10 @@ export function createCombatCommand() {
 
   command
     .command("clear")
-    .description("清理范围内指定类型实体")
-    .requiredOption("--type <type>", "实体类型")
-    .option("--radius <radius>", "范围半径", Number)
-    .option("--timeout <seconds>", "超时秒数", Number)
+    .description("Kill all entities of a type within radius")
+    .requiredOption("--type <type>", "Entity type (e.g. zombie)")
+    .option("--radius <radius>", "Search radius in blocks (default: 16)", Number)
+    .option("--timeout <seconds>", "Timeout in seconds (default: 60)", Number)
     .action(
       createRequestAction(
         "combat.clear",
@@ -49,9 +55,9 @@ export function createCombatCommand() {
 
   command
     .command("pickup")
-    .description("拾取范围内掉落物")
-    .option("--radius <radius>", "拾取半径", Number)
-    .option("--timeout <seconds>", "超时秒数", Number)
+    .description("Pick up nearby dropped items")
+    .option("--radius <radius>", "Pickup radius in blocks (default: 5)", Number)
+    .option("--timeout <seconds>", "Timeout in seconds (default: 10)", Number)
     .action(
       createRequestAction(
         "combat.pickup",

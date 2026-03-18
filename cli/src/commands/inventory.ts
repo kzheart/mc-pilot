@@ -3,35 +3,35 @@ import { Command } from "commander";
 import { createRequestAction } from "./request-helpers.js";
 
 export function createInventoryCommand() {
-  const command = new Command("inventory").description("背包与物品操作");
+  const command = new Command("inventory").description("Inventory and item operations");
 
-  command.command("get").description("获取完整背包").action(createRequestAction("inventory.get", () => ({})));
+  command.command("get").description("Get full inventory contents").action(createRequestAction("inventory.get", () => ({})));
 
   command
     .command("slot")
-    .description("获取指定槽位")
-    .argument("<slot>", "槽位编号")
+    .description("Get a specific inventory slot")
+    .argument("<slot>", "Slot index (0-8: hotbar, 9-35: main inventory)")
     .action(createRequestAction("inventory.slot", ({ args }) => ({ slot: Number(args[0]) })));
 
-  command.command("held").description("获取当前手持物品").action(createRequestAction("inventory.held", () => ({})));
+  command.command("held").description("Get currently held item").action(createRequestAction("inventory.held", () => ({})));
 
   command
     .command("hotbar")
-    .description("切换快捷栏")
-    .argument("<slot>", "快捷栏槽位")
+    .description("Switch active hotbar slot")
+    .argument("<slot>", "Hotbar slot (0-8)")
     .action(createRequestAction("inventory.hotbar", ({ args }) => ({ slot: Number(args[0]) })));
 
   command
     .command("drop")
-    .description("丢弃手持物品")
-    .option("--all", "丢弃整组")
+    .description("Drop the held item")
+    .option("--all", "Drop the entire stack")
     .action(createRequestAction("inventory.drop", ({ options }) => ({ all: Boolean(options.all) })));
 
-  command.command("use").description("使用手持物品").action(createRequestAction("inventory.use", () => ({})));
+  command.command("use").description("Use (right-click) the held item").action(createRequestAction("inventory.use", () => ({})));
 
   command
     .command("swap-hands")
-    .description("交换主副手")
+    .description("Swap main hand and off-hand items")
     .action(createRequestAction("inventory.swap-hands", () => ({})));
 
   return command;

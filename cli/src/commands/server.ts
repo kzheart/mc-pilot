@@ -7,13 +7,13 @@ import { wrapCommand } from "../util/command.js";
 import { ServerManager } from "../server/ServerManager.js";
 
 export function createServerCommand() {
-  const command = new Command("server").description("管理 Minecraft 服务端");
+  const command = new Command("server").description("Manage Minecraft server");
 
   command
     .command("search")
-    .description("搜索可用服务端版本")
-    .option("--type <type>", "服务端类型：vanilla|paper|purpur|spigot")
-    .option("--version <version>", "Minecraft 版本")
+    .description("Search available server versions")
+    .option("--type <type>", "Server type: vanilla|paper|purpur|spigot")
+    .option("--version <version>", "Minecraft version")
     .action(
       wrapCommand(async (_context, { options }: { options: { type?: ServerType; version?: string } }) => {
         return {
@@ -27,12 +27,12 @@ export function createServerCommand() {
 
   command
     .command("download")
-    .description("下载服务端 jar 并更新配置")
-    .option("--type <type>", "服务端类型：vanilla|paper|purpur|spigot")
-    .option("--version <version>", "Minecraft 版本")
-    .option("--build <build>", "指定构建号")
-    .option("--dir <path>", "下载目标目录")
-    .option("--fixtures <path>", "fixture 插件 jar 路径，自动复制到 plugins/")
+    .description("Download server jar and update config")
+    .option("--type <type>", "Server type: vanilla|paper|purpur|spigot")
+    .option("--version <version>", "Minecraft version")
+    .option("--build <build>", "Specific build number")
+    .option("--dir <path>", "Download target directory")
+    .option("--fixtures <path>", "Fixture plugin jar, auto-copied to plugins/")
     .action(
       wrapCommand(async (context, { options }: { options: { type?: ServerType; version?: string; build?: string; dir?: string; fixtures?: string } }) => {
         return downloadServerJar(context, options);
@@ -41,11 +41,11 @@ export function createServerCommand() {
 
   command
     .command("start")
-    .description("启动服务端")
-    .option("--jar <path>", "服务端 jar 路径")
-    .option("--dir <path>", "服务端目录")
-    .option("--port <number>", "服务端端口", Number)
-    .option("--eula", "自动同意 EULA")
+    .description("Start the server")
+    .option("--jar <path>", "Server jar path (default: from config server.jar)")
+    .option("--dir <path>", "Server directory (default: from config server.dir)")
+    .option("--port <number>", "Server port (default: 25565)", Number)
+    .option("--eula", "Auto-accept EULA")
     .action(
       wrapCommand(async (context, { options }) => {
         const manager = new ServerManager(context);
@@ -55,7 +55,7 @@ export function createServerCommand() {
 
   command
     .command("stop")
-    .description("停止服务端")
+    .description("Stop the server")
     .action(
       wrapCommand(async (context) => {
         const manager = new ServerManager(context);
@@ -65,7 +65,7 @@ export function createServerCommand() {
 
   command
     .command("status")
-    .description("查看服务端状态")
+    .description("Show server status")
     .action(
       wrapCommand(async (context) => {
         const manager = new ServerManager(context);
@@ -75,8 +75,8 @@ export function createServerCommand() {
 
   command
     .command("wait-ready")
-    .description("等待服务端端口可连接")
-    .option("--timeout <seconds>", "等待超时秒数", Number)
+    .description("Wait until server port is connectable")
+    .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       wrapCommand(async (context, { options }: { options: { timeout?: number } }) => {
         const manager = new ServerManager(context);

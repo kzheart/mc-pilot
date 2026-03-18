@@ -14,6 +14,7 @@ mct.config.json
 
 plan/
 issues/
+docs/
 
 client-mod/.architectury-transformer/
 client-mod/.gradle-user-home/

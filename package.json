@@ -1,5 +1,5 @@
 {
-  "name": "minecraft-auto-test",
+  "name": "mc-pilot",
   "private": true,
   "version": "0.1.0",
   "workspaces": [

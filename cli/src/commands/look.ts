@@ -3,14 +3,14 @@ import { Command } from "commander";
 import { buildEntityFilter, createRequestAction } from "./request-helpers.js";
 
 export function createLookCommand() {
-  const command = new Command("look").description("视角控制");
+  const command = new Command("look").description("Camera / view direction control");
 
   command
     .command("at")
-    .description("看向坐标")
-    .argument("<x>", "X 坐标")
-    .argument("<y>", "Y 坐标")
-    .argument("<z>", "Z 坐标")
+    .description("Look at coordinates")
+    .argument("<x>", "X coordinate")
+    .argument("<y>", "Y coordinate")
+    .argument("<z>", "Z coordinate")
     .action(
       createRequestAction("look.at", ({ args }) => ({
         x: Number(args[0]),
@@ -21,12 +21,12 @@ export function createLookCommand() {
 
   command
     .command("entity")
-    .description("看向实体")
-    .option("--type <type>", "实体类型")
-    .option("--name <name>", "实体名称")
-    .option("--nearest", "使用最近实体")
-    .option("--id <id>", "实体 ID", Number)
-    .option("--max-distance <distance>", "最大距离", Number)
+    .description("Look at an entity")
+    .option("--type <type>", "Entity type (e.g. zombie, villager)")
+    .option("--name <name>", "Entity custom name")
+    .option("--nearest", "Target the nearest matching entity")
+    .option("--id <id>", "Entity network ID", Number)
+    .option("--max-distance <distance>", "Max search distance in blocks", Number)
     .action(
       createRequestAction("look.entity", ({ options }) => ({
         filter: buildEntityFilter(options)
@@ -35,9 +35,9 @@ export function createLookCommand() {
 
   command
     .command("set")
-    .description("设置视角")
-    .requiredOption("--yaw <yaw>", "水平视角", Number)
-    .requiredOption("--pitch <pitch>", "俯仰视角", Number)
+    .description("Set camera angle directly")
+    .requiredOption("--yaw <yaw>", "Horizontal angle (-180 to 180: 0=south, -90=east, 90=west, ±180=north)", Number)
+    .requiredOption("--pitch <pitch>", "Vertical angle (-90=up, 0=horizon, 90=down)", Number)
     .action(
       createRequestAction("look.set", ({ options }) => ({
         yaw: options.yaw,

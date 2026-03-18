@@ -4,10 +4,10 @@ import { createRequestAction } from "./request-helpers.js";
 
 export function createScreenshotCommand() {
   return new Command("screenshot")
-    .description("截图")
-    .requiredOption("--output <path>", "输出路径")
-    .option("--region <region>", "区域截图，格式 x,y,w,h")
-    .option("--gui", "截取当前 GUI")
+    .description("Take a screenshot")
+    .requiredOption("--output <path>", "Output file path (e.g. ./screenshots/test.png)")
+    .option("--region <region>", "Capture a sub-region, format: x,y,w,h")
+    .option("--gui", "Capture the current GUI screen")
     .action(
       createRequestAction("capture.screenshot", ({ options }) => ({
         output: options.output,

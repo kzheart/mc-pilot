@@ -3,17 +3,23 @@ import { Command } from "commander";
 import { buildEntityFilter, createRequestAction } from "./request-helpers.js";
 
 export function createEntityCommand() {
-  const command = new Command("entity").description("实体交互");
+  const command = new Command("entity").description("Entity interaction");
+
+  const entityActionLabels = {
+    attack: "Attack an entity",
+    interact: "Interact with an entity (right-click)",
+    mount: "Mount an entity"
+  } as const;
 
   for (const actionName of ["attack", "interact", "mount"] as const) {
     command
       .command(actionName)
-      .description(`${actionName} 实体`)
-      .option("--type <type>", "实体类型")
-      .option("--name <name>", "实体名称")
-      .option("--nearest", "使用最近实体")
-      .option("--id <id>", "实体 ID", Number)
-      .option("--max-distance <distance>", "最大距离", Number)
+      .description(entityActionLabels[actionName])
+      .option("--type <type>", "Entity type (e.g. zombie, villager)")
+      .option("--name <name>", "Entity custom name")
+      .option("--nearest", "Target the nearest matching entity")
+      .option("--id <id>", "Entity network ID", Number)
+      .option("--max-distance <distance>", "Max search distance in blocks", Number)
       .action(
         createRequestAction(`entity.${actionName}`, ({ options }) => ({
           filter: buildEntityFilter(options)
@@ -23,30 +29,30 @@ export function createEntityCommand() {
 
   command
     .command("list")
-    .description("列出周围实体")
-    .option("--radius <radius>", "查询半径", Number)
+    .description("List nearby entities")
+    .option("--radius <radius>", "Search radius in blocks (default: 10)", Number)
     .action(createRequestAction("entity.list", ({ options }) => ({ radius: options.radius ?? 10 })));
 
   command
     .command("info")
-    .description("查询实体详情")
-    .requiredOption("--id <id>", "实体 ID", Number)
+    .description("Get detailed entity info")
+    .requiredOption("--id <id>", "Entity network ID", Number)
     .action(createRequestAction("entity.info", ({ options }) => ({ id: options.id })));
 
   command
     .command("dismount")
-    .description("下坐骑")
+    .description("Dismount from current vehicle")
     .action(createRequestAction("entity.dismount", () => ({})));
 
   command
     .command("steer")
-    .description("控制载具方向")
-    .option("--forward", "向前")
-    .option("--back", "向后")
-    .option("--left", "向左")
-    .option("--right", "向右")
-    .option("--jump", "跳跃")
-    .option("--sneak", "潜行")
+    .description("Steer a mounted vehicle (flags can be combined)")
+    .option("--forward", "Move forward")
+    .option("--back", "Move backward")
+    .option("--left", "Turn left")
+    .option("--right", "Turn right")
+    .option("--jump", "Jump")
+    .option("--sneak", "Sneak / dismount")
     .action(
       createRequestAction("entity.steer", ({ options }) => ({
         forward: options.forward ? 1 : options.back ? -1 : 0,

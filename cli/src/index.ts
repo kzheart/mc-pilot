@@ -30,14 +30,32 @@ export function buildProgram() {
 
   program
     .name("mct")
-    .description("Minecraft Auto Test CLI")
-    .version("0.1.0", "--cli-version", "显示 CLI 版本");
+    .description(
+      "MC Pilot – Minecraft plugin/mod automated testing CLI\n\n" +
+        "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
+        "All commands output JSON by default. Use --human for human-readable output.\n\n" +
+        "Quick start:\n" +
+        "  mct server download --type paper --version 1.20.4\n" +
+        "  mct client download --version 1.20.4\n" +
+        "  mct server start --eula && mct server wait-ready\n" +
+        "  mct client launch default && mct client wait-ready default\n" +
+        "  mct chat command \"gamemode creative\"\n" +
+        "  mct move to 100 64 100\n" +
+        "  mct screenshot --output ./test.png\n\n" +
+        "Multi-client:\n" +
+        "  mct client download --version 1.20.4 --name p1 --ws-port 25560\n" +
+        "  mct client download --version 1.20.4 --name p2 --ws-port 25561\n" +
+        "  mct client launch p1 && mct client launch p2\n" +
+        "  mct --client p1 chat send \"Hello from p1\"\n" +
+        "  mct --client p2 chat send \"Hello from p2\""
+    )
+    .version("0.1.0", "--cli-version", "Show CLI version");
 
   attachGlobalOptions(program);
 
   program
     .command("config-show")
-    .description("显示当前生效配置与状态目录")
+    .description("Show current config and state directory")
     .action(
       wrapCommand(async (context) => {
         return {

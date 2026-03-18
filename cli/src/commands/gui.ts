@@ -3,23 +3,23 @@ import { Command } from "commander";
 import { createRequestAction, parseNumberList, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createGuiCommand() {
-  const command = new Command("gui").description("GUI 与容器交互");
+  const command = new Command("gui").description("GUI / container interaction (use \"gui snapshot\" to inspect slot indices and contents)");
 
-  command.command("info").description("获取 GUI 信息").action(createRequestAction("gui.info", () => ({})));
-  command.command("snapshot").description("获取 GUI 快照").action(createRequestAction("gui.snapshot", () => ({})));
+  command.command("info").description("Get current GUI info (title, type, slot count)").action(createRequestAction("gui.info", () => ({})));
+  command.command("snapshot").description("Get full GUI snapshot with all slot contents").action(createRequestAction("gui.snapshot", () => ({})));
 
   command
     .command("slot")
-    .description("获取 GUI 槽位")
-    .argument("<slot>")
+    .description("Get a specific GUI slot")
+    .argument("<slot>", "Slot index")
     .action(createRequestAction("gui.slot", ({ args }) => ({ slot: Number(args[0]) })));
 
   command
     .command("click")
-    .description("点击 GUI 槽位")
-    .argument("<slot>")
-    .option("--button <button>", "点击按钮", "left")
-    .option("--key <key>", "数字键")
+    .description("Click a GUI slot")
+    .argument("<slot>", "Slot index")
+    .option("--button <button>", "Click button: left|right|middle|shift-left|shift-right", "left")
+    .option("--key <key>", "Number key 1-9 to quick-move item to that hotbar slot")
     .action(
       createRequestAction("gui.click", ({ args, options }) => ({
         slot: Number(args[0]),
@@ -30,9 +30,9 @@ export function createGuiCommand() {
 
   command
     .command("drag")
-    .description("拖拽 GUI 槽位")
-    .requiredOption("--slots <slots>", "槽位列表，逗号分隔")
-    .requiredOption("--button <button>", "拖拽按钮")
+    .description("Drag across GUI slots (distribute items)")
+    .requiredOption("--slots <slots>", "Comma-separated slot indices, e.g. 1,2,3")
+    .requiredOption("--button <button>", "Drag button: left (split evenly) | right (one each)")
     .action(
       createRequestAction("gui.drag", ({ options }) => ({
         slots: parseNumberList(String(options.slots)),
@@ -40,12 +40,12 @@ export function createGuiCommand() {
       }))
     );
 
-  command.command("close").description("关闭 GUI").action(createRequestAction("gui.close", () => ({})));
+  command.command("close").description("Close the current GUI").action(createRequestAction("gui.close", () => ({})));
 
   command
     .command("wait-open")
-    .description("等待 GUI 打开")
-    .option("--timeout <seconds>", "等待超时秒数", Number)
+    .description("Wait for a GUI to open")
+    .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       createRequestAction(
         "gui.wait-open",
@@ -56,8 +56,8 @@ export function createGuiCommand() {
 
   command
     .command("wait-update")
-    .description("等待 GUI 更新")
-    .option("--timeout <seconds>", "等待超时秒数", Number)
+    .description("Wait for the GUI to update")
+    .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       createRequestAction(
         "gui.wait-update",
@@ -68,8 +68,8 @@ export function createGuiCommand() {
 
   command
     .command("screenshot")
-    .description("截取 GUI 图片")
-    .requiredOption("--output <path>", "输出路径")
+    .description("Take a screenshot of the current GUI")
+    .requiredOption("--output <path>", "Output file path")
     .action(createRequestAction("gui.screenshot", ({ options }) => ({ output: options.output })));
 
   return command;

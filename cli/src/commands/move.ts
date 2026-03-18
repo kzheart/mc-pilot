@@ -3,14 +3,14 @@ import { Command } from "commander";
 import { createRequestAction, withTransportTimeoutBuffer } from "./request-helpers.js";
 
 export function createMoveCommand() {
-  const command = new Command("move").description("移动控制");
+  const command = new Command("move").description("Movement control");
 
   command
     .command("to")
-    .description("移动到指定坐标")
-    .argument("<x>", "X 坐标")
-    .argument("<y>", "Y 坐标")
-    .argument("<z>", "Z 坐标")
+    .description("Move to coordinates (straight-line walk, may get stuck on obstacles; times out after 30s)")
+    .argument("<x>", "X coordinate")
+    .argument("<y>", "Y coordinate")
+    .argument("<z>", "Z coordinate")
     .action(
       createRequestAction(
         "move.to",
@@ -23,11 +23,13 @@ export function createMoveCommand() {
       )
     );
 
+  const directionLabels = { forward: "Move forward", back: "Move backward", left: "Move left", right: "Move right" } as const;
+
   for (const direction of ["forward", "back", "left", "right"] as const) {
     command
       .command(direction)
-      .description(`向 ${direction} 方向移动`)
-      .argument("<blocks>", "移动格数")
+      .description(directionLabels[direction])
+      .argument("<blocks>", "Distance in blocks (supports decimals)")
       .action(
         createRequestAction(
           "move.direction",
@@ -46,13 +48,13 @@ export function createMoveCommand() {
 
   command
     .command("jump")
-    .description("跳跃")
+    .description("Jump once")
     .action(createRequestAction("move.jump", () => ({})));
 
   command
     .command("sneak")
-    .description("切换潜行")
-    .argument("<state>", "on 或 off")
+    .description("Toggle sneaking")
+    .argument("<state>", "on/off")
     .action(
       createRequestAction("move.sneak", ({ args }) => ({
         enabled: args[0] === "on"
@@ -61,8 +63,8 @@ export function createMoveCommand() {
 
   command
     .command("sprint")
-    .description("切换疾跑")
-    .argument("<state>", "on 或 off")
+    .description("Toggle sprinting")
+    .argument("<state>", "on/off")
     .action(
       createRequestAction("move.sprint", ({ args }) => ({
         enabled: args[0] === "on"

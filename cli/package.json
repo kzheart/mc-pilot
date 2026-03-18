@@ -1,7 +1,6 @@
 {
-  "name": "@mct/cli",
+  "name": "mc-pilot",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "bin": {
     "mct": "./bin/mct"
