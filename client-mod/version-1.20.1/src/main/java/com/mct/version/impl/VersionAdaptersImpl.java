@@ -76,6 +76,16 @@ public final class VersionAdaptersImpl {
         return new ResourcePackAdapter() {
             @Override
             public Map<String, Object> status(MinecraftClient client, ClientStateTracker stateTracker) {
+                // If a resource pack confirmation dialog is open, status is pending
+                if (client.currentScreen != null) {
+                    String screenClass = client.currentScreen.getClass().getSimpleName();
+                    String title = client.currentScreen.getTitle() != null
+                        ? client.currentScreen.getTitle().getString() : "";
+                    if (screenClass.contains("Confirm") || title.toLowerCase(java.util.Locale.ROOT).contains("resource pack")) {
+                        stateTracker.recordResourcePackState("pending", 1);
+                        return stateTracker.getResourcePackState();
+                    }
+                }
                 ServerInfo si = requireServerInfo(client);
                 String s = switch (si.getResourcePackPolicy()) {
                     case ENABLED -> "enabled";

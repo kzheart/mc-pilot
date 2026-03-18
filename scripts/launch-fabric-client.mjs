@@ -536,6 +536,9 @@ async function launchXmclManagedClient(options) {
       if (fn === LaunchPrecheck.checkNatives) {
         continue; // skip — we already extracted arm64 natives
       }
+      if (fn === LaunchPrecheck.checkLibraries) {
+        continue; // skip — our patched 3.3.1 libs have empty sha1, let MC load them directly
+      }
       prechecks.push(fn);
       if (fn === LaunchPrecheck.checkVersion) {
         // Apply arm64 patch right after version JSON is downloaded
