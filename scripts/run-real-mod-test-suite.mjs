@@ -373,20 +373,20 @@ async function main() {
       versionRecord.error = payload?.error ?? null;
 
       if (!versionRecord.ok) {
-        throw new Error(versionRecord.error ?? `Unknown run failure for ${entry.variantId}`);
+        versionRecord.error = versionRecord.error ?? `Unknown run failure for ${entry.variantId}`;
+        await logLine(`variant fail variant=${entry.variantId} error=${versionRecord.error}`);
+      } else {
+        requestLeafCommands = payload.summary?.supportMatrix?.requestLeafCommands ?? requestLeafCommands;
+        nonRequestLeafCommands = payload.summary?.supportMatrix?.nonRequestLeafCommands ?? nonRequestLeafCommands;
+        for (const leaf of payload.summary?.supportMatrix?.coveredRequestLeafCommands ?? []) {
+          coveredRequestLeafCommands.add(leaf);
+        }
+        for (const leaf of payload.summary?.supportMatrix?.coveredNonRequestLeafCommands ?? []) {
+          coveredNonRequestLeafCommands.add(leaf);
+        }
+        versionRecord.groups = payload.summary?.groups ?? [];
+        await logLine(`variant pass variant=${entry.variantId} report=${versionRecord.reportPath}`);
       }
-
-      requestLeafCommands = payload.summary?.supportMatrix?.requestLeafCommands ?? requestLeafCommands;
-      nonRequestLeafCommands = payload.summary?.supportMatrix?.nonRequestLeafCommands ?? nonRequestLeafCommands;
-      for (const leaf of payload.summary?.supportMatrix?.coveredRequestLeafCommands ?? []) {
-        coveredRequestLeafCommands.add(leaf);
-      }
-      for (const leaf of payload.summary?.supportMatrix?.coveredNonRequestLeafCommands ?? []) {
-        coveredNonRequestLeafCommands.add(leaf);
-      }
-      versionRecord.groups = payload.summary?.groups ?? [];
-
-      await logLine(`variant pass variant=${entry.variantId} report=${versionRecord.reportPath}`);
     } catch (error) {
       versionRecord.durationMs = Date.now() - startedAt;
       versionRecord.error = error instanceof Error ? error.stack : String(error);
@@ -396,8 +396,7 @@ async function main() {
         summary
       };
       await writeFile(SUITE_REPORT_PATH, `${JSON.stringify(failure, null, 2)}\n`, "utf8");
-      process.stderr.write(`${JSON.stringify(failure, null, 2)}\n`);
-      process.exit(1);
+      // continue to next version instead of exiting
     }
 
     if (entry !== matrix.runnable[matrix.runnable.length - 1]) {

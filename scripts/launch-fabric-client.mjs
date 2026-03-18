@@ -402,13 +402,8 @@ async function ensureArm64Natives(runtimeRoot, versionId) {
   }
 
   if (!needsJsonPatch) {
-    // Check if natives already extracted
-    try {
-      await access(nativesMarker);
-      return nativesDir;
-    } catch {
-      // fall through to extract natives without re-patching JSON
-    }
+    // No old LWJGL detected — this version already has arm64 native support, no patch needed
+    return null;
   }
 
   console.log("[MCT] Applying LWJGL 3.3.1 arm64 patch (based on HMCL NativePatcher)...");
