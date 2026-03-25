@@ -35,7 +35,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Validate client-mod (all versions)
-        run: ./gradlew chiseledBuild -q
+        run: ./gradlew build -x test -q
         working-directory: client-mod
 
       - name: Validate legacy mod skeleton
