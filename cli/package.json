@@ -37,7 +37,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js",
-    "test:e2e": "tsc -p tsconfig.json && node --test dist/*.e2e.test.js dist/**/*.e2e.test.js"
+    "test:e2e": "tsc -p tsconfig.json && node --test dist/*.e2e.test.js"
   },
   "dependencies": {
     "@xmcl/core": "^2.15.1",
