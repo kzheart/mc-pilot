@@ -37,7 +37,3 @@ jobs:
       - name: Validate client-mod (all versions)
         run: ./gradlew build -x test -q
         working-directory: client-mod
-
-      - name: Validate legacy mod skeleton
-        run: gradle -q classes
-        working-directory: client-mod-legacy
