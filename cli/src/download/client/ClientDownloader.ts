@@ -1,6 +1,7 @@
 import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import type { CommandContext } from "../../util/context.js";
 import { DEFAULT_WS_PORT_BASE, loadConfig, writeConfig } from "../../util/config.js";
@@ -16,6 +17,12 @@ import {
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
 import { prepareManagedFabricRuntime } from "./FabricRuntimeDownloader.js";
+
+function getLaunchScriptPath() {
+  const thisFile = fileURLToPath(import.meta.url);
+  // dist/download/client/ClientDownloader.js -> scripts/launch-fabric-client.mjs
+  return path.resolve(path.dirname(thisFile), "..", "..", "..", "scripts", "launch-fabric-client.mjs");
+}
 
 const GITHUB_RELEASE_BASE_URL =
   process.env.MCT_MOD_DOWNLOAD_BASE_URL || "https://github.com/kzheart/mc-pilot/releases/download";
@@ -178,7 +185,7 @@ function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadCli
 function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
   return [
     process.execPath,
-    path.join(context.cwd, "scripts", "launch-fabric-client.mjs"),
+    getLaunchScriptPath(),
     "--instance-dir",
     runtimePaths.instanceDir,
     "--meta-dir",
@@ -198,7 +205,7 @@ function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchR
 function buildManagedLaunchCommand(context: CommandContext, runtimeRootDir: string, versionId: string, gameDir: string) {
   return [
     process.execPath,
-    path.join(context.cwd, "scripts", "launch-fabric-client.mjs"),
+    getLaunchScriptPath(),
     "--runtime-root",
     runtimeRootDir,
     "--version-id",
