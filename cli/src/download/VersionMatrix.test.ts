@@ -48,7 +48,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
 
   assert.equal(fabric?.supported, true);
   assert.equal(fabric?.loaderVersion, "0.16.10");
-  assert.equal(fabric?.modVersion, "0.1.0");
+  assert.equal(fabric?.modVersion, "0.1.1");
   assert.equal(fabric?.validation, "verified");
   assert.equal(fabric?.notes, undefined);
   assert.equal(fabric?.javaVersion, "21+");
@@ -61,7 +61,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
 
   assert.equal(neoforge?.supported, false);
   assert.equal(neoforge?.loaderVersion, "21.4.75");
-  assert.equal(neoforge?.modVersion, "0.1.0");
+  assert.equal(neoforge?.modVersion, "0.1.1");
   assert.equal(neoforge?.validation, "planned");
   assert.equal(neoforge?.javaVersion, "21+");
 });
@@ -77,7 +77,7 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       minecraftVersion: "1.20.3",
       supported: true,
       loaderVersion: "0.16.10",
-      modVersion: "0.1.0",
+      modVersion: "0.1.1",
       validation: "verified",
       javaVersion: "17+"
     },
@@ -86,7 +86,7 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       minecraftVersion: "1.20.2",
       supported: true,
       loaderVersion: "0.16.10",
-      modVersion: "0.1.0",
+      modVersion: "0.1.1",
       validation: "verified",
       javaVersion: "17+"
     }

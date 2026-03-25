@@ -65,7 +65,7 @@ test("buildClientSearchResults carries variant validation metadata into grouped 
         loader: "fabric",
         supported: true,
         loaderVersion: "0.16.10",
-        modVersion: "0.1.0",
+        modVersion: "0.1.1",
         validation: "verified"
       }
     ]
