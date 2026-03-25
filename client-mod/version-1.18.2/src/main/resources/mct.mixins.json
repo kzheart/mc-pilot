@@ -8,6 +8,7 @@
     "AbstractSignEditScreenAccessor",
     "BossBarHudMixin",
     "ChatHudMixin",
+    "DeathScreenMixin",
     "InGameHudAccessor",
     "InGameHudStateMixin",
     "KeyboardInvoker",

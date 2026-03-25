@@ -74,13 +74,16 @@ public final class StatusHandler extends ActionHandler {
 
     private Map<String, Object> healthStatus() {
         ClientPlayerEntity player = requirePlayer();
-        return Map.of(
-            "health", player.getHealth(),
-            "maxHealth", player.getMaxHealth(),
-            "food", player.getHungerManager().getFoodLevel(),
-            "saturation", player.getHungerManager().getSaturationLevel(),
-            "absorption", player.getAbsorptionAmount()
-        );
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("health", player.getHealth());
+        result.put("maxHealth", player.getMaxHealth());
+        result.put("food", player.getHungerManager().getFoodLevel());
+        result.put("saturation", player.getHungerManager().getSaturationLevel());
+        result.put("absorption", player.getAbsorptionAmount());
+        result.put("isDead", player.isDead());
+        result.put("deathCount", stateTracker.getDeathCount());
+        result.put("recentDeaths", stateTracker.getRecentDeaths(5));
+        return result;
     }
 
     private Map<String, Object> effectsStatus() {

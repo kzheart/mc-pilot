@@ -15,10 +15,12 @@ import net.minecraft.text.Text;
 public final class ClientStateTracker {
 
     private static final int MAX_CHAT_MESSAGES = 500;
+    private static final int MAX_DEATH_RECORDS = 50;
     private static final Pattern CHAT_SENDER_PATTERN = Pattern.compile("^<([^>]+)>\\s*(.*)$");
     private static final ClientStateTracker INSTANCE = new ClientStateTracker();
 
     private final Deque<ChatMessageRecord> chatMessages = new ArrayDeque<>();
+    private final Deque<DeathRecord> deathRecords = new ArrayDeque<>();
     private HudTitleState hudTitleState = HudTitleState.empty();
     private HudActionBarState hudActionBarState = HudActionBarState.empty();
     private TabListState tabListState = TabListState.empty();
@@ -116,6 +118,22 @@ public final class ClientStateTracker {
 
     public synchronized Map<String, Object> getResourcePackState() {
         return resourcePackState.toMap();
+    }
+
+    public synchronized void recordDeath(String deathMessage, double x, double y, double z) {
+        append(
+            deathRecords,
+            new DeathRecord(Instant.now().toEpochMilli(), deathMessage, x, y, z),
+            MAX_DEATH_RECORDS
+        );
+    }
+
+    public synchronized List<Map<String, Object>> getRecentDeaths(int limit) {
+        return snapshot(deathRecords, Math.max(1, limit), DeathRecord::toMap);
+    }
+
+    public synchronized int getDeathCount() {
+        return deathRecords.size();
     }
 
     private <T> void append(Deque<T> deque, T value, int maxSize) {
@@ -262,6 +280,32 @@ public final class ClientStateTracker {
                 "acceptanceStatus", acceptanceStatus,
                 "packCount", packCount
             );
+        }
+    }
+
+    private static final class DeathRecord {
+        final long timestamp;
+        final String message;
+        final double x;
+        final double y;
+        final double z;
+
+        DeathRecord(long timestamp, String message, double x, double y, double z) {
+            this.timestamp = timestamp;
+            this.message = message;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        Map<String, Object> toMap() {
+            LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+            result.put("timestamp", Instant.ofEpochMilli(timestamp).toString());
+            result.put("message", message);
+            result.put("x", x);
+            result.put("y", y);
+            result.put("z", z);
+            return result;
         }
     }
 }
