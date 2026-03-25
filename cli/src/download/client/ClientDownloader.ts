@@ -182,10 +182,8 @@ function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadCli
   };
 }
 
-function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
+function buildLaunchArgs(runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
   return [
-    process.execPath,
-    getLaunchScriptPath(),
     "--instance-dir",
     runtimePaths.instanceDir,
     "--meta-dir",
@@ -202,10 +200,8 @@ function buildLaunchCommand(context: CommandContext, runtimePaths: ClientLaunchR
   ];
 }
 
-function buildManagedLaunchCommand(context: CommandContext, runtimeRootDir: string, versionId: string, gameDir: string) {
+function buildManagedLaunchArgs(runtimeRootDir: string, versionId: string, gameDir: string) {
   return [
-    process.execPath,
-    getLaunchScriptPath(),
     "--runtime-root",
     runtimeRootDir,
     "--version-id",
@@ -293,9 +289,9 @@ export async function downloadClientMod(
   const managedRuntime = runtimePaths
     ? undefined
     : await prepareManagedRuntimeImpl(variant, clientRootDir, { fetchImpl });
-  const generatedLaunchCommand = runtimePaths
-    ? buildLaunchCommand(context, runtimePaths, variant)
-    : buildManagedLaunchCommand(context, managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);
+  const generatedLaunchArgs = runtimePaths
+    ? buildLaunchArgs(runtimePaths, variant)
+    : buildManagedLaunchArgs(managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);
 
   latestConfig.clients[clientName] = {
     ...configuredClient,
@@ -303,12 +299,13 @@ export async function downloadClientMod(
     wsPort: options.wsPort ?? configuredClient.wsPort ?? DEFAULT_WS_PORT_BASE,
     server: options.server ?? configuredClient.server ?? "localhost:25565",
     workingDir: path.relative(context.cwd, minecraftDir) || ".",
+    launchCommand: undefined,
+    launchArgs: generatedLaunchArgs,
     env: {
       ...configuredClient.env,
       MCT_CLIENT_MOD_VARIANT: variant.id,
       MCT_CLIENT_MOD_JAR: path.relative(context.cwd, targetJarPath)
     },
-    ...(generatedLaunchCommand ? { launchCommand: generatedLaunchCommand } : {})
   };
 
   await writeConfig(context.configPath, context.cwd, latestConfig);
@@ -326,7 +323,7 @@ export async function downloadClientMod(
     jar: targetJarPath,
     cachePath: artifact.cachePath,
     clientName,
-    launchCommandConfigured: Boolean(generatedLaunchCommand),
+    launchArgsConfigured: Boolean(generatedLaunchArgs),
     runtimeRootDir: managedRuntime?.runtimeRootDir,
     runtimeVersionId: managedRuntime?.versionId
   };

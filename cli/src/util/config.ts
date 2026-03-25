@@ -17,6 +17,7 @@ export interface MctConfig {
     server?: string;
     headless?: boolean;
     launchCommand?: string[];
+    launchArgs?: string[];
     workingDir?: string;
     env?: Record<string, string>;
   }>;

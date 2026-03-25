@@ -1,11 +1,18 @@
 import { mkdirSync, openSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { CommandContext } from "../util/context.js";
 import { MctError } from "../util/errors.js";
 import { getListeningPids, isProcessRunning, killProcessTree } from "../util/process.js";
 import { WebSocketClient } from "./WebSocketClient.js";
+
+function getLaunchScriptPath() {
+  const thisFile = fileURLToPath(import.meta.url);
+  // dist/client/ClientManager.js -> scripts/launch-fabric-client.mjs
+  return path.resolve(path.dirname(thisFile), "..", "..", "scripts", "launch-fabric-client.mjs");
+}
 
 export interface ClientRuntimeState {
   name: string;
@@ -84,12 +91,14 @@ export class ClientManager {
       }
     }
 
-    const launchCommand = configured.launchCommand;
+    const launchCommand = configured.launchArgs
+      ? [process.execPath, getLaunchScriptPath(), ...configured.launchArgs]
+      : configured.launchCommand;
     if (!launchCommand || launchCommand.length === 0) {
       throw new MctError(
         {
           code: "INVALID_PARAMS",
-          message: `Client ${options.name} requires launchCommand in config`
+          message: `Client ${options.name} requires launchArgs (or launchCommand) in config`
         },
         4
       );

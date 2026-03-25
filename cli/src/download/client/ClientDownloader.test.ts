@@ -81,7 +81,7 @@ test("downloadClientMod copies a local variant jar and writes client config", as
         server: string;
         workingDir: string;
         env: Record<string, string>;
-        launchCommand: string[];
+        launchArgs: string[];
       }>;
     };
     assert.equal(config.clients.default.version, "1.20.4");
@@ -90,9 +90,7 @@ test("downloadClientMod copies a local variant jar and writes client config", as
     assert.equal(config.clients.default.workingDir, "downloaded-client/minecraft");
     assert.equal(config.clients.default.env.MCT_CLIENT_MOD_VARIANT, "1.20.4-fabric");
     assert.equal(config.clients.default.env.MCT_CLIENT_MOD_JAR, "downloaded-client/minecraft/mods/mct-client-mod-fabric-1.20.4.jar");
-    assert.equal(config.clients.default.launchCommand[0], process.execPath);
-    assert.equal(config.clients.default.launchCommand[1], path.join(tempDir, "scripts", "launch-fabric-client.mjs"));
-    assert.deepEqual(config.clients.default.launchCommand.slice(2, 10), [
+    assert.deepEqual(config.clients.default.launchArgs.slice(0, 8), [
       "--instance-dir",
       path.join(tempDir, "runtime", "instances", "mct-1.20.4-fabric"),
       "--meta-dir",
@@ -169,13 +167,12 @@ test("downloadClientMod prepares a self-managed runtime when no external runtime
     assert.equal(await readFile(path.join(tempDir, "managed-client", "runtime", "libraries", "com", "example", "vanilla-lib", "1.0.0", "vanilla-lib-1.0.0.jar"), "utf8"), "vanilla-lib");
 
     const config = JSON.parse(await readFile(configPath, "utf8")) as {
-      clients: Record<string, { launchCommand: string[]; workingDir: string }>;
+      clients: Record<string, { launchArgs: string[]; workingDir: string }>;
     };
-    assert.equal(config.clients.managed.launchCommand[0], process.execPath);
-    assert.equal(config.clients.managed.launchCommand[2], "--runtime-root");
-    assert.equal(config.clients.managed.launchCommand[3], result.runtimeRootDir);
-    assert.equal(config.clients.managed.launchCommand[4], "--version-id");
-    assert.equal(config.clients.managed.launchCommand[5], fabricVersionId);
+    assert.equal(config.clients.managed.launchArgs[0], "--runtime-root");
+    assert.equal(config.clients.managed.launchArgs[1], result.runtimeRootDir);
+    assert.equal(config.clients.managed.launchArgs[2], "--version-id");
+    assert.equal(config.clients.managed.launchArgs[3], fabricVersionId);
     assert.equal(config.clients.managed.workingDir, "managed-client/minecraft");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
