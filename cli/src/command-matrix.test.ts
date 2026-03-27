@@ -28,19 +28,25 @@ interface CliResult {
 }
 
 const NON_REQUEST_LEAF_COMMANDS = [
-  "client download",
+  "client create",
   "client search",
   "client launch",
   "client list",
   "client stop",
   "client wait-ready",
-  "config-show",
-  "server download",
+  "deploy",
+  "down",
+  "init",
+  "server create",
   "server search",
   "server start",
+  "server list",
   "server status",
   "server stop",
-  "server wait-ready"
+  "server wait-ready",
+  "info",
+  "up",
+  "use"
 ];
 
 const REQUEST_CASES: RequestCase[] = [
@@ -645,8 +651,7 @@ async function getFreePort() {
 async function createRequestTestHarness(options?: { timeoutDefault?: number; responseDelayMs?: number }) {
   const cwd = process.cwd();
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-matrix-"));
-  const stateDir = path.join(tempDir, "state");
-  const configPath = path.join(tempDir, "mct.config.json");
+  const globalStateDir = path.join(tempDir, "mct-home", "state");
   const wsPort = await getFreePort();
   const responseDelayMs = options?.responseDelayMs ?? 0;
   const server = new WebSocketServer({ port: wsPort });
@@ -674,17 +679,39 @@ async function createRequestTestHarness(options?: { timeoutDefault?: number; res
     });
   });
 
-  await mkdir(stateDir, { recursive: true });
+  // Write global client state
+  await mkdir(globalStateDir, { recursive: true });
   await writeFile(
-    configPath,
+    path.join(globalStateDir, "clients.json"),
     JSON.stringify(
       {
+        defaultClient: "bot",
         clients: {
           bot: {
+            name: "bot",
             wsPort,
-            launchCommand: ["node", "--eval", "setInterval(() => {}, 1000)"]
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+            logPath: path.join(globalStateDir, "bot.log"),
+            instanceDir: path.join(tempDir, "clients", "bot")
           }
-        },
+        }
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
+  // Write project file with timeout config
+  const projectDir = path.join(tempDir, "project");
+  await mkdir(projectDir, { recursive: true });
+  await writeFile(
+    path.join(projectDir, "mct.project.json"),
+    JSON.stringify(
+      {
+        project: "test",
+        profiles: {},
         timeout: {
           serverReady: 5,
           clientReady: 5,
@@ -697,38 +724,18 @@ async function createRequestTestHarness(options?: { timeoutDefault?: number; res
     "utf8"
   );
 
-  await writeFile(
-    path.join(stateDir, "clients.json"),
-    JSON.stringify(
-      {
-        defaultClient: "bot",
-        clients: {
-          bot: {
-            name: "bot",
-            wsPort,
-            headless: false,
-            pid: process.pid,
-            startedAt: new Date().toISOString(),
-            logPath: path.join(stateDir, "bot.log")
-          }
-        }
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
-
   return {
     async runCli(args: string[]) {
       const { stdout } = await execFileAsync(process.execPath, [
         path.join(cwd, "dist/index.js"),
-        "--config",
-        configPath,
-        "--state-dir",
-        stateDir,
         ...args
-      ]);
+      ], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          MCT_HOME: path.join(tempDir, "mct-home")
+        }
+      });
 
       return JSON.parse(stdout) as CliResult;
     },

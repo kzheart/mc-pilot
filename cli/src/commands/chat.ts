@@ -32,7 +32,7 @@ export function createChatCommand() {
       createRequestAction(
         "chat.wait",
         ({ options }) => ({ match: options.match, timeout: options.timeout }),
-        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.timeout("default"))
       )
     );
 

@@ -4,9 +4,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 
-import type { CommandContext } from "../../util/context.js";
 import { MctError } from "../../util/errors.js";
-import { loadConfig, writeConfig } from "../../util/config.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
 import { getMinecraftSupport, type ServerType } from "../VersionMatrix.js";
@@ -233,8 +231,7 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
   };
 }
 
-export async function downloadServerJar(
-  context: CommandContext,
+export async function downloadServerJarToCache(
   options: DownloadServerOptions,
   dependencies: DownloadServerDependencies = {}
 ) {
@@ -259,29 +256,12 @@ export async function downloadServerJar(
     }
   }
 
-  const targetDir = path.resolve(context.cwd, options.dir ?? context.config.server.dir);
-  const targetJarPath = path.join(targetDir, spec.fileName);
-  await copyFileIfMissing(cachePath, targetJarPath);
-
-  if (options.fixtures) {
-    const fixturesPath = path.resolve(context.cwd, options.fixtures);
-    const pluginsDir = path.join(targetDir, "plugins");
-    await mkdir(pluginsDir, { recursive: true });
-    await copyFileIfMissing(fixturesPath, path.join(pluginsDir, path.basename(fixturesPath)));
-  }
-
-  const latestConfig = await loadConfig(context.configPath, context.cwd);
-  latestConfig.server.jar = path.relative(context.cwd, targetJarPath);
-  latestConfig.server.dir = path.relative(context.cwd, targetDir) || ".";
-  await writeConfig(context.configPath, context.cwd, latestConfig);
-
   return {
     downloaded: true,
     type: spec.type,
     version: spec.version,
     build: spec.build,
     cachePath,
-    jar: targetJarPath,
-    dir: targetDir
+    fileName: spec.fileName
   };
 }

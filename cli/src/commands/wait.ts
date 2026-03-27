@@ -24,8 +24,8 @@ export function createWaitCommand() {
         }),
         ({ options, args }, context) => {
           const requested =
-            options.timeout ? Number(options.timeout) : args[0] ? Number(args[0]) : context.config.timeout.default;
-          return withTransportTimeoutBuffer(requested, context.config.timeout.default);
+            options.timeout ? Number(options.timeout) : args[0] ? Number(args[0]) : context.timeout("default");
+          return withTransportTimeoutBuffer(requested, context.timeout("default"));
         }
       )
     );

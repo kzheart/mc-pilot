@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { ClientManager } from "../client/ClientManager.js";
+import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
 import { MctError } from "../util/errors.js";
@@ -19,10 +19,10 @@ export async function sendClientRequest(
   params: Record<string, unknown>,
   timeoutSeconds?: number
 ) {
-  const manager = new ClientManager(context);
+  const manager = new ClientInstanceManager(context.globalState);
   const client = await manager.getClient(clientName);
-  const ws = new WebSocketClient(manager.getWsUrl(client.wsPort));
-  return ws.send(action, params, timeoutSeconds ?? context.config.timeout.default);
+  const ws = new WebSocketClient(`ws://127.0.0.1:${client.wsPort}`);
+  return ws.send(action, params, timeoutSeconds ?? context.timeout("default"));
 }
 
 export function createRequestAction<TOptions = Record<string, any>>(

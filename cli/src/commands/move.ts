@@ -19,7 +19,7 @@ export function createMoveCommand() {
           y: Number(args[1]),
           z: Number(args[2])
         }),
-        (_payload, context) => withTransportTimeoutBuffer(30, context.config.timeout.default)
+        (_payload, context) => withTransportTimeoutBuffer(30, context.timeout("default"))
       )
     );
 
@@ -40,7 +40,7 @@ export function createMoveCommand() {
           ({ args }, context) => {
             const blocks = Math.abs(Number(args[0]));
             const timeout = Math.max(1.5, blocks * 2.0);
-            return withTransportTimeoutBuffer(timeout, context.config.timeout.default);
+            return withTransportTimeoutBuffer(timeout, context.timeout("default"));
           }
         )
       );

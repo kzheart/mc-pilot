@@ -1,35 +1,51 @@
 import process from "node:process";
 
-import { loadConfig, resolveConfigPath, type MctConfig } from "./config.js";
-import { type OutputMode } from "./output.js";
-import { resolveStateDir, StateStore } from "./state.js";
+import { GlobalStateStore } from "./global-state.js";
+import type { OutputMode } from "./output.js";
+import { loadProjectFile, resolveProfile, type MctProfile, type MctProjectFile } from "./project.js";
 
 export interface GlobalOptions {
   human?: boolean;
-  config?: string;
-  stateDir?: string;
   client?: string;
+  project?: string;
+  profile?: string;
 }
 
 export interface CommandContext {
   cwd: string;
-  configPath: string;
-  config: MctConfig;
-  state: StateStore;
   outputMode: OutputMode;
+  globalState: GlobalStateStore;
+  projectFile: MctProjectFile | null;
+  activeProfile: MctProfile | null;
+  projectName: string | null;
+  timeout(key: "serverReady" | "clientReady" | "default"): number;
 }
+
+const TIMEOUT_DEFAULTS = {
+  serverReady: 120,
+  clientReady: 60,
+  default: 10
+};
 
 export async function createCommandContext(options: GlobalOptions): Promise<CommandContext> {
   const cwd = process.cwd();
-  const configPath = resolveConfigPath(options.config, cwd);
-  const config = await loadConfig(configPath, cwd);
-  const state = new StateStore(resolveStateDir(options.stateDir, cwd));
+  const globalState = new GlobalStateStore();
+  const projectFile = await loadProjectFile(cwd);
+
+  const projectName = options.project ?? projectFile?.project ?? null;
+  const activeProfile = projectFile
+    ? resolveProfile(projectFile, options.profile)
+    : null;
 
   return {
     cwd,
-    configPath,
-    config,
-    state,
-    outputMode: options.human ? "human" : "json"
+    outputMode: options.human ? "human" : "json",
+    globalState,
+    projectFile,
+    activeProfile,
+    projectName,
+    timeout(key) {
+      return projectFile?.timeout?.[key] ?? TIMEOUT_DEFAULTS[key];
+    }
   };
 }

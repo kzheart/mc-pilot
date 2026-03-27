@@ -25,6 +25,7 @@ import { createServerCommand } from "./commands/server.js";
 import { createSignCommand } from "./commands/sign.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
+import { createInitCommand, createDeployCommand, createUpCommand, createDownCommand, createUseCommand } from "./commands/project.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
 export function buildProgram() {
@@ -37,19 +38,14 @@ export function buildProgram() {
         "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
         "All commands output JSON by default. Use --human for human-readable output.\n\n" +
         "Quick start:\n" +
-        "  mct server download --type paper --version 1.20.4\n" +
-        "  mct client download --version 1.20.4\n" +
-        "  mct server start --eula && mct server wait-ready\n" +
-        "  mct client launch default && mct client wait-ready default\n" +
+        "  mct init --project my-plugin\n" +
+        "  mct server create paper-1.20.4 --type paper --version 1.20.4\n" +
+        "  mct client create fabric-1.20.4 --version 1.20.4\n" +
+        "  mct up --profile 1.20\n" +
         "  mct chat command \"gamemode creative\"\n" +
         "  mct move to 100 64 100\n" +
-        "  mct screenshot --output ./test.png\n\n" +
-        "Multi-client:\n" +
-        "  mct client download --version 1.20.4 --name p1 --ws-port 25560\n" +
-        "  mct client download --version 1.20.4 --name p2 --ws-port 25561\n" +
-        "  mct client launch p1 && mct client launch p2\n" +
-        "  mct --client p1 chat send \"Hello from p1\"\n" +
-        "  mct --client p2 chat send \"Hello from p2\""
+        "  mct screenshot --output ./test.png\n" +
+        "  mct down"
     )
     .version(
       JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version,
@@ -60,20 +56,31 @@ export function buildProgram() {
   attachGlobalOptions(program);
 
   program
-    .command("config-show")
-    .description("Show current config and state directory")
+    .command("info")
+    .description("Show current project and global state")
     .action(
       wrapCommand(async (context) => {
         return {
           cwd: context.cwd,
-          stateDir: context.state.getRootDir(),
-          config: context.config
+          project: context.projectName,
+          activeProfile: context.activeProfile,
+          globalStateDir: context.globalState.getRootDir()
         };
       })
     );
 
+  // Project lifecycle commands
+  program.addCommand(createInitCommand());
+  program.addCommand(createDeployCommand());
+  program.addCommand(createUpCommand());
+  program.addCommand(createDownCommand());
+  program.addCommand(createUseCommand());
+
+  // Instance management
   program.addCommand(createServerCommand());
   program.addCommand(createClientCommand());
+
+  // Game interaction commands
   program.addCommand(createChatCommand());
   program.addCommand(createInputCommand());
   program.addCommand(createMoveCommand());

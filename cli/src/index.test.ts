@@ -13,8 +13,9 @@ const execFileAsync = promisify(execFile);
 
 test("CLI parses chat command and sends request to default client", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-"));
-  const stateDir = path.join(tempDir, "state");
-  const configPath = path.join(tempDir, "mct.config.json");
+  const mctHome = path.join(tempDir, "mct-home");
+  const globalStateDir = path.join(mctHome, "state");
+  const projectDir = path.join(tempDir, "project");
 
   const server = new WebSocketServer({ port: 25594 });
 
@@ -35,26 +36,11 @@ test("CLI parses chat command and sends request to default client", async () => 
   });
 
   try {
-    await mkdir(stateDir, { recursive: true });
+    await mkdir(globalStateDir, { recursive: true });
+    await mkdir(projectDir, { recursive: true });
 
     await writeFile(
-      configPath,
-      JSON.stringify(
-        {
-          clients: {
-            bot: {
-              wsPort: 25594,
-              launchCommand: ["node", "--eval", "setInterval(() => {}, 1000)"]
-            }
-          }
-        },
-        null,
-        2
-      )
-    );
-
-    await writeFile(
-      path.join(stateDir, "clients.json"),
+      path.join(globalStateDir, "clients.json"),
       JSON.stringify(
         {
           defaultClient: "bot",
@@ -62,10 +48,10 @@ test("CLI parses chat command and sends request to default client", async () => 
             bot: {
               name: "bot",
               wsPort: 25594,
-              headless: false,
               pid: process.pid,
               startedAt: new Date().toISOString(),
-              logPath: path.join(stateDir, "bot.log")
+              logPath: path.join(globalStateDir, "bot.log"),
+              instanceDir: path.join(mctHome, "clients", "bot")
             }
           }
         },
@@ -74,16 +60,23 @@ test("CLI parses chat command and sends request to default client", async () => 
       )
     );
 
+    await writeFile(
+      path.join(projectDir, "mct.project.json"),
+      JSON.stringify({ project: "test", profiles: {} }, null, 2)
+    );
+
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(process.cwd(), "dist/index.js"),
-      "--config",
-      configPath,
-      "--state-dir",
-      stateDir,
       "chat",
       "send",
       "hello"
-    ]);
+    ], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        MCT_HOME: mctHome
+      }
+    });
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);

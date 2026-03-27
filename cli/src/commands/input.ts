@@ -113,7 +113,7 @@ export function createInputCommand() {
           duration: Number(options.duration)
         }),
         ({ options }, context) =>
-          withTransportTimeoutBuffer(Math.max(Number(options.duration ?? 0) / 1000 + 2, 3), context.config.timeout.default)
+          withTransportTimeoutBuffer(Math.max(Number(options.duration ?? 0) / 1000 + 2, 3), context.timeout("default"))
       )
     );
 

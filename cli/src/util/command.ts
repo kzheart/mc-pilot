@@ -18,8 +18,8 @@ export type CommandAction<TOptions = Record<string, unknown>> = (
 export function attachGlobalOptions(command: Command) {
   return command
     .option("--human", "Human-readable output (default: JSON)")
-    .option("--config <path>", "Config file path (default: ./mct.config.json)")
-    .option("--state-dir <path>", "State directory (default: ./.mct-state/)")
+    .option("--project <name>", "Project name (default: from mct.project.json)")
+    .option("--profile <name>", "Profile name (default: from mct.project.json)")
     .option("--client <name>", "Target client name (required when multiple clients are running)");
 }
 

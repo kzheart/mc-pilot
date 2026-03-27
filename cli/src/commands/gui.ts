@@ -50,7 +50,7 @@ export function createGuiCommand() {
       createRequestAction(
         "gui.wait-open",
         ({ options }) => ({ timeout: options.timeout }),
-        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.timeout("default"))
       )
     );
 
@@ -62,7 +62,7 @@ export function createGuiCommand() {
       createRequestAction(
         "gui.wait-update",
         ({ options }) => ({ timeout: options.timeout }),
-        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.config.timeout.default)
+        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.timeout("default"))
       )
     );
 

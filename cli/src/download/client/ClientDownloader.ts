@@ -3,8 +3,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import type { CommandContext } from "../../util/context.js";
-import { DEFAULT_WS_PORT_BASE, loadConfig, writeConfig } from "../../util/config.js";
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
@@ -75,15 +73,15 @@ function ensureSupportedVariant(variant: ModVariant) {
   }
 }
 
-async function resolveArtifact(
-  context: CommandContext,
+export async function resolveArtifact(
+  cwd: string,
   variant: ModVariant,
   cacheManager: CacheManager,
   fetchImpl: typeof fetch = fetch
 ) {
   const artifactFileName = getModArtifactFileName(variant);
   const gradleModule = (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
-  const buildArtifactPath = path.join(context.cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
+  const buildArtifactPath = path.join(cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   // 1. Check local build artifact
@@ -132,7 +130,7 @@ interface ClientLaunchRuntimePaths {
   nativesDir?: string;
 }
 
-function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadClientOptions): ClientLaunchRuntimePaths | undefined {
+function resolveLaunchRuntimePaths(cwd: string, options: DownloadClientOptions): ClientLaunchRuntimePaths | undefined {
   const runtimePaths = {
     instanceDir: options.instanceDir,
     metaDir: options.metaDir,
@@ -170,13 +168,13 @@ function resolveLaunchRuntimePaths(context: CommandContext, options: DownloadCli
   }
 
   return {
-    instanceDir: path.resolve(context.cwd, runtimePaths.instanceDir!),
-    metaDir: path.resolve(context.cwd, runtimePaths.metaDir!),
-    librariesDir: path.resolve(context.cwd, runtimePaths.librariesDir!),
-    assetsDir: path.resolve(context.cwd, runtimePaths.assetsDir!),
+    instanceDir: path.resolve(cwd, runtimePaths.instanceDir!),
+    metaDir: path.resolve(cwd, runtimePaths.metaDir!),
+    librariesDir: path.resolve(cwd, runtimePaths.librariesDir!),
+    assetsDir: path.resolve(cwd, runtimePaths.assetsDir!),
     ...(runtimePaths.nativesDir
       ? {
-          nativesDir: path.resolve(context.cwd, runtimePaths.nativesDir)
+          nativesDir: path.resolve(cwd, runtimePaths.nativesDir)
         }
       : {})
   };
@@ -245,8 +243,9 @@ async function ensureJavaReady(variant: ModVariant, detectJavaImpl: typeof detec
   return result;
 }
 
-export async function downloadClientMod(
-  context: CommandContext,
+export async function downloadClientModToDir(
+  cwd: string,
+  targetDir: string,
   options: DownloadClientOptions,
   dependencies: DownloadClientDependencies = {}
 ) {
@@ -273,19 +272,15 @@ export async function downloadClientMod(
   ensureSupportedVariant(variant);
   const java = await ensureJavaReady(variant, detectJavaImpl, options.java);
 
-  const artifact = await resolveArtifact(context, variant, cacheManager, fetchImpl);
-  const clientRootDir = path.resolve(context.cwd, options.dir ?? "./client");
-  const minecraftDir = path.join(clientRootDir, "minecraft");
+  const artifact = await resolveArtifact(cwd, variant, cacheManager, fetchImpl);
+  const minecraftDir = path.join(targetDir, "minecraft");
   const modsDir = path.join(minecraftDir, "mods");
   await mkdir(minecraftDir, { recursive: true });
   await mkdir(modsDir, { recursive: true });
   const targetJarPath = path.join(modsDir, artifact.artifactFileName);
   await copyFileIfMissing(artifact.sourcePath, targetJarPath);
 
-  const clientName = options.name ?? "default";
-  const latestConfig = await loadConfig(context.configPath, context.cwd);
-  const configuredClient = latestConfig.clients[clientName] ?? {};
-  const runtimePaths = resolveLaunchRuntimePaths(context, options);
+  const runtimePaths = resolveLaunchRuntimePaths(cwd, options);
   const managedRuntime = runtimePaths
     ? undefined
     : await prepareManagedRuntimeImpl(variant, {
@@ -296,37 +291,19 @@ export async function downloadClientMod(
     ? buildLaunchArgs(runtimePaths, variant)
     : buildManagedLaunchArgs(managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);
 
-  latestConfig.clients[clientName] = {
-    ...configuredClient,
-    version: variant.minecraftVersion,
-    wsPort: options.wsPort ?? configuredClient.wsPort ?? DEFAULT_WS_PORT_BASE,
-    server: options.server ?? configuredClient.server ?? "localhost:25565",
-    workingDir: path.relative(context.cwd, minecraftDir) || ".",
-    launchCommand: undefined,
-    launchArgs: generatedLaunchArgs,
-    env: {
-      ...configuredClient.env,
-      MCT_CLIENT_MOD_VARIANT: variant.id,
-      MCT_CLIENT_MOD_JAR: path.relative(context.cwd, targetJarPath)
-    },
-  };
-
-  await writeConfig(context.configPath, context.cwd, latestConfig);
-
   return {
     downloaded: true,
+    variant,
     variantId: variant.id,
     minecraftVersion: variant.minecraftVersion,
     loader: variant.loader,
     javaCommand: java.command,
     javaVersion: java.majorVersion,
-    clientRootDir,
     minecraftDir,
     modsDir,
     jar: targetJarPath,
     cachePath: artifact.cachePath,
-    clientName,
-    launchArgsConfigured: Boolean(generatedLaunchArgs),
+    launchArgs: generatedLaunchArgs,
     runtimeRootDir: managedRuntime?.runtimeRootDir,
     runtimeVersionId: managedRuntime?.versionId
   };

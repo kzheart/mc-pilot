@@ -29,7 +29,7 @@ export function createCombatCommand() {
             timeout: options.timeout
           }),
           ({ options }, context) =>
-            withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 30, context.config.timeout.default)
+            withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 30, context.timeout("default"))
         )
       );
   }
@@ -49,7 +49,7 @@ export function createCombatCommand() {
           timeout: options.timeout
         }),
         ({ options }, context) =>
-          withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 60, context.config.timeout.default)
+          withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 60, context.timeout("default"))
       )
     );
 
@@ -66,7 +66,7 @@ export function createCombatCommand() {
           timeout: options.timeout
         }),
         ({ options }, context) =>
-          withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 10, context.config.timeout.default)
+          withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : 10, context.timeout("default"))
       )
     );
 
