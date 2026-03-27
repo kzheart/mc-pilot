@@ -10,7 +10,7 @@ export function AppShell() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Drag region for the content area top */}
           <div className="drag-region h-10 shrink-0" />
-          <main className="flex-1 overflow-y-auto px-6 pb-6">
+          <main className="flex-1 overflow-y-auto px-6 pb-6" style={{ minHeight: 0 }}>
             <Outlet />
           </main>
         </div>

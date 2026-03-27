@@ -3,6 +3,7 @@ import { join } from "path";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { registerIpcHandlers } from "./ipc-handlers";
 import { startStateWatcher, stopStateWatcher } from "./state-watcher";
+import { killAllSessions } from "./pty-manager";
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -45,7 +46,7 @@ app.whenReady().then(() => {
   });
 
   const win = createWindow();
-  registerIpcHandlers();
+  registerIpcHandlers(win);
   startStateWatcher(win);
 
   app.on("activate", () => {
@@ -58,6 +59,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   stopStateWatcher();
+  killAllSessions();
   if (process.platform !== "darwin") {
     app.quit();
   }

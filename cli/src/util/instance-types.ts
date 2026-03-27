@@ -31,6 +31,7 @@ export interface ServerRuntimeEntry {
   startedAt: string;
   logPath: string;
   instanceDir: string;
+  stdinPipe?: string;
 }
 
 export interface ClientRuntimeEntry {

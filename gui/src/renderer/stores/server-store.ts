@@ -8,6 +8,7 @@ interface ServerRuntimeEntry {
   startedAt: string;
   logPath: string;
   instanceDir: string;
+  stdinPipe?: string;
 }
 
 interface ServerInstanceMeta {

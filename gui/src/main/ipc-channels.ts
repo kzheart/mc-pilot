@@ -7,5 +7,16 @@ export const IPC_CHANNELS = {
   STATE_CHANGED: "state-changed",
   TAIL_LOG: "tail-log",
   TAIL_LOG_LINE: "tail-log-line",
-  SELECT_FILE: "select-file"
+  SELECT_FILE: "select-file",
+  PTY_SPAWN: "pty-spawn",
+  PTY_WRITE: "pty-write",
+  PTY_RESIZE: "pty-resize",
+  PTY_KILL: "pty-kill",
+  PTY_DATA: "pty-data",
+  PTY_EXIT: "pty-exit",
+  PTY_HAS_SESSION: "pty-has-session",
+  LOG_STREAM_START: "log-stream-start",
+  LOG_STREAM_DATA: "log-stream-data",
+  LOG_STREAM_STOP: "log-stream-stop",
+  WRITE_SERVER_STDIN: "write-server-stdin"
 } as const;

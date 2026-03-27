@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -22,12 +22,64 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   }
 }
 
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readServerState(): Promise<GlobalServerState> {
-  return readJsonFile(join(STATE_DIR, "servers.json"), { servers: {} });
+  const state = await readJsonFile<GlobalServerState>(
+    join(STATE_DIR, "servers.json"),
+    { servers: {} }
+  );
+  // Validate PIDs and remove stale entries
+  let dirty = false;
+  for (const [key, entry] of Object.entries(state.servers)) {
+    if (!isProcessRunning(entry.pid)) {
+      delete state.servers[key];
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    try {
+      await writeFile(
+        join(STATE_DIR, "servers.json"),
+        JSON.stringify(state, null, 2) + "\n"
+      );
+    } catch {
+      // ignore write errors
+    }
+  }
+  return state;
 }
 
 export async function readClientState(): Promise<GlobalClientState> {
-  return readJsonFile(join(STATE_DIR, "clients.json"), { clients: {} });
+  const state = await readJsonFile<GlobalClientState>(
+    join(STATE_DIR, "clients.json"),
+    { clients: {} }
+  );
+  let dirty = false;
+  for (const [key, entry] of Object.entries(state.clients)) {
+    if (!isProcessRunning(entry.pid)) {
+      delete state.clients[key];
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    try {
+      await writeFile(
+        join(STATE_DIR, "clients.json"),
+        JSON.stringify(state, null, 2) + "\n"
+      );
+    } catch {
+      // ignore write errors
+    }
+  }
+  return state;
 }
 
 export interface ProjectInfo {

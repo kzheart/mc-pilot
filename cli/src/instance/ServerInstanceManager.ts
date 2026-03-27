@@ -1,6 +1,6 @@
-import { access, copyFile, mkdir, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readdir, readFile, symlink, writeFile, unlink } from "node:fs/promises";
 import { mkdirSync, openSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 
 import type { GlobalStateStore } from "../util/global-state.js";
@@ -96,20 +96,35 @@ export class ServerInstanceManager {
     }
 
     const logsDir = path.join(this.globalState.getRootDir(), "logs");
+    const stateDir = path.join(this.globalState.getRootDir(), "state");
     mkdirSync(logsDir, { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
 
     const logPath = path.join(logsDir, `server-${this.project}-${serverName}.log`);
     const stdout = openSync(logPath, "a");
 
     const jvmArgs = options.jvmArgs ?? meta.jvmArgs;
 
-    const child = spawn("java", [...jvmArgs, "-jar", jarFile, "nogui"], {
+    // Create a named pipe (FIFO) for stdin so external tools (GUI) can send commands
+    const stdinPipe = path.join(stateDir, `stdin-${this.project}-${serverName}.fifo`);
+    try { await unlink(stdinPipe); } catch { /* ignore */ }
+    execSync(`mkfifo "${stdinPipe}"`);
+
+    // Use bash wrapper: hold FIFO write end open (fd 3) to prevent EOF,
+    // then exec java with stdin reading from the FIFO
+    const child = spawn("bash", [
+      "-c",
+      'exec 3>"$MCT_STDIN_PIPE"; exec java "$@" <"$MCT_STDIN_PIPE"',
+      "mct-server",
+      ...jvmArgs, "-jar", jarFile, "nogui"
+    ], {
       cwd: instanceDir,
       detached: true,
       stdio: ["ignore", stdout, stdout],
       env: {
         ...process.env,
-        MCT_SERVER_PORT: String(meta.port)
+        MCT_SERVER_PORT: String(meta.port),
+        MCT_STDIN_PIPE: stdinPipe
       }
     });
 
@@ -122,7 +137,8 @@ export class ServerInstanceManager {
       port: meta.port,
       startedAt: new Date().toISOString(),
       logPath,
-      instanceDir
+      instanceDir,
+      stdinPipe
     };
 
     state.servers[stateKey] = entry;
@@ -142,6 +158,11 @@ export class ServerInstanceManager {
 
     if (isProcessRunning(entry.pid)) {
       killProcessTree(entry.pid);
+    }
+
+    // Clean up FIFO
+    if (entry.stdinPipe) {
+      try { await unlink(entry.stdinPipe); } catch { /* ignore */ }
     }
 
     delete state.servers[stateKey];

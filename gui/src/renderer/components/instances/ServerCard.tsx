@@ -1,4 +1,5 @@
-import { Play, Square, Server } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Play, Square, Server, Terminal } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { useServerStore } from "@/stores/server-store";
 
@@ -17,6 +18,7 @@ export function ServerCard({
   mcVersion,
   port
 }: ServerCardProps) {
+  const navigate = useNavigate();
   const runtime = useServerStore((s) => s.runtime);
   const execAction = useServerStore((s) => s.execServerAction);
   const stateKey = `${project}/${name}`;
@@ -28,6 +30,10 @@ export function ServerCard({
     } else {
       await execAction("start", name, ["--project", project, "--eula"]);
     }
+  };
+
+  const openConsole = () => {
+    navigate(`/servers/${encodeURIComponent(project)}/${encodeURIComponent(name)}/console`);
   };
 
   return (
@@ -46,17 +52,26 @@ export function ServerCard({
           </p>
         </div>
       </div>
-      <button
-        onClick={handleToggle}
-        className="flex size-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
-        title={running ? "Stop" : "Start"}
-      >
-        {running ? (
-          <Square className="size-4 text-destructive" />
-        ) : (
-          <Play className="size-4 text-success" />
-        )}
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={openConsole}
+          className="flex size-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
+          title="Console"
+        >
+          <Terminal className="size-4 text-muted-foreground" />
+        </button>
+        <button
+          onClick={handleToggle}
+          className="flex size-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
+          title={running ? "Stop" : "Start"}
+        >
+          {running ? (
+            <Square className="size-4 text-destructive" />
+          ) : (
+            <Play className="size-4 text-success" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }

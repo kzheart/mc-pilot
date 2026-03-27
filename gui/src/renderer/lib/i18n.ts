@@ -79,6 +79,19 @@ const translations = {
     "settings.language": "语言",
     "settings.language_hint": "选择界面语言",
 
+    // Console
+    "console.start": "启动服务器",
+    "console.stop": "停止服务器",
+    "console.not_running": "服务器未运行",
+    "console.not_running_hint": "点击「启动服务器」在终端中启动",
+
+    // Dashboard extras
+    "dashboard.quick_actions": "快速操作",
+    "dashboard.uptime": "运行时长",
+    "dashboard.recent_logs": "最近日志",
+    "dashboard.open_console": "打开控制台",
+    "dashboard.no_logs": "暂无日志",
+
     // StatusBar
     "statusbar.servers": "{count} 个服务器运行中",
     "statusbar.clients": "{count} 个客户端运行中"
@@ -151,6 +164,17 @@ const translations = {
     "settings.title": "Settings",
     "settings.language": "Language",
     "settings.language_hint": "Select interface language",
+
+    "console.start": "Start Server",
+    "console.stop": "Stop Server",
+    "console.not_running": "Server is not running",
+    "console.not_running_hint": "Click 'Start Server' to launch in terminal",
+
+    "dashboard.quick_actions": "Quick Actions",
+    "dashboard.uptime": "Uptime",
+    "dashboard.recent_logs": "Recent Logs",
+    "dashboard.open_console": "Open Console",
+    "dashboard.no_logs": "No logs available",
 
     "statusbar.servers": "{count} server(s) running",
     "statusbar.clients": "{count} client(s) running"

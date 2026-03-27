@@ -1,5 +1,5 @@
-import { ipcMain, dialog } from "electron";
-import { createReadStream } from "node:fs";
+import { ipcMain, dialog, BrowserWindow } from "electron";
+import { createReadStream, createWriteStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { IPC_CHANNELS } from "./ipc-channels";
 import {
@@ -9,8 +9,10 @@ import {
   listClientInstances
 } from "./data-reader";
 import { execMct } from "./cli-bridge";
+import { ptySpawn, ptyWrite, ptyResize, ptyKill, hasSession } from "./pty-manager";
+import { startLogStream, stopLogStream } from "./log-streamer";
 
-export function registerIpcHandlers(): void {
+export function registerIpcHandlers(win: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.GET_SERVER_STATE, async () => {
     return readServerState();
   });
@@ -55,5 +57,47 @@ export function registerIpcHandlers(): void {
       properties: ["openFile"]
     });
     return result.canceled ? null : result.filePaths[0];
+  });
+
+  // PTY handlers
+  ipcMain.handle(IPC_CHANNELS.PTY_SPAWN, async (_, project: string, name: string) => {
+    return ptySpawn(project, name, win);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PTY_WRITE, (_, key: string, data: string) => {
+    ptyWrite(key, data);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PTY_RESIZE, (_, key: string, cols: number, rows: number) => {
+    ptyResize(key, cols, rows);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PTY_KILL, (_, key: string) => {
+    ptyKill(key);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PTY_HAS_SESSION, (_, key: string) => {
+    return hasSession(key);
+  });
+
+  // Log stream handlers
+  ipcMain.handle(IPC_CHANNELS.LOG_STREAM_START, async (_, key: string, logPath: string) => {
+    await startLogStream(key, logPath, win);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LOG_STREAM_STOP, (_, key: string) => {
+    stopLogStream(key);
+  });
+
+  // Write to server stdin via FIFO
+  ipcMain.handle(IPC_CHANNELS.WRITE_SERVER_STDIN, (_, pipePath: string, data: string) => {
+    return new Promise<void>((resolve, reject) => {
+      const ws = createWriteStream(pipePath, { flags: "a" });
+      ws.write(data, (err) => {
+        ws.end();
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   });
 }
