@@ -1,5 +1,7 @@
 import { Command } from "commander";
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { createBlockCommand } from "./commands/block.js";
 import { createBookCommand } from "./commands/book.js";
@@ -49,7 +51,11 @@ export function buildProgram() {
         "  mct --client p1 chat send \"Hello from p1\"\n" +
         "  mct --client p2 chat send \"Hello from p2\""
     )
-    .version("0.1.0", "--cli-version", "Show CLI version");
+    .version(
+      JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version,
+      "--cli-version",
+      "Show CLI version"
+    );
 
   attachGlobalOptions(program);
 
