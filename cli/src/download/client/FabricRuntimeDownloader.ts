@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -90,6 +90,17 @@ export async function prepareManagedFabricRuntime(
   await mkdir(runtimeRootDir, { recursive: true });
   await mkdir(gameDir, { recursive: true });
 
+  const expectedVersionId = `${variant.minecraftVersion}-fabric${loaderVersion}`;
+  const readyMarker = path.join(runtimeRootDir, `.ready-${expectedVersionId}`);
+
+  try {
+    await access(readyMarker);
+    // Runtime already prepared, skip download
+    return { runtimeRootDir, gameDir, versionId: expectedVersionId };
+  } catch {
+    // Not ready, proceed with download
+  }
+
   const minecraft = new MinecraftFolder(runtimeRootDir);
   const versionList = await getVersionList({ fetch: fetchImpl });
   const versionMeta = versionList.versions.find((entry) => entry.id === variant.minecraftVersion);
@@ -107,14 +118,14 @@ export async function prepareManagedFabricRuntime(
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER
   });
-  const versionId = await installFabric({
+  const installedVersionId = await installFabric({
     minecraftVersion: variant.minecraftVersion,
     version: loaderVersion,
     minecraft,
     side: "client",
     fetch: fetchImpl
   });
-  const resolvedVersion = await Version.parse(minecraft, versionId);
+  const resolvedVersion = await Version.parse(minecraft, installedVersionId);
   await installDependencies(resolvedVersion, {
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER,
@@ -122,11 +133,12 @@ export async function prepareManagedFabricRuntime(
     librariesDownloadConcurrency: 2
   });
 
-  await applyArm64LwjglPatch(runtimeRootDir, versionId, { fetchImpl });
+  await applyArm64LwjglPatch(runtimeRootDir, installedVersionId, { fetchImpl });
+  await writeFile(readyMarker, new Date().toISOString(), "utf8");
 
   return {
     runtimeRootDir,
     gameDir,
-    versionId
+    versionId: installedVersionId
   };
 }
