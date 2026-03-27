@@ -25,6 +25,7 @@ import { createServerCommand } from "./commands/server.js";
 import { createSignCommand } from "./commands/sign.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
+import { createPluginCommand } from "./commands/plugin.js";
 import { createInitCommand, createDeployCommand, createUpCommand, createDownCommand, createUseCommand } from "./commands/project.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
@@ -79,6 +80,7 @@ export function buildProgram() {
   // Instance management
   program.addCommand(createServerCommand());
   program.addCommand(createClientCommand());
+  program.addCommand(createPluginCommand());
 
   // Game interaction commands
   program.addCommand(createChatCommand());

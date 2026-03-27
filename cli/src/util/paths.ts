@@ -28,3 +28,11 @@ export function resolveServerInstanceDir(project: string, server: string): strin
 export function resolveGlobalStateDir(): string {
   return path.join(resolveMctHome(), "state");
 }
+
+export function resolvePluginsDir(): string {
+  return path.join(resolveMctHome(), "plugins");
+}
+
+export function resolvePluginJarsDir(): string {
+  return path.join(resolvePluginsDir(), "jars");
+}
