@@ -64,9 +64,14 @@ async function fetchWithRetry(input: Parameters<typeof fetch>[0], init?: Paramet
   throw lastError;
 }
 
+export interface PrepareFabricRuntimeOptions {
+  runtimeRootDir: string;
+  gameDir: string;
+}
+
 export async function prepareManagedFabricRuntime(
   variant: ModVariant,
-  clientRootDir: string,
+  runtimeOptions: PrepareFabricRuntimeOptions,
   dependencies: PrepareFabricRuntimeDependencies = {}
 ): Promise<PreparedFabricRuntime> {
   const fetchImpl = dependencies.fetchImpl ?? fetchWithRetry;
@@ -81,8 +86,7 @@ export async function prepareManagedFabricRuntime(
     );
   }
 
-  const runtimeRootDir = path.join(clientRootDir, "runtime");
-  const gameDir = path.join(clientRootDir, "minecraft");
+  const { runtimeRootDir, gameDir } = runtimeOptions;
   await mkdir(runtimeRootDir, { recursive: true });
   await mkdir(gameDir, { recursive: true });
 

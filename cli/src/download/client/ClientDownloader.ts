@@ -288,7 +288,10 @@ export async function downloadClientMod(
   const runtimePaths = resolveLaunchRuntimePaths(context, options);
   const managedRuntime = runtimePaths
     ? undefined
-    : await prepareManagedRuntimeImpl(variant, clientRootDir, { fetchImpl });
+    : await prepareManagedRuntimeImpl(variant, {
+        runtimeRootDir: path.join(cacheManager.getRootDir(), "client", "runtime", variant.minecraftVersion),
+        gameDir: minecraftDir
+      }, { fetchImpl });
   const generatedLaunchArgs = runtimePaths
     ? buildLaunchArgs(runtimePaths, variant)
     : buildManagedLaunchArgs(managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);

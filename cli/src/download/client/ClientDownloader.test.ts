@@ -133,9 +133,8 @@ test("downloadClientMod prepares a self-managed runtime when no external runtime
           command: "java",
           majorVersion: 17
         }),
-        prepareManagedRuntimeImpl: async (_variant, clientRootDir) => {
-          const runtimeRootDir = path.join(clientRootDir, "runtime");
-          const gameDir = path.join(clientRootDir, "minecraft");
+        prepareManagedRuntimeImpl: async (_variant, runtimeOptions) => {
+          const { runtimeRootDir, gameDir } = runtimeOptions;
           await mkdir(path.join(runtimeRootDir, "versions", fabricVersionId), { recursive: true });
           await mkdir(path.join(runtimeRootDir, "libraries", "com", "example", "vanilla-lib", "1.0.0"), { recursive: true });
           await writeFile(
@@ -157,14 +156,14 @@ test("downloadClientMod prepares a self-managed runtime when no external runtime
       }
     );
 
-    assert.equal(result.runtimeRootDir, path.join(tempDir, "managed-client", "runtime"));
+    assert.equal(result.runtimeRootDir, path.join(tempDir, "cache", "client", "runtime", "1.20.2"));
     assert.equal(result.runtimeVersionId, fabricVersionId);
     assert.equal(await readFile(result.jar, "utf8"), "mod-jar-1202");
 
-    const fabricJsonPath = path.join(tempDir, "managed-client", "runtime", "versions", fabricVersionId, `${fabricVersionId}.json`);
+    const fabricJsonPath = path.join(result.runtimeRootDir, "versions", fabricVersionId, `${fabricVersionId}.json`);
     const fabricJson = JSON.parse(await readFile(fabricJsonPath, "utf8")) as { id: string };
     assert.equal(fabricJson.id, fabricVersionId);
-    assert.equal(await readFile(path.join(tempDir, "managed-client", "runtime", "libraries", "com", "example", "vanilla-lib", "1.0.0", "vanilla-lib-1.0.0.jar"), "utf8"), "vanilla-lib");
+    assert.equal(await readFile(path.join(result.runtimeRootDir, "libraries", "com", "example", "vanilla-lib", "1.0.0", "vanilla-lib-1.0.0.jar"), "utf8"), "vanilla-lib");
 
     const config = JSON.parse(await readFile(configPath, "utf8")) as {
       clients: Record<string, { launchArgs: string[]; workingDir: string }>;

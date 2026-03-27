@@ -11,8 +11,8 @@ tmp/
 .mct-state/
 screenshots/
 mct.config.json
-server/
-client/
+/server/
+/client/
 
 plan/
 issues/
