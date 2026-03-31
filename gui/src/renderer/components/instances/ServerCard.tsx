@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Play, Square, Server, Terminal } from "lucide-react";
+import { Play, Square, Server, Terminal, FolderOpen } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
 import { useServerStore } from "@/stores/server-store";
 
@@ -9,6 +9,7 @@ interface ServerCardProps {
   type: string;
   mcVersion: string;
   port: number;
+  instanceDir?: string;
 }
 
 export function ServerCard({
@@ -16,24 +17,33 @@ export function ServerCard({
   project,
   type,
   mcVersion,
-  port
+  port,
+  instanceDir: metaInstanceDir
 }: ServerCardProps) {
   const navigate = useNavigate();
   const runtime = useServerStore((s) => s.runtime);
   const execAction = useServerStore((s) => s.execServerAction);
   const stateKey = `${project}/${name}`;
   const running = stateKey in runtime;
+  const instanceDir = runtime[stateKey]?.instanceDir ?? metaInstanceDir;
 
   const handleToggle = async () => {
     if (running) {
       await execAction("stop", name, ["--project", project]);
     } else {
-      await execAction("start", name, ["--project", project, "--eula"]);
+      // Navigate to console page and auto-start via PTY
+      navigate(`/servers/${encodeURIComponent(project)}/${encodeURIComponent(name)}/console?autostart=1`);
     }
   };
 
   const openConsole = () => {
     navigate(`/servers/${encodeURIComponent(project)}/${encodeURIComponent(name)}/console`);
+  };
+
+  const openFolder = () => {
+    if (instanceDir) {
+      window.electronAPI.openPath(instanceDir);
+    }
   };
 
   return (
@@ -53,6 +63,13 @@ export function ServerCard({
         </div>
       </div>
       <div className="flex items-center gap-1">
+        <button
+          onClick={openFolder}
+          className="flex size-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
+          title="Open folder"
+        >
+          <FolderOpen className="size-4 text-muted-foreground" />
+        </button>
         <button
           onClick={openConsole}
           className="flex size-8 items-center justify-center rounded-md hover:bg-accent transition-colors"

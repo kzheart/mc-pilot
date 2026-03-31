@@ -43,6 +43,7 @@ export function ServersPage() {
                   type={s.type}
                   mcVersion={s.mcVersion}
                   port={s.port}
+                  instanceDir={s.instanceDir}
                 />
               ))}
             </div>

@@ -1,5 +1,5 @@
-import { ipcMain, dialog, BrowserWindow } from "electron";
-import { createReadStream, createWriteStream } from "node:fs";
+import { ipcMain, dialog, shell, BrowserWindow } from "electron";
+import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { IPC_CHANNELS } from "./ipc-channels";
 import {
@@ -9,8 +9,7 @@ import {
   listClientInstances
 } from "./data-reader";
 import { execMct } from "./cli-bridge";
-import { ptySpawn, ptyWrite, ptyResize, ptyKill, hasSession } from "./pty-manager";
-import { startLogStream, stopLogStream } from "./log-streamer";
+import { ptySpawn, ptyWrite, ptyResize, ptyKill, hasSession, getScrollback } from "./pty-manager";
 
 export function registerIpcHandlers(win: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.GET_SERVER_STATE, async () => {
@@ -80,24 +79,12 @@ export function registerIpcHandlers(win: BrowserWindow): void {
     return hasSession(key);
   });
 
-  // Log stream handlers
-  ipcMain.handle(IPC_CHANNELS.LOG_STREAM_START, async (_, key: string, logPath: string) => {
-    await startLogStream(key, logPath, win);
+  ipcMain.handle(IPC_CHANNELS.PTY_GET_SCROLLBACK, (_, key: string) => {
+    return getScrollback(key);
   });
 
-  ipcMain.handle(IPC_CHANNELS.LOG_STREAM_STOP, (_, key: string) => {
-    stopLogStream(key);
-  });
-
-  // Write to server stdin via FIFO
-  ipcMain.handle(IPC_CHANNELS.WRITE_SERVER_STDIN, (_, pipePath: string, data: string) => {
-    return new Promise<void>((resolve, reject) => {
-      const ws = createWriteStream(pipePath, { flags: "a" });
-      ws.write(data, (err) => {
-        ws.end();
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+  // Open path in system file manager
+  ipcMain.handle(IPC_CHANNELS.OPEN_PATH, (_, dirPath: string) => {
+    shell.openPath(dirPath);
   });
 }

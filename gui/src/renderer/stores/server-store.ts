@@ -19,6 +19,7 @@ interface ServerInstanceMeta {
   port: number;
   jvmArgs: string[];
   createdAt: string;
+  instanceDir?: string;
 }
 
 export interface ProjectInfo {

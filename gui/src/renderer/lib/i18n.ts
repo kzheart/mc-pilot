@@ -84,6 +84,7 @@ const translations = {
     "console.stop": "停止服务器",
     "console.not_running": "服务器未运行",
     "console.not_running_hint": "点击「启动服务器」在终端中启动",
+    "console.input_placeholder": "输入命令，按 Enter 发送，Tab 补全",
 
     // Dashboard extras
     "dashboard.quick_actions": "快速操作",
@@ -169,6 +170,7 @@ const translations = {
     "console.stop": "Stop Server",
     "console.not_running": "Server is not running",
     "console.not_running_hint": "Click 'Start Server' to launch in terminal",
+    "console.input_placeholder": "Type command, Enter to send, Tab to complete",
 
     "dashboard.quick_actions": "Quick Actions",
     "dashboard.uptime": "Uptime",

@@ -15,8 +15,6 @@ export const IPC_CHANNELS = {
   PTY_DATA: "pty-data",
   PTY_EXIT: "pty-exit",
   PTY_HAS_SESSION: "pty-has-session",
-  LOG_STREAM_START: "log-stream-start",
-  LOG_STREAM_DATA: "log-stream-data",
-  LOG_STREAM_STOP: "log-stream-stop",
-  WRITE_SERVER_STDIN: "write-server-stdin"
+  PTY_GET_SCROLLBACK: "pty-get-scrollback",
+  OPEN_PATH: "open-path"
 } as const;

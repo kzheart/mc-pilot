@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Power, PowerOff } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useServerStore } from "@/stores/server-store";
@@ -9,21 +9,21 @@ async function loadXterm() {
     import("@xterm/xterm"),
     import("@xterm/addon-fit")
   ]);
-  if (!document.querySelector("link[data-xterm-css]")) {
-    const link = document.createElement("style");
-    link.setAttribute("data-xterm-css", "");
+  if (!document.querySelector("style[data-xterm-css]")) {
+    const style = document.createElement("style");
+    style.setAttribute("data-xterm-css", "");
     const css = await import("@xterm/xterm/css/xterm.css?inline");
-    link.textContent = css.default;
-    document.head.appendChild(link);
+    style.textContent = css.default;
+    document.head.appendChild(style);
   }
   return { Terminal, FitAddon };
 }
 
-type ConsoleMode = "idle" | "pty" | "fifo";
-
 export function ServerConsolePage() {
   const { project, name } = useParams<{ project: string; name: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const autostart = searchParams.get("autostart") === "1";
   const t = useI18n((s) => s.t);
   const runtime = useServerStore((s) => s.runtime);
   const fetch = useServerStore((s) => s.fetch);
@@ -31,9 +31,8 @@ export function ServerConsolePage() {
   const termRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
-  const inputBufRef = useRef("");
 
-  const [mode, setMode] = useState<ConsoleMode>("idle");
+  const [connected, setConnected] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [termReady, setTermReady] = useState(false);
@@ -53,6 +52,7 @@ export function ServerConsolePage() {
         fontSize: 13,
         lineHeight: 1.3,
         cursorBlink: true,
+        scrollback: 10000,
         theme: {
           background: "#1a1a1a",
           foreground: "#e0e0e0",
@@ -86,14 +86,27 @@ export function ServerConsolePage() {
       fitAddonRef.current = fitAddon;
       setTermReady(true);
 
+      // Forward all input directly to PTY (Tab completion works natively)
+      terminal.onData((data: string) => {
+        window.electronAPI.ptyWrite(key, data);
+      });
+      terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
+        window.electronAPI.ptyResize(key, cols, rows);
+      });
+
+      requestAnimationFrame(() => {
+        fitAddon.fit();
+        terminal.focus();
+      });
+
       return terminal;
     } catch (err) {
       setError(`Terminal init failed: ${err}`);
       return null;
     }
-  }, []);
+  }, [key]);
 
-  // === PTY mode: start server from GUI with full PTY ===
+  // Start (or take over) server with PTY
   const startPtySession = useCallback(async () => {
     if (!project || !name) return;
     setStarting(true);
@@ -104,14 +117,6 @@ export function ServerConsolePage() {
 
     terminal.writeln(`\x1b[90m--- Starting server ${key} ---\x1b[0m\r\n`);
 
-    // Forward user input directly to PTY
-    terminal.onData((data: string) => {
-      window.electronAPI.ptyWrite(key, data);
-    });
-    terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-      window.electronAPI.ptyResize(key, cols, rows);
-    });
-
     const result = await window.electronAPI.ptySpawn(project, name);
     if (!result.success) {
       setError(result.error ?? "Failed to start");
@@ -120,72 +125,25 @@ export function ServerConsolePage() {
       return;
     }
 
-    setMode("pty");
+    setConnected(true);
     setStarting(false);
     fitAddonRef.current?.fit();
     fetch();
   }, [project, name, key, initTerminal, fetch]);
 
-  // === FIFO mode: attach to CLI-started server ===
-  const startFifoSession = useCallback(async () => {
-    if (!runtimeEntry) return;
-    setError(null);
-
-    const terminal = await initTerminal();
-    if (!terminal) return;
-
-    terminal.writeln(`\x1b[90m--- Attached to server ${key} ---\x1b[0m\r\n`);
-
-    const stdinPipe = runtimeEntry.stdinPipe;
-
-    // Handle user input: buffer line and send on Enter
-    terminal.onData((data: string) => {
-      if (!stdinPipe) return;
-
-      for (const ch of data) {
-        if (ch === "\r" || ch === "\n") {
-          // Send buffered line to FIFO
-          const line = inputBufRef.current;
-          inputBufRef.current = "";
-          terminal.write("\r\n");
-          if (line.length > 0) {
-            window.electronAPI.writeServerStdin(stdinPipe, line + "\n").catch(() => {
-              terminal.writeln(`\x1b[31mFailed to send command\x1b[0m`);
-            });
-          }
-        } else if (ch === "\x7f" || ch === "\b") {
-          // Backspace
-          if (inputBufRef.current.length > 0) {
-            inputBufRef.current = inputBufRef.current.slice(0, -1);
-            terminal.write("\b \b");
-          }
-        } else if (ch >= " ") {
-          inputBufRef.current += ch;
-          terminal.write(ch);
-        }
-      }
-    });
-
-    // Start log stream
-    await window.electronAPI.logStreamStart(key, runtimeEntry.logPath);
-    setMode("fifo");
-    fitAddonRef.current?.fit();
-  }, [key, runtimeEntry, initTerminal]);
-
-  // Attach to existing PTY session
+  // Attach to existing PTY session with scrollback replay
   const attachPtySession = useCallback(async () => {
     const terminal = await initTerminal();
     if (!terminal) return;
 
-    terminal.onData((data: string) => {
-      window.electronAPI.ptyWrite(key, data);
-    });
-    terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-      window.electronAPI.ptyResize(key, cols, rows);
-    });
+    const scrollback = await window.electronAPI.ptyGetScrollback(key);
+    if (scrollback) {
+      terminal.write(scrollback);
+    }
 
-    setMode("pty");
+    setConnected(true);
     fitAddonRef.current?.fit();
+    terminal.focus();
   }, [key, initTerminal]);
 
   // Listen for PTY data/exit
@@ -197,7 +155,7 @@ export function ServerConsolePage() {
     });
     const unsubExit = window.electronAPI.onPtyExit((k) => {
       if (k === key) {
-        setMode("idle");
+        setConnected(false);
         terminalRef.current?.writeln("\r\n\x1b[90m--- Server process exited ---\x1b[0m");
         fetch();
       }
@@ -205,17 +163,7 @@ export function ServerConsolePage() {
     return () => { unsubData(); unsubExit(); };
   }, [key, fetch]);
 
-  // Listen for log stream data (FIFO mode)
-  useEffect(() => {
-    const unsub = window.electronAPI.onLogStreamData((k, data) => {
-      if (k === key && terminalRef.current) {
-        terminalRef.current.write(data);
-      }
-    });
-    return unsub;
-  }, [key]);
-
-  // Auto-detect mode on mount
+  // Auto-detect on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -223,29 +171,29 @@ export function ServerConsolePage() {
       if (cancelled) return;
       if (hasPty) {
         attachPtySession();
-      } else if (isRunning) {
-        startFifoSession();
+      } else if (isRunning || autostart) {
+        startPtySession();
       }
     })();
     return () => { cancelled = true; };
-  }, [key, isRunning, attachPtySession, startFifoSession]);
+  }, [key, isRunning, autostart, attachPtySession, startPtySession]);
 
-  // Listen for state changes to detect server stop from outside
+  // Listen for state changes
   useEffect(() => {
+    fetch();
     const unsub = window.electronAPI.onStateChange((type) => {
       if (type === "servers") fetch();
     });
     return unsub;
   }, [fetch]);
 
-  // When server stops externally while in FIFO mode
+  // Detect external stop
   useEffect(() => {
-    if (mode === "fifo" && !isRunning) {
-      window.electronAPI.logStreamStop(key);
-      setMode("idle");
+    if (connected && !isRunning) {
+      setConnected(false);
       terminalRef.current?.writeln("\r\n\x1b[90m--- Server stopped ---\x1b[0m");
     }
-  }, [mode, isRunning, key]);
+  }, [connected, isRunning]);
 
   // Fit on window resize
   useEffect(() => {
@@ -257,7 +205,6 @@ export function ServerConsolePage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      window.electronAPI.logStreamStop(key);
       terminalRef.current?.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -265,16 +212,11 @@ export function ServerConsolePage() {
   }, [key]);
 
   const handleStop = () => {
-    if (mode === "pty") {
-      window.electronAPI.ptyKill(key);
-    } else if (mode === "fifo" && runtimeEntry?.stdinPipe) {
-      // Send "stop" command to Minecraft server
-      window.electronAPI.writeServerStdin(runtimeEntry.stdinPipe, "stop\n").catch(() => {});
-    }
+    window.electronAPI.ptyKill(key);
   };
 
-  const showStartButton = mode === "idle" && !isRunning && !starting;
-  const showStopButton = mode === "pty" || mode === "fifo";
+  const showStartButton = !connected && !isRunning && !starting;
+  const showStopButton = connected;
 
   return (
     <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
@@ -288,15 +230,7 @@ export function ServerConsolePage() {
         </button>
         <div className="flex-1">
           <h1 className="text-lg font-semibold">{name}</h1>
-          <p className="text-xs text-muted-foreground">
-            {project}
-            {mode === "fifo" && (
-              <span className="ml-2 text-warning">FIFO</span>
-            )}
-            {mode === "pty" && (
-              <span className="ml-2 text-success">PTY</span>
-            )}
-          </p>
+          <p className="text-xs text-muted-foreground">{project}</p>
         </div>
 
         {showStartButton && (
@@ -326,20 +260,20 @@ export function ServerConsolePage() {
         </div>
       )}
 
-      {/* Terminal area */}
+      {/* Terminal */}
       <div
-        className="flex-1 rounded-lg border border-border overflow-hidden"
+        className="relative flex-1 rounded-lg border border-border overflow-hidden"
         style={{ minHeight: 200, background: "#1a1a1a" }}
       >
-        {mode === "idle" && !starting && !termReady ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
+        <div ref={termRef} style={{ height: "100%", width: "100%", padding: 8 }} />
+
+        {!connected && !starting && !termReady && (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-[#1a1a1a]">
             <div className="text-center">
               <p className="text-sm">{t("console.not_running")}</p>
               <p className="text-xs mt-1">{t("console.not_running_hint")}</p>
             </div>
           </div>
-        ) : (
-          <div ref={termRef} style={{ height: "100%", width: "100%", padding: 8 }} />
         )}
       </div>
     </div>

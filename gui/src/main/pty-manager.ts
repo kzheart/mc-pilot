@@ -14,11 +14,15 @@ const MCT_HOME = process.env.MCT_HOME || join(homedir(), ".mct");
 const STATE_DIR = join(MCT_HOME, "state");
 const PROJECTS_DIR = join(MCT_HOME, "projects");
 
+const MAX_SCROLLBACK = 200;
+
 interface PtySession {
   pty: pty.IPty;
   project: string;
   name: string;
   stateKey: string;
+  scrollback: string[];
+  lineBuf: string;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -64,6 +68,34 @@ function killProcessTree(pid: number): void {
       // already dead
     }
   }
+}
+
+function appendScrollback(session: PtySession, data: string): void {
+  session.lineBuf += data;
+  let nl: number;
+  while ((nl = session.lineBuf.indexOf("\n")) !== -1) {
+    const line = session.lineBuf.slice(0, nl);
+    session.lineBuf = session.lineBuf.slice(nl + 1);
+    // Strip cursor/erase ANSI sequences but keep color codes
+    const cleaned = line
+      .replace(/\x1b\[\??[0-9;]*[A-HJKSTfhlr]/g, "")
+      .replace(/\r/g, "");
+    if (cleaned.trim()) {
+      session.scrollback.push(cleaned);
+      if (session.scrollback.length > MAX_SCROLLBACK) {
+        session.scrollback.shift();
+      }
+    }
+  }
+}
+
+/**
+ * Get scrollback buffer for replay when reattaching.
+ */
+export function getScrollback(key: string): string | null {
+  const session = sessions.get(key);
+  if (!session || session.scrollback.length === 0) return null;
+  return session.scrollback.join("\r\n") + "\r\n";
 }
 
 /**
@@ -120,7 +152,14 @@ export async function ptySpawn(
     } as Record<string, string>
   });
 
-  const session: PtySession = { pty: ptyProcess, project, name, stateKey: key };
+  const session: PtySession = {
+    pty: ptyProcess,
+    project,
+    name,
+    stateKey: key,
+    scrollback: [],
+    lineBuf: ""
+  };
   sessions.set(key, session);
 
   // Update state file
@@ -146,8 +185,9 @@ export async function ptySpawn(
   state.servers[key] = entry;
   await writeFile(join(STATE_DIR, "servers.json"), JSON.stringify(state, null, 2) + "\n");
 
-  // Stream PTY data to renderer
+  // Stream PTY data to renderer + buffer scrollback
   ptyProcess.onData((data) => {
+    appendScrollback(session, data);
     if (!win.isDestroyed()) {
       win.webContents.send("pty-data", key, data);
     }

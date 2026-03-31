@@ -16,10 +16,8 @@ const IPC = {
   PTY_DATA: "pty-data",
   PTY_EXIT: "pty-exit",
   PTY_HAS_SESSION: "pty-has-session",
-  LOG_STREAM_START: "log-stream-start",
-  LOG_STREAM_DATA: "log-stream-data",
-  LOG_STREAM_STOP: "log-stream-stop",
-  WRITE_SERVER_STDIN: "write-server-stdin"
+  PTY_GET_SCROLLBACK: "pty-get-scrollback",
+  OPEN_PATH: "open-path"
 } as const;
 
 const api = {
@@ -38,7 +36,7 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.STATE_CHANGED, handler);
   },
 
-  // PTY (for GUI-started servers)
+  // PTY
   ptySpawn: (project: string, name: string) =>
     ipcRenderer.invoke(IPC.PTY_SPAWN, project, name) as Promise<{ success: boolean; error?: string }>,
   ptyWrite: (key: string, data: string) => ipcRenderer.invoke(IPC.PTY_WRITE, key, data),
@@ -47,6 +45,8 @@ const api = {
   ptyKill: (key: string) => ipcRenderer.invoke(IPC.PTY_KILL, key),
   ptyHasSession: (key: string) =>
     ipcRenderer.invoke(IPC.PTY_HAS_SESSION, key) as Promise<boolean>,
+  ptyGetScrollback: (key: string) =>
+    ipcRenderer.invoke(IPC.PTY_GET_SCROLLBACK, key) as Promise<string | null>,
   onPtyData: (callback: (key: string, data: string) => void) => {
     const handler = (_: unknown, key: string, data: string) => callback(key, data);
     ipcRenderer.on(IPC.PTY_DATA, handler);
@@ -58,20 +58,8 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.PTY_EXIT, handler);
   },
 
-  // Log stream (for CLI-started servers)
-  logStreamStart: (key: string, logPath: string) =>
-    ipcRenderer.invoke(IPC.LOG_STREAM_START, key, logPath),
-  logStreamStop: (key: string) =>
-    ipcRenderer.invoke(IPC.LOG_STREAM_STOP, key),
-  onLogStreamData: (callback: (key: string, data: string) => void) => {
-    const handler = (_: unknown, key: string, data: string) => callback(key, data);
-    ipcRenderer.on(IPC.LOG_STREAM_DATA, handler);
-    return () => ipcRenderer.removeListener(IPC.LOG_STREAM_DATA, handler);
-  },
-
-  // Write to server stdin via FIFO
-  writeServerStdin: (pipePath: string, data: string) =>
-    ipcRenderer.invoke(IPC.WRITE_SERVER_STDIN, pipePath, data) as Promise<void>
+  // Open path in system file manager
+  openPath: (dirPath: string) => ipcRenderer.invoke(IPC.OPEN_PATH, dirPath)
 };
 
 export type ElectronAPI = typeof api;

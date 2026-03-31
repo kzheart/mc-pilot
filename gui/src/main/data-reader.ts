@@ -106,17 +106,18 @@ export async function listProjects(): Promise<ProjectInfo[]> {
 async function listServerInstances(
   project: string,
   projectDir: string
-): Promise<ServerInstanceMeta[]> {
-  const instances: ServerInstanceMeta[] = [];
+): Promise<(ServerInstanceMeta & { instanceDir: string })[]> {
+  const instances: (ServerInstanceMeta & { instanceDir: string })[] = [];
   try {
     const dirs = await readdir(projectDir, { withFileTypes: true });
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
+      const instanceDir = join(projectDir, dir.name);
       const meta = await readJsonFile<ServerInstanceMeta | null>(
-        join(projectDir, dir.name, "instance.json"),
+        join(instanceDir, "instance.json"),
         null
       );
-      if (meta) instances.push(meta);
+      if (meta) instances.push({ ...meta, instanceDir });
     }
   } catch {
     // ignore
