@@ -5,7 +5,7 @@ import path from "node:path";
 
 import type { GlobalStateStore } from "../util/global-state.js";
 import type { ServerInstanceMeta, ServerRuntimeEntry, ServerType } from "../util/instance-types.js";
-import { resolveProjectDir, resolveServerInstanceDir } from "../util/paths.js";
+import { resolveMctHome, resolveProjectDir, resolveServerInstanceDir } from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { waitForTcpPort } from "../util/net.js";
 import { isProcessRunning, killProcessTree } from "../util/process.js";
@@ -95,8 +95,9 @@ export class ServerInstanceManager {
       await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
     }
 
-    const logsDir = path.join(this.globalState.getRootDir(), "logs");
-    const stateDir = path.join(this.globalState.getRootDir(), "state");
+    const mctHome = resolveMctHome();
+    const logsDir = path.join(mctHome, "logs");
+    const stateDir = path.join(mctHome, "state");
     mkdirSync(logsDir, { recursive: true });
     mkdirSync(stateDir, { recursive: true });
 
@@ -110,11 +111,12 @@ export class ServerInstanceManager {
     try { await unlink(stdinPipe); } catch { /* ignore */ }
     execSync(`mkfifo "${stdinPipe}"`);
 
-    // Use bash wrapper: hold FIFO write end open (fd 3) to prevent EOF,
+    // Use bash wrapper: hold FIFO open in read-write mode (fd 3 <>) to prevent EOF
+    // without blocking (write-only > would block until a reader opens the other end),
     // then exec java with stdin reading from the FIFO
     const child = spawn("bash", [
       "-c",
-      'exec 3>"$MCT_STDIN_PIPE"; exec java "$@" <"$MCT_STDIN_PIPE"',
+      'exec 3<>"$MCT_STDIN_PIPE"; exec java "$@" <"$MCT_STDIN_PIPE"',
       "mct-server",
       ...jvmArgs, "-jar", jarFile, "nogui"
     ], {

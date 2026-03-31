@@ -1,6 +1,6 @@
 {
   "name": "@kzheart_/mc-pilot",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "description": "Minecraft plugin/mod automated testing CLI – control a real Minecraft client to simulate player actions",
   "type": "module",
   "bin": {

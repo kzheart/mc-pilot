@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import type { GlobalStateStore } from "../util/global-state.js";
 import type { ClientInstanceMeta, ClientRuntimeEntry, LoaderType } from "../util/instance-types.js";
-import { resolveClientInstanceDir, resolveClientsDir } from "../util/paths.js";
+import { resolveMctHome, resolveClientInstanceDir, resolveClientsDir } from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { getListeningPids, isProcessRunning, killProcessTree } from "../util/process.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
@@ -102,7 +102,7 @@ export class ClientInstanceManager {
     const launchCommand = [process.execPath, getLaunchScriptPath(), ...meta.launchArgs];
     const minecraftDir = path.join(instanceDir, "minecraft");
 
-    const logsDir = path.join(this.globalState.getRootDir(), "logs");
+    const logsDir = path.join(resolveMctHome(), "logs");
     mkdirSync(logsDir, { recursive: true });
     const logPath = path.join(logsDir, `client-${clientName}.log`);
     const stdout = openSync(logPath, "a");
