@@ -10,7 +10,8 @@ import { promisify } from "node:util";
 
 import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
-import { DEFAULT_WS_PORT_BASE } from "../cli/dist/util/config.js";
+
+const DEFAULT_WS_PORT_BASE = 25580;
 
 const execFileAsync = promisify(execFile);
 
