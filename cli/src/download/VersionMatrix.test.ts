@@ -47,7 +47,7 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   const forge = results.find((entry) => entry.loader === "forge");
 
   assert.equal(fabric?.supported, true);
-  assert.equal(fabric?.loaderVersion, "0.16.10");
+  assert.equal(fabric?.loaderVersion, "0.16.14");
   assert.equal(fabric?.modVersion, "0.1.1");
   assert.equal(fabric?.validation, "verified");
   assert.equal(fabric?.notes, undefined);
@@ -76,7 +76,7 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       loader: "fabric",
       minecraftVersion: "1.20.3",
       supported: true,
-      loaderVersion: "0.16.10",
+      loaderVersion: "0.16.14",
       modVersion: "0.1.1",
       validation: "verified",
       javaVersion: "17+"
@@ -85,7 +85,7 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       loader: "fabric",
       minecraftVersion: "1.20.2",
       supported: true,
-      loaderVersion: "0.16.10",
+      loaderVersion: "0.16.14",
       modVersion: "0.1.1",
       validation: "verified",
       javaVersion: "17+"

@@ -198,7 +198,7 @@ async function buildLaunchSpec(options) {
   const minecraftVersion = process.env.MCT_CLIENT_VERSION || options["minecraft-version"] || defaultVariant.minecraftVersion;
   const modVariantId = process.env.MCT_CLIENT_MOD_VARIANT || options["mod-variant"] || `${minecraftVersion}-fabric`;
   const selectedVariant = getVariantById(modVariantId) ?? defaultVariant;
-  const fabricLoaderVersion = options["fabric-loader-version"] || selectedVariant.fabricLoaderVersion || "0.16.10";
+  const fabricLoaderVersion = options["fabric-loader-version"] || selectedVariant.fabricLoaderVersion || "0.16.14";
   const instanceRoot = options["instance-dir"];
   const metaRoot = options["meta-dir"];
   const librariesRoot = options["libraries-dir"];

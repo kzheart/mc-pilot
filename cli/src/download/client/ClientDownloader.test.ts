@@ -55,7 +55,7 @@ test("downloadClientModToDir prepares a self-managed runtime", async () => {
   const buildDir = path.join(tempDir, "client-mod", "version-1.20.2", "build", "libs");
   const jarPath = path.join(buildDir, "mct-client-mod-fabric-1.20.2.jar");
   const targetDir = path.join(tempDir, "client-instance");
-  const fabricVersionId = "fabric-loader-0.16.10-1.20.2";
+  const fabricVersionId = "fabric-loader-0.16.14-1.20.2";
 
   await mkdir(buildDir, { recursive: true });
   await writeFile(jarPath, "mod-jar-1202", "utf8");

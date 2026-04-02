@@ -10,7 +10,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.18.2+build.4",
       "javaVersion": 17,
       "gradleModule": "version-1.18.2"
@@ -22,7 +22,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.20.1+build.10",
       "javaVersion": 17,
       "gradleModule": "version-1.20.1"
@@ -44,7 +44,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.20.2+build.4",
       "javaVersion": 17,
       "gradleModule": "version-1.20.2"
@@ -66,7 +66,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.20.4+build.3",
       "javaVersion": 17,
       "gradleModule": "version-1.20.4"
@@ -98,7 +98,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.21.1+build.3",
       "javaVersion": 21,
       "gradleModule": "version-1.21.1"
@@ -120,7 +120,7 @@
       "support": "ready",
       "validation": "verified",
       "modVersion": "0.1.0",
-      "fabricLoaderVersion": "0.16.10",
+      "fabricLoaderVersion": "0.16.14",
       "yarnMappings": "1.21.4+build.1",
       "javaVersion": 21,
       "gradleModule": "version-1.21.4"

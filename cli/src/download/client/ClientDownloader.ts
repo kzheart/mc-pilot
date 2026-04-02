@@ -194,7 +194,7 @@ function buildLaunchArgs(runtimePaths: ClientLaunchRuntimePaths, variant: ModVar
     "--minecraft-version",
     variant.minecraftVersion,
     "--fabric-loader-version",
-    variant.fabricLoaderVersion ?? "0.16.10"
+    variant.fabricLoaderVersion ?? "0.16.14"
   ];
 }
 

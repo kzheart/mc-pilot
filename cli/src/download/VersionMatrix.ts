@@ -60,7 +60,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1", validation: "verified" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1", validation: "verified" },
       forge: { supported: false, notes: "不支持此版本" },
       neoforge: { supported: true, loaderVersion: "21.4.x", modVersion: "0.1.1" }
     }
@@ -75,7 +75,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1", validation: "verified" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1", validation: "verified" },
       forge: { supported: false, notes: "不支持此版本" },
       neoforge: { supported: true, loaderVersion: "21.1.x", modVersion: "0.1.1" }
     }
@@ -90,7 +90,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1" },
       forge: { supported: true, loaderVersion: "49.0.49", modVersion: "0.1.1" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
@@ -105,7 +105,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1", validation: "verified" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1", validation: "verified" },
       forge: { supported: false, notes: "当前未接入此 loader" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
@@ -120,7 +120,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1" },
       forge: { supported: false, notes: "当前未接入此 loader" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
@@ -135,7 +135,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1" },
       forge: { supported: true, loaderVersion: "47.x", modVersion: "0.1.1" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
@@ -150,7 +150,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
       spigot: { supported: true, requiresBuildTools: true }
     },
     clients: {
-      fabric: { supported: true, loaderVersion: "0.16.10", modVersion: "0.1.1", validation: "verified" },
+      fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.1.1", validation: "verified" },
       forge: { supported: true, loaderVersion: "40.x", modVersion: "0.1.1" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
