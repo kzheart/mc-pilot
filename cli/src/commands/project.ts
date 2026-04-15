@@ -115,17 +115,21 @@ export function createUpCommand() {
         const serverMeta = await serverManager.loadMeta(profile.server);
         await serverManager.waitReady(profile.server, context.timeout("serverReady"));
 
-        // 4. Launch clients
+        // 4. Launch clients (reuse running clients via reconnect)
+        const serverAddress = `localhost:${serverMeta.port}`;
         const clientResults: unknown[] = [];
         for (const clientName of profile.clients) {
-          const result = await clientManager.launch(clientName, {
-            server: `localhost:${serverMeta.port}`
-          });
-          clientResults.push(result);
+          if (await clientManager.isAlreadyRunning(clientName)) {
+            const reconnected = await clientManager.reconnect(clientName, serverAddress);
+            clientResults.push(reconnected);
+          } else {
+            const result = await clientManager.launch(clientName, { server: serverAddress });
+            clientResults.push(result);
+          }
         }
         results.clients = clientResults;
 
-        // 5. Wait for clients
+        // 5. Wait for clients (WS connected + in-world)
         for (const clientName of profile.clients) {
           await clientManager.waitReady(clientName, context.timeout("clientReady"));
         }
@@ -157,7 +161,7 @@ export function createDownCommand() {
         const results: Record<string, unknown> = {};
 
         // Stop clients first
-        const clientResults: unknown[] = [];
+        const clientResults: Array<{ stopped: boolean; alreadyStopped?: boolean; name: string; pid?: number }> = [];
         for (const clientName of profile.clients) {
           const result = await clientManager.stop(clientName);
           clientResults.push(result);
@@ -165,7 +169,12 @@ export function createDownCommand() {
         results.clients = clientResults;
 
         // Stop server
-        results.server = await serverManager.stop(profile.server);
+        const serverResult = await serverManager.stop(profile.server);
+        results.server = serverResult;
+
+        const everythingAccountedFor = clientResults.every((r) => r.stopped || r.alreadyStopped) &&
+          (serverResult.stopped || (serverResult as { alreadyStopped?: boolean }).alreadyStopped);
+        results.allClean = Boolean(everythingAccountedFor);
 
         return results;
       })

@@ -155,7 +155,7 @@ export class ServerInstanceManager {
     const entry = state.servers[stateKey];
 
     if (!entry) {
-      return { running: false, stopped: false };
+      return { running: false, stopped: false, alreadyStopped: true };
     }
 
     if (isProcessRunning(entry.pid)) {

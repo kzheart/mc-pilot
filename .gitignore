@@ -25,3 +25,4 @@ client-mod/build/
 client-mod-legacy/build/
 .narrafork/
 .worktrees/
+.claude

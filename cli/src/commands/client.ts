@@ -172,6 +172,7 @@ export function createClientCommand() {
     .option("--account <account>", "Offline username or account identifier")
     .option("--ws-port <port>", "WebSocket port override", Number)
     .option("--headless", "Launch in headless mode")
+    .option("--force", "Kill any existing client with the same name before launching")
     .action(
       wrapCommand(async (context, { args, options }) => {
         const clientName = args[0] ?? context.activeProfile?.clients[0];
@@ -209,21 +210,29 @@ export function createClientCommand() {
 
   command
     .command("wait-ready")
-    .description("Wait until client WebSocket is connected")
+    .description("Wait until client WebSocket is connected AND the player has joined a world")
     .argument("[name]", "Client instance name (default: from active profile)")
     .option("--timeout <seconds>", "Timeout in seconds", Number)
+    .option("--no-world-check", "Only wait for WebSocket connection, skip the in-world check")
     .action(
-      wrapCommand(async (context, { args, options }: { args: string[]; options: { timeout?: number } }) => {
-        const clientName = args[0] ?? context.activeProfile?.clients[0];
-        if (!clientName) {
-          throw new MctError(
-            { code: "INVALID_PARAMS", message: "Client name is required" },
-            4
-          );
+      wrapCommand(
+        async (
+          context,
+          { args, options }: { args: string[]; options: { timeout?: number; worldCheck?: boolean } }
+        ) => {
+          const clientName = args[0] ?? context.activeProfile?.clients[0];
+          if (!clientName) {
+            throw new MctError(
+              { code: "INVALID_PARAMS", message: "Client name is required" },
+              4
+            );
+          }
+          const manager = new ClientInstanceManager(context.globalState);
+          return manager.waitReady(clientName, options.timeout ?? context.timeout("clientReady"), {
+            requireWorld: options.worldCheck !== false
+          });
         }
-        const manager = new ClientInstanceManager(context.globalState);
-        return manager.waitReady(clientName, options.timeout ?? context.timeout("clientReady"));
-      })
+      )
     );
 
   command

@@ -221,6 +221,11 @@
       "name": "wait.perform",
       "params": ["seconds", "ticks", "untilHealthAbove", "untilGuiOpen", "untilOnGround", "timeout"],
       "description": "等待与同步"
+    },
+    {
+      "name": "client.reconnect",
+      "params": ["address"],
+      "description": "让客户端重新连接到指定服务器地址"
     }
   ]
 }

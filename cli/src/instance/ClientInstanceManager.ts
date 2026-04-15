@@ -35,6 +35,11 @@ export interface LaunchClientOptions {
   account?: string;
   wsPort?: number;
   headless?: boolean;
+  force?: boolean;
+}
+
+export interface WaitReadyOptions {
+  requireWorld?: boolean;
 }
 
 export class ClientInstanceManager {
@@ -63,14 +68,23 @@ export class ClientInstanceManager {
   }
 
   async launch(clientName: string, options: LaunchClientOptions = {}): Promise<ClientRuntimeEntry> {
-    const state = await this.globalState.readClientState();
+    let state = await this.globalState.readClientState();
     const existing = state.clients[clientName];
 
     if (existing && isProcessRunning(existing.pid)) {
-      throw new MctError(
-        { code: "CLIENT_ALREADY_RUNNING", message: `Client ${clientName} is already running`, details: existing },
-        3
-      );
+      if (options.force) {
+        await this.stop(clientName);
+        state = await this.globalState.readClientState();
+      } else {
+        throw new MctError(
+          {
+            code: "CLIENT_ALREADY_RUNNING",
+            message: `Client ${clientName} is already running. Pass --force to kill and relaunch.`,
+            details: existing
+          },
+          3
+        );
+      }
     }
 
     const meta = await this.loadMeta(clientName);
@@ -146,7 +160,7 @@ export class ClientInstanceManager {
     const entry = state.clients[clientName];
 
     if (!entry) {
-      return { stopped: false, name: clientName };
+      return { stopped: false, alreadyStopped: true, name: clientName };
     }
 
     if (isProcessRunning(entry.pid)) {
@@ -166,6 +180,42 @@ export class ClientInstanceManager {
     await this.globalState.writeClientState(state);
 
     return { stopped: true, name: clientName, pid: entry.pid };
+  }
+
+  async isAlreadyRunning(clientName: string): Promise<boolean> {
+    const state = await this.globalState.readClientState();
+    const entry = state.clients[clientName];
+    return Boolean(entry && isProcessRunning(entry.pid));
+  }
+
+  async reconnect(clientName: string, address: string) {
+    const state = await this.globalState.readClientState();
+    const entry = state.clients[clientName];
+
+    if (!entry) {
+      throw new MctError(
+        { code: "CLIENT_NOT_FOUND", message: `Client ${clientName} is not running` },
+        3
+      );
+    }
+
+    const ws = new WebSocketClient(`ws://127.0.0.1:${entry.wsPort}`);
+    const response = (await ws.send("client.reconnect", { address }, 5)) as {
+      error?: { code: string; message?: string };
+      data?: unknown;
+    };
+
+    if (response.error) {
+      throw new MctError(
+        {
+          code: response.error.code || "INTERNAL_ERROR",
+          message: response.error.message || `Reconnect failed for ${clientName}`
+        },
+        3
+      );
+    }
+
+    return { reconnected: true, name: clientName, address };
   }
 
   async list() {
@@ -200,7 +250,7 @@ export class ClientInstanceManager {
     };
   }
 
-  async waitReady(clientName: string, timeoutSeconds: number) {
+  async waitReady(clientName: string, timeoutSeconds: number, options: WaitReadyOptions = {}) {
     const state = await this.globalState.readClientState();
     const entry = state.clients[clientName];
 
@@ -213,20 +263,115 @@ export class ClientInstanceManager {
 
     const wsUrl = `ws://127.0.0.1:${entry.wsPort}`;
     const deadline = Date.now() + timeoutSeconds * 1000;
+    const requireWorld = options.requireWorld ?? true;
 
+    // 阶段 A：等 WS 连通
+    let connected = false;
+    let lastConnectError: string | undefined;
     while (Date.now() < deadline) {
       try {
         const ws = new WebSocketClient(wsUrl);
-        return await ws.ping(1);
-      } catch {
+        await ws.ping(1);
+        connected = true;
+        break;
+      } catch (err) {
+        lastConnectError = err instanceof Error ? err.message : String(err);
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
 
+    if (!connected) {
+      const diag = this.buildDiagnostics(entry.pid, entry.wsPort, {
+        wsConnected: false,
+        inWorld: false,
+        lastError: lastConnectError
+      });
+      throw new MctError(
+        {
+          code: "TIMEOUT",
+          message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} (${wsUrl}). ${this.formatDiagnostics(diag)}`,
+          details: diag
+        },
+        2
+      );
+    }
+
+    if (!requireWorld) {
+      return { connected: true, url: wsUrl };
+    }
+
+    // 阶段 B：轮询 position.get 直到不再 NOT_IN_WORLD
+    let lastErrorCode = "NOT_IN_WORLD";
+    while (Date.now() < deadline) {
+      try {
+        const ws = new WebSocketClient(wsUrl);
+        const response = (await ws.send("position.get", {}, 1)) as {
+          error?: { code: string; message?: string };
+          data?: unknown;
+        };
+        if (!response.error) {
+          return { connected: true, url: wsUrl, inWorld: true, position: response.data };
+        }
+        lastErrorCode = response.error.code || lastErrorCode;
+        if (lastErrorCode !== "NOT_IN_WORLD") {
+          break;
+        }
+      } catch (err) {
+        lastErrorCode = err instanceof Error ? `WS_ERROR(${err.message})` : "WS_ERROR";
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    const diag = this.buildDiagnostics(entry.pid, entry.wsPort, {
+      wsConnected: true,
+      inWorld: false,
+      lastError: lastErrorCode
+    });
     throw new MctError(
-      { code: "TIMEOUT", message: `Timed out waiting for client ${clientName} on ${wsUrl}` },
+      {
+        code: "TIMEOUT",
+        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: try \`mct client reconnect --address <server>\` or \`mct client launch --force\`.`,
+        details: diag
+      },
       2
     );
+  }
+
+  private buildDiagnostics(
+    pid: number,
+    wsPort: number,
+    extras: { wsConnected: boolean; inWorld: boolean; lastError?: string }
+  ) {
+    const processAlive = isProcessRunning(pid);
+    const portListening = getListeningPids(wsPort).length > 0;
+    return {
+      pid,
+      processAlive,
+      wsPort,
+      portListening,
+      wsConnected: extras.wsConnected,
+      inWorld: extras.inWorld,
+      lastError: extras.lastError
+    };
+  }
+
+  private formatDiagnostics(diag: {
+    processAlive: boolean;
+    portListening: boolean;
+    wsConnected: boolean;
+    inWorld: boolean;
+    lastError?: string;
+  }): string {
+    const parts = [
+      `processAlive=${diag.processAlive}`,
+      `portListening=${diag.portListening}`,
+      `wsConnected=${diag.wsConnected}`,
+      `inWorld=${diag.inWorld}`
+    ];
+    if (diag.lastError) {
+      parts.push(`lastError=${diag.lastError}`);
+    }
+    return `Diagnostics: ${parts.join(", ")}.`;
   }
 
   async getClient(name?: string): Promise<ClientRuntimeEntry> {
