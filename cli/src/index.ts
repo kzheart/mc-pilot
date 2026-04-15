@@ -10,6 +10,7 @@ import { createChatCommand } from "./commands/chat.js";
 import { createCombatCommand } from "./commands/combat.js";
 import { createAnvilCommand, createCraftCommand, createEnchantCommand, createTradeCommand } from "./commands/craft.js";
 import { createEntityCommand } from "./commands/entity.js";
+import { createEventsCommand } from "./commands/events.js";
 import { createGuiCommand } from "./commands/gui.js";
 import { createHudCommand } from "./commands/hud.js";
 import { createInputCommand } from "./commands/input.js";
@@ -106,6 +107,7 @@ export function buildProgram() {
   program.addCommand(createEnchantCommand());
   program.addCommand(createTradeCommand());
   program.addCommand(createWaitCommand());
+  program.addCommand(createEventsCommand());
 
   return program;
 }

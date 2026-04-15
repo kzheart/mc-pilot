@@ -50,6 +50,10 @@ public final class ClientStateTracker {
             ),
             MAX_CHAT_MESSAGES
         );
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sender", sender);
+        payload.put("content", content);
+        EventRecorder.getInstance().record("chat.received", payload);
     }
 
     public synchronized List<Map<String, Object>> getChatHistory(int limit) {
@@ -126,6 +130,12 @@ public final class ClientStateTracker {
             new DeathRecord(Instant.now().toEpochMilli(), deathMessage, x, y, z),
             MAX_DEATH_RECORDS
         );
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("message", deathMessage);
+        payload.put("x", x);
+        payload.put("y", y);
+        payload.put("z", z);
+        EventRecorder.getInstance().record("player.died", payload);
     }
 
     public synchronized List<Map<String, Object>> getRecentDeaths(int limit) {

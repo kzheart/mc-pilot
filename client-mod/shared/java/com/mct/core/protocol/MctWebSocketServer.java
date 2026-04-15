@@ -1,6 +1,7 @@
 package com.mct.core.protocol;
 
 import com.mct.core.handler.ActionDispatcher;
+import com.mct.core.state.EventRecorder;
 import com.mct.core.util.ActionException;
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -47,21 +48,28 @@ public final class MctWebSocketServer extends WebSocketServer {
 
         try {
             Map<String, Object> data = dispatcher.execute(request.action(), request.params());
-            response = new Response(request.id(), true, data, null);
+            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
+            response = new Response(request.id(), true, data, null, pointer.count, pointer.lastType);
         } catch (ActionException exception) {
+            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
             response = new Response(
                 request.id() != null ? request.id() : UUID.randomUUID().toString(),
                 false,
                 null,
-                exception.getCode()
+                exception.getCode(),
+                pointer.count,
+                pointer.lastType
             );
         } catch (Exception exception) {
             exception.printStackTrace();
+            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
             response = new Response(
                 request.id() != null ? request.id() : UUID.randomUUID().toString(),
                 false,
                 null,
-                "INTERNAL_ERROR"
+                "INTERNAL_ERROR",
+                pointer.count,
+                pointer.lastType
             );
         }
 
