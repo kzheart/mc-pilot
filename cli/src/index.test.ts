@@ -337,6 +337,38 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
   }
 });
 
+test("CLI schema command outputs machine-readable command and protocol metadata without project context", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-schema-"));
+
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(process.cwd(), "dist/index.js"),
+      "schema"
+    ], {
+      cwd: tempDir,
+      env: process.env
+    });
+
+    const parsed = JSON.parse(stdout);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.schemaVersion, 1);
+    assert.equal(parsed.data.cli.name, "mct");
+    assert.ok(Array.isArray(parsed.data.cli.globalOptions));
+    assert.ok(parsed.data.cli.globalOptions.some((option: { flags: string }) => option.flags === "--client <name>"));
+    assert.ok(parsed.data.cli.leafCommands.includes("schema"));
+    assert.ok(parsed.data.cli.leafCommands.includes("server create"));
+    assert.ok(parsed.data.cli.leafCommands.includes("chat send"));
+    assert.ok(Array.isArray(parsed.data.protocol.actions));
+    assert.ok(Array.isArray(parsed.data.protocol.queries));
+    assert.ok(Array.isArray(parsed.data.protocol.errors));
+    assert.ok(parsed.data.protocol.actions.some((entry: { name?: string }) => entry.name === "chat.send"));
+    assert.ok(parsed.data.protocol.queries.some((entry: { name?: string }) => entry.name === "status.all"));
+    assert.ok(parsed.data.protocol.errors.some((entry: { code?: string }) => entry.code === "TIMEOUT"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("CLI server status without project context shows all running servers", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-server-status-"));
   const mctHome = path.join(tempDir, "mct-home");

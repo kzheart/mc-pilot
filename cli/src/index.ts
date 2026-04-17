@@ -22,6 +22,7 @@ import { createResourcepackCommand } from "./commands/resourcepack.js";
 import { createRotationCommand } from "./commands/rotation.js";
 import { createScreenCommand } from "./commands/screen.js";
 import { createScreenshotCommand } from "./commands/screenshot.js";
+import { createSchemaCommand } from "./commands/schema.js";
 import { createServerCommand } from "./commands/server.js";
 import { createSignCommand } from "./commands/sign.js";
 import { createStatusCommand } from "./commands/status.js";
@@ -82,6 +83,7 @@ export function buildProgram() {
   program.addCommand(createServerCommand());
   program.addCommand(createClientCommand());
   program.addCommand(createPluginCommand());
+  program.addCommand(createSchemaCommand(() => program));
 
   // Game interaction commands
   program.addCommand(createChatCommand());

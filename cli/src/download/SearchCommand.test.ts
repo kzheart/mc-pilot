@@ -72,11 +72,12 @@ test("buildClientSearchResults carries variant validation metadata into grouped 
   });
 });
 
-test("buildProgram registers server/client search and create commands", () => {
+test("buildProgram registers discovery-oriented CLI commands", () => {
   const leaves = collectLeafCommands();
 
   assert.ok(leaves.includes("server search"));
   assert.ok(leaves.includes("server create"));
   assert.ok(leaves.includes("client search"));
   assert.ok(leaves.includes("client create"));
+  assert.ok(leaves.includes("schema"));
 });
