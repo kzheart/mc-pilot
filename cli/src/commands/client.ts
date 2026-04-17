@@ -52,7 +52,7 @@ export function createClientCommand() {
     .option("--java <command>", "Java command to use")
     .action(
       wrapCommand(async (_context, { args, options }: {
-        args: string[];
+        args: (string | undefined)[];
         options: {
           version?: string;
           loader?: LoaderType;
@@ -62,7 +62,7 @@ export function createClientCommand() {
           java?: string;
         };
       }) => {
-        const clientName = args[0];
+        const clientName = args[0]!;
         const loader = options.loader ?? "fabric";
         const version = options.version ?? "1.21.4";
         const cacheManager = new CacheManager();
@@ -194,7 +194,7 @@ export function createClientCommand() {
     .action(
       wrapCommand(async (context, { args }) => {
         const manager = new ClientInstanceManager(context.globalState);
-        return manager.stop(args[0]);
+        return manager.stop(args[0]!);
       })
     );
 
@@ -218,7 +218,7 @@ export function createClientCommand() {
       wrapCommand(
         async (
           context,
-          { args, options }: { args: string[]; options: { timeout?: number; worldCheck?: boolean } }
+          { args, options }: { args: (string | undefined)[]; options: { timeout?: number; worldCheck?: boolean } }
         ) => {
           const clientName = args[0] ?? context.activeProfile?.clients[0];
           if (!clientName) {
@@ -244,6 +244,11 @@ export function createClientCommand() {
         address: options.address
       }))
     );
+
+  command
+    .command("respawn")
+    .description("Respawn the player after death (sends C2S respawn packet, bypasses DeathScreen auto-respawn)")
+    .action(createRequestAction("client.respawn", () => ({})));
 
   return command;
 }

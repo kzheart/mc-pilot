@@ -36,6 +36,10 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "client wait-ready",
   "deploy",
   "down",
+  "events clear",
+  "events list",
+  "events path",
+  "events tail",
   "init",
   "plugin add",
   "plugin info",
@@ -45,6 +49,8 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "plugin resolve",
   "plugin update",
   "server create",
+  "server exec",
+  "server logs",
   "server search",
   "server start",
   "server list",
@@ -107,7 +113,7 @@ const REQUEST_CASES: RequestCase[] = [
   },
   {
     leaf: "chat command",
-    argv: ["chat", "command", "/spawn"],
+    argv: ["chat", "command", "/spawn", "--via", "client"],
     action: "chat.command",
     params: { command: "/spawn" }
   },
@@ -140,6 +146,12 @@ const REQUEST_CASES: RequestCase[] = [
     argv: ["client", "reconnect", "--address", "127.0.0.1:25565"],
     action: "client.reconnect",
     params: { address: "127.0.0.1:25565" }
+  },
+  {
+    leaf: "client respawn",
+    argv: ["client", "respawn"],
+    action: "client.respawn",
+    params: {}
   },
   {
     leaf: "craft",

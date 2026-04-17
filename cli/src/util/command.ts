@@ -8,7 +8,9 @@ import { printError, printSuccess } from "./output.js";
 export type CommandAction<TOptions = Record<string, unknown>> = (
   context: Awaited<ReturnType<typeof createCommandContext>>,
   payload: {
-    args: string[];
+    // Positional args, flattened. Variadic `<x...>` is spread into individual string entries.
+    // Missing optional args are preserved as `undefined` rather than coerced to "undefined".
+    args: (string | undefined)[];
     options: TOptions;
     command: Command;
     globalOptions: GlobalOptions;
@@ -27,7 +29,11 @@ export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandA
   return async function wrappedCommand(this: Command, ...input: unknown[]) {
     const command = input.at(-1) as Command;
     const options = input.at(-2) as TOptions;
-    const args = input.slice(0, -2).map((value) => String(value));
+    const args = input.slice(0, -2).flatMap<string | undefined>((value) => {
+      if (Array.isArray(value)) return value.map((v) => String(v));
+      if (value === undefined || value === null) return [undefined];
+      return [String(value)];
+    });
     const globalOptions = command.optsWithGlobals() as GlobalOptions;
 
     try {

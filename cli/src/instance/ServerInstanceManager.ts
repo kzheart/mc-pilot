@@ -1,5 +1,5 @@
-import { access, copyFile, mkdir, readdir, readFile, symlink, writeFile, unlink } from "node:fs/promises";
-import { mkdirSync, openSync } from "node:fs";
+import { access, copyFile, mkdir, open as fsOpen, readdir, readFile, stat, symlink, writeFile, unlink } from "node:fs/promises";
+import { openSync, writeSync, closeSync, mkdirSync } from "node:fs";
 import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 
@@ -220,6 +220,157 @@ export class ServerInstanceManager {
     }
 
     return waitForTcpPort("127.0.0.1", entry.port, timeoutSeconds);
+  }
+
+  async exec(serverName: string, command: string): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
+    const entry = await this.requireRunning(serverName);
+    if (!entry.stdinPipe) {
+      throw new MctError(
+        { code: "SERVER_STDIN_UNAVAILABLE", message: `Server ${this.project}/${serverName} has no stdin FIFO (detached mode?)` },
+        5
+      );
+    }
+
+    const trimmed = command.trim();
+    if (!trimmed) {
+      throw new MctError({ code: "INVALID_PARAMS", message: "Command is required" }, 4);
+    }
+
+    const line = `${trimmed.replace(/^\//, "")}\n`;
+    // O_NONBLOCK write: bash wrapper holds FIFO fd in rw mode so this returns immediately.
+    let fd: number;
+    try {
+      fd = openSync(entry.stdinPipe, "w");
+    } catch (error) {
+      throw new MctError(
+        { code: "SERVER_STDIN_OPEN_FAILED", message: `Failed to open stdin FIFO: ${(error as Error).message}`, details: { stdinPipe: entry.stdinPipe } },
+        5
+      );
+    }
+    try {
+      writeSync(fd, line);
+    } finally {
+      closeSync(fd);
+    }
+
+    return { sent: true, command: trimmed, stdinPipe: entry.stdinPipe };
+  }
+
+  async readLogs(
+    serverName: string,
+    options: { tail?: number; grep?: string; since?: number } = {}
+  ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
+    const entry = await this.requireRuntimeEntry(serverName);
+    const logPath = entry.logPath;
+
+    const raw = await readFile(logPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+
+    let lines = raw.split("\n");
+    if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+    const total = lines.length;
+
+    if (options.since !== undefined && options.since > 0) {
+      lines = lines.slice(Math.max(0, options.since));
+    }
+
+    if (options.grep) {
+      const re = new RegExp(options.grep);
+      lines = lines.filter((line) => re.test(line));
+    }
+
+    if (options.tail !== undefined && options.tail > 0 && lines.length > options.tail) {
+      lines = lines.slice(lines.length - options.tail);
+    }
+
+    return { logPath, totalLines: total, returnedLines: lines.length, lines };
+  }
+
+  async followLogs(
+    serverName: string,
+    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean }
+  ): Promise<{ logPath: string; matched: boolean; matches: string[]; timedOut: boolean }> {
+    const entry = await this.requireRuntimeEntry(serverName);
+    const logPath = entry.logPath;
+    const re = options.grep ? new RegExp(options.grep) : null;
+
+    let offset = 0;
+    try { offset = (await stat(logPath)).size; } catch { /* file may not exist yet */ }
+
+    const matches: string[] = [];
+    let buffer = "";
+    let done = false;
+
+    return await new Promise((resolve) => {
+      let timer: NodeJS.Timeout;
+      let poll: NodeJS.Timeout;
+
+      const finish = (timedOut: boolean) => {
+        if (done) return;
+        done = true;
+        if (poll) clearInterval(poll);
+        if (timer) clearTimeout(timer);
+        resolve({ logPath, matched: matches.length > 0, matches, timedOut });
+      };
+
+      const drain = async () => {
+        if (done) return;
+        let currentSize: number;
+        try { currentSize = (await stat(logPath)).size; } catch { return; }
+        if (currentSize < offset) { offset = 0; buffer = ""; } // rotation / truncate
+        if (currentSize === offset) return;
+
+        // Read raw bytes and decode — stat().size is bytes, not UTF-16 chars.
+        const fh = await fsOpen(logPath, "r");
+        try {
+          const length = currentSize - offset;
+          const buf = Buffer.allocUnsafe(length);
+          await fh.read(buf, 0, length, offset);
+          offset = currentSize;
+          buffer += buf.toString("utf8");
+        } finally {
+          await fh.close();
+        }
+
+        const parts = buffer.split("\n");
+        buffer = parts.pop() ?? "";
+        for (const line of parts) {
+          if (!re || re.test(line)) {
+            matches.push(line);
+            if (options.firstMatchOnly) return finish(false);
+          }
+        }
+      };
+
+      timer = setTimeout(() => finish(true), options.timeoutSeconds * 1000);
+      poll = setInterval(() => { void drain(); }, 300);
+    });
+  }
+
+  private async requireRuntimeEntry(serverName: string): Promise<ServerRuntimeEntry> {
+    const stateKey = `${this.project}/${serverName}`;
+    const state = await this.globalState.readServerState();
+    const entry = state.servers[stateKey];
+    if (!entry) {
+      throw new MctError(
+        { code: "SERVER_NOT_RUNNING", message: `Server ${stateKey} is not running` },
+        5
+      );
+    }
+    return entry;
+  }
+
+  private async requireRunning(serverName: string): Promise<ServerRuntimeEntry> {
+    const entry = await this.requireRuntimeEntry(serverName);
+    if (!isProcessRunning(entry.pid)) {
+      throw new MctError(
+        { code: "SERVER_NOT_RUNNING", message: `Server ${this.project}/${serverName} PID ${entry.pid} is not alive` },
+        5
+      );
+    }
+    return entry;
   }
 
   async list(): Promise<ServerInstanceMeta[]> {

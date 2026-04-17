@@ -135,10 +135,7 @@ export function createInputCommand() {
     .argument("<keys...>", "Key names")
     .action(
       createRequestAction("input.key-combo", ({ args }) => ({
-        keys: String(args[0])
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean)
+        keys: args.filter((v): v is string => v !== undefined)
       }))
     );
 

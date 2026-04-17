@@ -7,7 +7,7 @@ import { MctError } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 
 export interface RequestPayload<TOptions> {
-  args: string[];
+  args: (string | undefined)[];
   options: TOptions;
   globalOptions: GlobalOptions;
 }

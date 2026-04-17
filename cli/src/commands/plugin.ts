@@ -33,7 +33,7 @@ export function createPluginCommand() {
       .action(
         wrapCommand(async (_context, { args }) => {
           const manager = new PluginCatalogManager();
-          return manager.get(args[0]);
+          return manager.get(args[0]!);
         })
       )
   );
@@ -45,9 +45,9 @@ export function createPluginCommand() {
       .option("--id <id>", "Override plugin ID")
       .option("--name <name>", "Override display name")
       .action(
-        wrapCommand(async (_context, { args, options }: { args: string[]; options: { id?: string; name?: string } }) => {
+        wrapCommand(async (_context, { args, options }: { args: (string | undefined)[]; options: { id?: string; name?: string } }) => {
           const manager = new PluginCatalogManager();
-          return manager.add(args[0], {
+          return manager.add(args[0]!, {
             id: options.id,
             name: options.name
           });
@@ -66,9 +66,9 @@ export function createPluginCommand() {
       .option("--dependencies <deps>", "Dependency plugin IDs (comma-separated)")
       .option("--tags <tags>", "Tags (comma-separated)")
       .action(
-        wrapCommand(async (_context, { args, options }: { args: string[]; options: Record<string, string | undefined> }) => {
+        wrapCommand(async (_context, { args, options }: { args: (string | undefined)[]; options: Record<string, string | undefined> }) => {
           const manager = new PluginCatalogManager();
-          return manager.update(args[0], {
+          return manager.update(args[0]!, {
             name: options.name,
             version: options.version,
             description: options.description,
@@ -87,7 +87,7 @@ export function createPluginCommand() {
       .action(
         wrapCommand(async (_context, { args }) => {
           const manager = new PluginCatalogManager();
-          const removed = await manager.remove(args[0]);
+          const removed = await manager.remove(args[0]!);
           return { removed: removed.id, name: removed.name };
         })
       )
@@ -100,7 +100,7 @@ export function createPluginCommand() {
       .requiredOption("--server <name>", "Target server instance name")
       .option("--project <name>", "Project name")
       .action(
-        wrapCommand(async (context, { args, options }: { args: string[]; options: { server: string; project?: string } }) => {
+        wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { server: string; project?: string } }) => {
           const project = options.project ?? context.projectName;
           if (!project) {
             throw new MctError(
@@ -109,7 +109,7 @@ export function createPluginCommand() {
             );
           }
           const manager = new PluginCatalogManager();
-          return manager.install(args[0], project, options.server);
+          return manager.install(args[0]!, project, options.server);
         })
       )
   );
@@ -121,7 +121,7 @@ export function createPluginCommand() {
       .action(
         wrapCommand(async (_context, { args }) => {
           const manager = new PluginCatalogManager();
-          const resolved = await manager.resolve(args);
+          const resolved = await manager.resolve(args.filter((v): v is string => v !== undefined));
           return {
             order: resolved.map((p) => p.id),
             plugins: resolved

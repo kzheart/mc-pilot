@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.world.GameMode;
@@ -74,13 +75,17 @@ public final class StatusHandler extends ActionHandler {
 
     private Map<String, Object> healthStatus() {
         ClientPlayerEntity player = requirePlayer();
+        boolean onDeathScreen = client.currentScreen instanceof DeathScreen;
+        boolean isDead = player.isDead() || player.getHealth() <= 0.0F;
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("health", player.getHealth());
         result.put("maxHealth", player.getMaxHealth());
         result.put("food", player.getHungerManager().getFoodLevel());
         result.put("saturation", player.getHungerManager().getSaturationLevel());
         result.put("absorption", player.getAbsorptionAmount());
-        result.put("isDead", player.isDead());
+        result.put("isDead", isDead);
+        result.put("awaitingRespawn", isDead || onDeathScreen);
+        result.put("onDeathScreen", onDeathScreen);
         result.put("deathCount", stateTracker.getDeathCount());
         result.put("recentDeaths", stateTracker.getRecentDeaths(5));
         return result;

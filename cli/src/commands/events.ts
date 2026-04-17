@@ -127,7 +127,7 @@ export function createEventsCommand() {
         async (
           context,
           { args, options, globalOptions }: {
-            args: string[];
+            args: (string | undefined)[];
             options: { type?: string; file?: string };
             globalOptions: { client?: string };
           }

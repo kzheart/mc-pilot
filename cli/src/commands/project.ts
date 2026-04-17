@@ -192,7 +192,7 @@ export function createUseCommand() {
           throw new MctError({ code: "NO_PROJECT", message: "No project context. Run 'mct init' first." }, 4);
         }
 
-        const profileName = args[0];
+        const profileName = args[0]!;
         if (!projectFile.profiles[profileName]) {
           const available = Object.keys(projectFile.profiles);
           throw new MctError(

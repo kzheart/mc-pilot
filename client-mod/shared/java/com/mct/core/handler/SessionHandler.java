@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -35,6 +36,7 @@ public final class SessionHandler extends ActionHandler {
             case "hud.title" -> runOnClientThread(this::titleStatus);
             case "hud.nametag" -> runOnClientThread(() -> nameTagStatus(getString(params, "player")));
             case "client.reconnect" -> runOnClientThread(() -> reconnectClient(params));
+            case "client.respawn" -> runOnClientThread(() -> respawnPlayer());
             case "resourcepack.status" -> runOnClientThread(this::resourcePackStatus);
             case "resourcepack.accept" -> runOnClientThread(() -> ClientVersionModulesHolder.get().resourcePack().accept(client, stateTracker));
             case "resourcepack.reject" -> runOnClientThread(() -> ClientVersionModulesHolder.get().resourcePack().reject(client, stateTracker));
@@ -93,6 +95,21 @@ public final class SessionHandler extends ActionHandler {
 
     private Map<String, Object> resourcePackStatus() {
         return ClientVersionModulesHolder.get().resourcePack().status(client, stateTracker);
+    }
+
+    private Map<String, Object> respawnPlayer() {
+        ClientPlayerEntity player = requirePlayer();
+        boolean wasDead = player.isDead() || player.getHealth() <= 0.0F;
+        boolean wasOnDeathScreen = client.currentScreen instanceof DeathScreen;
+        player.requestRespawn();
+        if (wasOnDeathScreen) {
+            client.setScreen(null);
+        }
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("requested", true);
+        result.put("wasDead", wasDead);
+        result.put("wasOnDeathScreen", wasOnDeathScreen);
+        return result;
     }
 
     private Map<String, Object> reconnectClient(Map<String, Object> params) {

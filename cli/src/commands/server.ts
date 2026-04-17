@@ -58,7 +58,7 @@ export function createServerCommand() {
     .option("--eula", "Auto-accept EULA")
     .action(
       wrapCommand(async (context, { args, options }: {
-        args: string[];
+        args: (string | undefined)[];
         options: {
           type?: ServerType;
           version?: string;
@@ -78,7 +78,7 @@ export function createServerCommand() {
 
         const manager = new ServerInstanceManager(context.globalState, project);
         return manager.create({
-          name: args[0],
+          name: args[0]!,
           project,
           type: serverType,
           version,
@@ -97,7 +97,7 @@ export function createServerCommand() {
     .option("--eula", "Auto-accept EULA")
     .option("--jvm-args <args>", "Override JVM arguments (comma-separated)")
     .action(
-      wrapCommand(async (context, { args, options }: { args: string[]; options: { eula?: boolean; jvmArgs?: string } }) => {
+      wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { eula?: boolean; jvmArgs?: string } }) => {
         const project = requireProject(context);
         const serverName = resolveServerName(context, args[0]);
         const manager = new ServerInstanceManager(context.globalState, project);
@@ -154,12 +154,70 @@ export function createServerCommand() {
     .argument("[name]", "Server instance name (default: from active profile)")
     .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
-      wrapCommand(async (context, { args, options }: { args: string[]; options: { timeout?: number } }) => {
+      wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { timeout?: number } }) => {
         const project = requireProject(context);
         const serverName = resolveServerName(context, args[0]);
         const manager = new ServerInstanceManager(context.globalState, project);
         return manager.waitReady(serverName, options.timeout ?? context.timeout("serverReady"));
       })
+    );
+
+  command
+    .command("exec")
+    .description("Send a console command directly to the server stdin FIFO (bypasses client chat)")
+    .argument("<command...>", "Command text (leading slash optional, e.g. \"say hi\" or \"op TEST1\")")
+    .option("--server <name>", "Server instance name (default: from active profile)")
+    .action(
+      wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { server?: string } }) => {
+        const project = requireProject(context);
+        const serverName = resolveServerName(context, options.server);
+        const manager = new ServerInstanceManager(context.globalState, project);
+        return manager.exec(serverName, args.filter((v): v is string => v !== undefined).join(" "));
+      })
+    );
+
+  command
+    .command("logs")
+    .description("Read the server log file (with optional tail/grep/follow)")
+    .argument("[name]", "Server instance name (default: from active profile)")
+    .option("--tail <n>", "Show only the last N lines", Number)
+    .option("--grep <pattern>", "Filter lines by regex")
+    .option("--since <lineNumber>", "Skip the first N lines (0-indexed)", Number)
+    .option("--follow", "Wait for new log lines (requires --timeout)")
+    .option("--timeout <seconds>", "Max seconds to wait when --follow is set", Number)
+    .option("--first-match", "With --follow, exit as soon as the first matching line appears")
+    .action(
+      wrapCommand(
+        async (
+          context,
+          {
+            args,
+            options
+          }: {
+            args: (string | undefined)[];
+            options: { tail?: number; grep?: string; since?: number; follow?: boolean; timeout?: number; firstMatch?: boolean };
+          }
+        ) => {
+          const project = requireProject(context);
+          const serverName = resolveServerName(context, args[0]);
+          const manager = new ServerInstanceManager(context.globalState, project);
+
+          if (options.follow) {
+            const timeoutSeconds = options.timeout ?? 30;
+            return manager.followLogs(serverName, {
+              grep: options.grep,
+              timeoutSeconds,
+              firstMatchOnly: Boolean(options.firstMatch)
+            });
+          }
+
+          return manager.readLogs(serverName, {
+            tail: options.tail,
+            grep: options.grep,
+            since: options.since
+          });
+        }
+      )
     );
 
   return command;
