@@ -353,6 +353,7 @@ test("CLI schema command outputs machine-readable command and protocol metadata 
     assert.equal(parsed.success, true);
     assert.equal(parsed.data.schemaVersion, 1);
     assert.equal(parsed.data.cli.name, "mct");
+    assert.match(parsed.data.cli.description, /mct init --name my-plugin/);
     assert.ok(Array.isArray(parsed.data.cli.globalOptions));
     assert.ok(parsed.data.cli.globalOptions.some((option: { flags: string }) => option.flags === "--client <name>"));
     assert.ok(parsed.data.cli.leafCommands.includes("schema"));

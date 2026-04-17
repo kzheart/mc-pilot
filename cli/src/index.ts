@@ -41,7 +41,7 @@ export function buildProgram() {
         "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
         "All commands output JSON by default. Use --human for human-readable output.\n\n" +
         "Quick start:\n" +
-        "  mct init --project my-plugin\n" +
+        "  mct init --name my-plugin\n" +
         "  mct server create paper-1.20.4 --type paper --version 1.20.4\n" +
         "  mct client create fabric-1.20.4 --version 1.20.4\n" +
         "  mct up --profile 1.20\n" +
