@@ -112,6 +112,12 @@ const REQUEST_CASES: RequestCase[] = [
     params: { pages: ["Page1", "Page2"] }
   },
   {
+    leaf: "chat clear",
+    argv: ["chat", "clear"],
+    action: "chat.clear",
+    params: {}
+  },
+  {
     leaf: "chat command",
     argv: ["chat", "command", "/spawn", "--via", "client"],
     action: "chat.command",

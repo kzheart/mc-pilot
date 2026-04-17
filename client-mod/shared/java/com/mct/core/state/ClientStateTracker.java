@@ -65,6 +65,12 @@ public final class ClientStateTracker {
         return record != null ? record.toMap() : Map.of();
     }
 
+    public synchronized int clearChatHistory() {
+        int removed = chatMessages.size();
+        chatMessages.clear();
+        return removed;
+    }
+
     public synchronized Map<String, Object> findLatestChatMessage(Pattern pattern, long notBeforeMillis) {
         return findLatest(chatMessages, record -> record.timestamp >= notBeforeMillis && pattern.matcher(record.content).find(), ChatMessageRecord::toMap);
     }

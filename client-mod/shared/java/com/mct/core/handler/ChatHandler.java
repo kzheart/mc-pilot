@@ -33,6 +33,10 @@ public final class ChatHandler extends ActionHandler {
                 ClientVersionModulesHolder.get().interaction().sendCommand(player, command);
                 return Map.of("sent", true);
             });
+            case "chat.clear" -> runOnClientThread(() -> Map.of(
+                "cleared", true,
+                "removed", stateTracker.clearChatHistory()
+            ));
             case "chat.history" -> runOnClientThread(() -> Map.of("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
             case "chat.last" -> runOnClientThread(() -> Map.of("message", stateTracker.getLastChatMessage()));
             case "chat.wait" -> waitForChat(params);

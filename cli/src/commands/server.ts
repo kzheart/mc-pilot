@@ -125,10 +125,19 @@ export function createServerCommand() {
     .command("status")
     .description("Show server status")
     .argument("[name]", "Server instance name (omit to show all in project)")
+    .option("--all", "Show running servers across all projects")
     .action(
-      wrapCommand(async (context, { args }) => {
-        const project = requireProject(context);
-        const manager = new ServerInstanceManager(context.globalState, project);
+      wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { all?: boolean } }) => {
+        if (options.all || (!context.projectName && !args[0])) {
+          return ServerInstanceManager.statusAll(context.globalState);
+        }
+        if (!context.projectName) {
+          throw new MctError(
+            { code: "NO_PROJECT", message: "No project context. Omit the name to inspect all running servers, or use --project <name>." },
+            4
+          );
+        }
+        const manager = new ServerInstanceManager(context.globalState, context.projectName);
         return manager.status(args[0]);
       })
     );
@@ -186,6 +195,7 @@ export function createServerCommand() {
     .option("--follow", "Wait for new log lines (requires --timeout)")
     .option("--timeout <seconds>", "Max seconds to wait when --follow is set", Number)
     .option("--first-match", "With --follow, exit as soon as the first matching line appears")
+    .option("--raw-colors", "Preserve ANSI color escape sequences in returned lines")
     .action(
       wrapCommand(
         async (
@@ -195,7 +205,15 @@ export function createServerCommand() {
             options
           }: {
             args: (string | undefined)[];
-            options: { tail?: number; grep?: string; since?: number; follow?: boolean; timeout?: number; firstMatch?: boolean };
+            options: {
+              tail?: number;
+              grep?: string;
+              since?: number;
+              follow?: boolean;
+              timeout?: number;
+              firstMatch?: boolean;
+              rawColors?: boolean;
+            };
           }
         ) => {
           const project = requireProject(context);
@@ -207,14 +225,16 @@ export function createServerCommand() {
             return manager.followLogs(serverName, {
               grep: options.grep,
               timeoutSeconds,
-              firstMatchOnly: Boolean(options.firstMatch)
+              firstMatchOnly: Boolean(options.firstMatch),
+              rawColors: Boolean(options.rawColors)
             });
           }
 
           return manager.readLogs(serverName, {
             tail: options.tail,
             grep: options.grep,
-            since: options.since
+            since: options.since,
+            rawColors: Boolean(options.rawColors)
           });
         }
       )

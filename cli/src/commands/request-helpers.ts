@@ -25,6 +25,10 @@ export async function sendClientRequest(
   return ws.send(action, params, timeoutSeconds ?? context.timeout("default"));
 }
 
+export function resolvePreferredClientName(context: CommandContext, globalOptions: GlobalOptions): string | undefined {
+  return globalOptions.client ?? context.activeProfile?.clients[0];
+}
+
 export function createRequestAction<TOptions = Record<string, any>>(
   action: string,
   buildParams: (payload: RequestPayload<TOptions>) => Record<string, unknown>,
@@ -34,7 +38,7 @@ export function createRequestAction<TOptions = Record<string, any>>(
     const timeout = timeoutSelector?.(payload, context);
     return sendClientRequest(
       context,
-      payload.globalOptions.client,
+      resolvePreferredClientName(context, payload.globalOptions),
       action,
       buildParams(payload),
       timeout

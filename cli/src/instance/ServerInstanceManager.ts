@@ -13,6 +13,41 @@ import { CacheManager } from "../download/CacheManager.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
 
 const INSTANCE_FILE = "instance.json";
+const ANSI_ESCAPE_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+
+export function stripAnsiCodes(text: string): string {
+  return text.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+export async function ensureServerPortProperty(instanceDir: string, port: number): Promise<void> {
+  const filePath = path.join(instanceDir, "server.properties");
+  let lines: string[] = [];
+
+  try {
+    const raw = await readFile(filePath, "utf8");
+    lines = raw.split(/\r?\n/);
+    if (lines.length > 0 && lines[lines.length - 1] === "") {
+      lines.pop();
+    }
+  } catch {
+    // initialize from scratch
+  }
+
+  let updated = false;
+  lines = lines.map((line) => {
+    if (/^\s*server-port\s*=/.test(line)) {
+      updated = true;
+      return `server-port=${port}`;
+    }
+    return line;
+  });
+
+  if (!updated) {
+    lines.push(`server-port=${port}`);
+  }
+
+  await writeFile(filePath, `${lines.join("\n")}\n`, "utf8");
+}
 
 export interface CreateServerOptions {
   name: string;
@@ -53,6 +88,7 @@ export class ServerInstanceManager {
     }
 
     await mkdir(path.join(instanceDir, "plugins"), { recursive: true });
+    await ensureServerPortProperty(instanceDir, port);
 
     const meta: ServerInstanceMeta = {
       name: options.name,
@@ -94,6 +130,7 @@ export class ServerInstanceManager {
     if (options.eula) {
       await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
     }
+    await ensureServerPortProperty(instanceDir, meta.port);
 
     const mctHome = resolveMctHome();
     const logsDir = path.join(mctHome, "logs");
@@ -207,6 +244,22 @@ export class ServerInstanceManager {
     return results;
   }
 
+  static async statusAll(globalState: GlobalStateStore) {
+    const state = await globalState.readServerState();
+    const results: Array<{ running: boolean; [key: string]: unknown }> = [];
+
+    for (const [key, entry] of Object.entries(state.servers)) {
+      const running = isProcessRunning(entry.pid);
+      if (!running) {
+        delete state.servers[key];
+      }
+      results.push({ running, ...entry });
+    }
+
+    await globalState.writeServerState(state);
+    return results;
+  }
+
   async waitReady(serverName: string, timeoutSeconds: number) {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
@@ -258,7 +311,7 @@ export class ServerInstanceManager {
 
   async readLogs(
     serverName: string,
-    options: { tail?: number; grep?: string; since?: number } = {}
+    options: { tail?: number; grep?: string; since?: number; rawColors?: boolean } = {}
   ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
     const entry = await this.requireRuntimeEntry(serverName);
     const logPath = entry.logPath;
@@ -271,6 +324,10 @@ export class ServerInstanceManager {
     let lines = raw.split("\n");
     if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
     const total = lines.length;
+
+    if (!options.rawColors) {
+      lines = lines.map((line) => stripAnsiCodes(line));
+    }
 
     if (options.since !== undefined && options.since > 0) {
       lines = lines.slice(Math.max(0, options.since));
@@ -290,7 +347,7 @@ export class ServerInstanceManager {
 
   async followLogs(
     serverName: string,
-    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean }
+    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean; rawColors?: boolean }
   ): Promise<{ logPath: string; matched: boolean; matches: string[]; timedOut: boolean }> {
     const entry = await this.requireRuntimeEntry(serverName);
     const logPath = entry.logPath;
@@ -337,8 +394,9 @@ export class ServerInstanceManager {
         const parts = buffer.split("\n");
         buffer = parts.pop() ?? "";
         for (const line of parts) {
-          if (!re || re.test(line)) {
-            matches.push(line);
+          const rendered = options.rawColors ? line : stripAnsiCodes(line);
+          if (!re || re.test(rendered)) {
+            matches.push(rendered);
             if (options.firstMatchOnly) return finish(false);
           }
         }

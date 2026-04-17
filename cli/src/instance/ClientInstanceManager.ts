@@ -330,7 +330,7 @@ export class ClientInstanceManager {
     throw new MctError(
       {
         code: "TIMEOUT",
-        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: try \`mct client reconnect --address <server>\` or \`mct client launch --force\`.`,
+        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server).`,
         details: diag
       },
       2

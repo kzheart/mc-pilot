@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { buildClientSearchResults } from "../download/SearchCommand.js";
 import type { ClientLoader } from "../download/VersionMatrix.js";
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
+import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
 import { MctError } from "../util/errors.js";
 import { createRequestAction } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
@@ -20,6 +21,29 @@ import { resolveClientInstanceDir } from "../util/paths.js";
 import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { LoaderType } from "../util/instance-types.js";
+import type { CommandContext } from "../util/context.js";
+
+export async function resolveProfileServerAddress(
+  context: Pick<CommandContext, "projectName" | "activeProfile" | "globalState">,
+  explicitServer: string | undefined,
+  loadPort?: (projectName: string, serverName: string) => Promise<number>
+): Promise<string | undefined> {
+  if (explicitServer) {
+    return explicitServer;
+  }
+  if (!context.projectName || !context.activeProfile?.server) {
+    return undefined;
+  }
+
+  try {
+    const port = loadPort
+      ? await loadPort(context.projectName, context.activeProfile.server)
+      : (await new ServerInstanceManager(context.globalState, context.projectName).loadMeta(context.activeProfile.server)).port;
+    return `127.0.0.1:${port}`;
+  } catch {
+    return undefined;
+  }
+}
 
 export function createClientCommand() {
   const command = new Command("client").description("Manage Minecraft client instances");
@@ -168,13 +192,22 @@ export function createClientCommand() {
     .command("launch")
     .description("Launch a client instance")
     .argument("[name]", "Client instance name (default: from active profile)")
-    .option("--server <address>", "Target server address (e.g. localhost:25565)")
+    .option("--server <address>", "Target server address (default: active profile server, e.g. localhost:25565)")
     .option("--account <account>", "Offline username or account identifier")
     .option("--ws-port <port>", "WebSocket port override", Number)
     .option("--headless", "Launch in headless mode")
     .option("--force", "Kill any existing client with the same name before launching")
     .action(
-      wrapCommand(async (context, { args, options }) => {
+      wrapCommand(async (
+        context,
+        {
+          args,
+          options
+        }: {
+          args: (string | undefined)[];
+          options: { server?: string; account?: string; wsPort?: number; headless?: boolean; force?: boolean };
+        }
+      ) => {
         const clientName = args[0] ?? context.activeProfile?.clients[0];
         if (!clientName) {
           throw new MctError(
@@ -183,7 +216,11 @@ export function createClientCommand() {
           );
         }
         const manager = new ClientInstanceManager(context.globalState);
-        return manager.launch(clientName, options);
+        const serverAddress = await resolveProfileServerAddress(context, options.server);
+        return manager.launch(clientName, {
+          ...options,
+          server: serverAddress
+        });
       })
     );
 
