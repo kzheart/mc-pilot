@@ -22,14 +22,19 @@ const BUILT_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-pape
 const RESOURCEPACK_PATH = path.join(ROOT_DIR, "tmp/real-e2e/resourcepack/test-pack.zip");
 const RESOURCEPACK_PORT = 18080;
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
-let CONFIG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/mct.real.config.json");
-let STATE_DIR = path.join(ROOT_DIR, "tmp/real-e2e/state");
+let PROJECT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/project");
+let PROJECT_FILE_PATH = path.join(PROJECT_DIR, "mct.project.json");
+let MCT_HOME_DIR = path.join(ROOT_DIR, "tmp/real-e2e/mct-home");
 let REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
 let SCREENSHOT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/screenshots");
-let CLIENT_LOG_PATH = path.join(STATE_DIR, "logs", "client-real.log");
-let SERVER_DIR = path.join(ROOT_DIR, "tmp/real-e2e/server");
-let SERVER_LOG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/logs/latest.log");
-let SERVER_PLUGIN_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/plugins/mct-paper-fixture-0.1.0.jar");
+let PROJECT_NAME = "real-e2e";
+let PROFILE_NAME = "default";
+let SERVER_NAME = "server";
+let CLIENT_NAME = "real";
+let CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", "client-real.log");
+let SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_NAME, SERVER_NAME);
+let SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
+let SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
 let REAL_CLIENT_WS_PORT = 25560;
 let LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
 
@@ -38,7 +43,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "client list",
   "client stop",
   "client wait-ready",
-  "config-show",
+  "info",
   "server start",
   "server status",
   "server stop",
@@ -70,8 +75,8 @@ function parseCliOptions(argv) {
   const selectedGroups = [];
   let listGroups = false;
   let json = false;
-  let configPath = CONFIG_PATH;
-  let stateDir = STATE_DIR;
+  let projectDir = PROJECT_DIR;
+  let mctHome = MCT_HOME_DIR;
   let reportDir = REPORT_DIR;
   let screenshotDir = SCREENSHOT_DIR;
   let runLabelOverride = undefined;
@@ -95,21 +100,21 @@ function parseCliOptions(argv) {
       json = true;
       continue;
     }
-    if (arg === "--config") {
+    if (arg === "--project-dir") {
       const nextValue = argv[index + 1];
       if (!nextValue) {
-        throw new Error("Missing value for --config");
+        throw new Error("Missing value for --project-dir");
       }
-      configPath = path.resolve(ROOT_DIR, nextValue);
+      projectDir = path.resolve(ROOT_DIR, nextValue);
       index += 1;
       continue;
     }
-    if (arg === "--state-dir") {
+    if (arg === "--mct-home") {
       const nextValue = argv[index + 1];
       if (!nextValue) {
-        throw new Error("Missing value for --state-dir");
+        throw new Error("Missing value for --mct-home");
       }
-      stateDir = path.resolve(ROOT_DIR, nextValue);
+      mctHome = path.resolve(ROOT_DIR, nextValue);
       index += 1;
       continue;
     }
@@ -158,8 +163,8 @@ function parseCliOptions(argv) {
     json,
     selectedGroups: effectiveGroups,
     selectedGroupSet: new Set(effectiveGroups),
-    configPath,
-    stateDir,
+    projectDir,
+    mctHome,
     reportDir,
     screenshotDir,
     runLabel,
@@ -167,28 +172,43 @@ function parseCliOptions(argv) {
   };
 }
 
-async function applyRuntimePathsFromConfig(configPath, stateDir, reportDir, screenshotDir) {
-  CONFIG_PATH = configPath;
-  STATE_DIR = stateDir;
+async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, screenshotDir) {
+  PROJECT_DIR = projectDir;
+  PROJECT_FILE_PATH = path.join(PROJECT_DIR, "mct.project.json");
+  MCT_HOME_DIR = mctHome;
   REPORT_DIR = reportDir;
   SCREENSHOT_DIR = screenshotDir;
-  CLIENT_LOG_PATH = path.join(STATE_DIR, "logs", "client-real.log");
+  CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
   LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
   cachedClientResiduePatterns = null;
 
   try {
-    const config = JSON.parse(await readFile(CONFIG_PATH, "utf8"));
-    const serverDir = path.isAbsolute(config?.server?.dir)
-      ? config.server.dir
-      : path.resolve(ROOT_DIR, config?.server?.dir ?? "./server");
-    SERVER_DIR = serverDir;
-    SERVER_LOG_PATH = path.join(serverDir, "logs", "latest.log");
-    SERVER_PLUGIN_PATH = path.join(serverDir, "plugins", "mct-paper-fixture-0.1.0.jar");
-    REAL_CLIENT_WS_PORT = Number(config?.clients?.real?.wsPort ?? 25560);
+    const projectFile = JSON.parse(await readFile(PROJECT_FILE_PATH, "utf8"));
+    PROJECT_NAME = projectFile.project ?? PROJECT_NAME;
+    PROFILE_NAME = projectFile.defaultProfile ?? PROFILE_NAME;
+    const profile = projectFile.profiles?.[PROFILE_NAME];
+    if (profile?.server) {
+      SERVER_NAME = profile.server;
+    }
+    if (Array.isArray(profile?.clients) && profile.clients[0]) {
+      CLIENT_NAME = profile.clients[0];
+    }
   } catch {
-    SERVER_DIR = path.join(ROOT_DIR, "tmp/real-e2e/server");
-    SERVER_LOG_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/logs/latest.log");
-    SERVER_PLUGIN_PATH = path.join(ROOT_DIR, "tmp/real-e2e/server/plugins/mct-paper-fixture-0.1.0.jar");
+    PROJECT_NAME = "real-e2e";
+    PROFILE_NAME = "default";
+    SERVER_NAME = "server";
+    CLIENT_NAME = "real";
+  }
+
+  SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_NAME, SERVER_NAME);
+  SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
+  SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
+  CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
+
+  try {
+    const clientMeta = JSON.parse(await readFile(path.join(MCT_HOME_DIR, "clients", CLIENT_NAME, "instance.json"), "utf8"));
+    REAL_CLIENT_WS_PORT = Number(clientMeta.wsPort ?? 25560);
+  } catch {
     REAL_CLIENT_WS_PORT = 25560;
   }
 }
@@ -251,15 +271,6 @@ function countOccurrences(text, fragment) {
   return count;
 }
 
-function getFlagValue(argv, flag) {
-  const index = argv.indexOf(flag);
-  if (index < 0) {
-    return undefined;
-  }
-
-  return argv[index + 1];
-}
-
 let cachedClientResiduePatterns = null;
 
 async function getClientResiduePatterns() {
@@ -267,20 +278,11 @@ async function getClientResiduePatterns() {
     return cachedClientResiduePatterns;
   }
 
-  let launchCommand = [];
-  try {
-    const config = JSON.parse(await readFile(CONFIG_PATH, "utf8"));
-    launchCommand = config?.clients?.real?.launchCommand ?? [];
-  } catch {}
-
-  const instanceDir = getFlagValue(launchCommand, "--instance-dir");
-  const launchScript = launchCommand.find(
-    (entry) => typeof entry === "string" && entry.endsWith("launch-fabric-client.mjs")
-  );
   const patterns = [...new Set([
-    instanceDir,
-    instanceDir ? path.basename(instanceDir) : null,
-    launchScript ? path.basename(launchScript) : "launch-fabric-client.mjs"
+    path.basename(path.join(MCT_HOME_DIR, "clients", CLIENT_NAME)),
+    CLIENT_NAME,
+    `client-${CLIENT_NAME}.log`,
+    "launch-fabric-client.mjs"
   ].filter(Boolean))];
 
   cachedClientResiduePatterns = patterns;
@@ -297,7 +299,8 @@ async function runCommand(command, args, options = {}) {
 
   try {
     const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: ROOT_DIR,
+      cwd: options.cwd ?? ROOT_DIR,
+      env: options.env ?? process.env,
       maxBuffer: 16 * 1024 * 1024
     });
 
@@ -344,8 +347,15 @@ async function runCommand(command, args, options = {}) {
 async function runCli(args, options = {}) {
   return runCommand(
     process.execPath,
-    [path.join(ROOT_DIR, "cli/dist/index.js"), "--config", CONFIG_PATH, "--state-dir", STATE_DIR, ...args],
-    options
+    [path.join(ROOT_DIR, "cli/dist/index.js"), ...args],
+    {
+      ...options,
+      cwd: PROJECT_DIR,
+      env: {
+        ...process.env,
+        MCT_HOME: MCT_HOME_DIR
+      }
+    }
   );
 }
 
@@ -776,7 +786,6 @@ function buildSupportMatrix() {
 
 async function main() {
   const options = parseCliOptions(process.argv.slice(2));
-  await applyRuntimePathsFromConfig(options.configPath, options.stateDir, options.reportDir, options.screenshotDir);
   if (options.listGroups) {
     const payload = {
       groups: TEST_GROUPS,
@@ -791,6 +800,8 @@ async function main() {
     }
     return;
   }
+
+  await applyRuntimePathsFromProject(options.projectDir, options.mctHome, options.reportDir, options.screenshotDir);
 
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -816,8 +827,8 @@ async function main() {
     runLabel: options.runLabel,
     reportPath: runReportPath,
     logPath: runLogPath,
-    configPath: CONFIG_PATH,
-    stateDir: STATE_DIR,
+    projectDir: PROJECT_DIR,
+    mctHome: MCT_HOME_DIR,
     serverLogPath: SERVER_LOG_PATH,
     clientLogPath: CLIENT_LOG_PATH,
     screenshots: [],
@@ -1221,8 +1232,9 @@ async function main() {
     recordStep("cleanup-before-server-stop", initialCleanup.serverStop);
     await cleanupClientResidue(recordStep);
 
-    await runNonRequestLeaf("config-show", ["config-show"], (data) => {
-      expect(data.stateDir === STATE_DIR, "config-show returned unexpected state dir");
+    await runNonRequestLeaf("info", ["info"], (data) => {
+      expect(data.project === PROJECT_NAME, "info returned unexpected project name");
+      expect(data.globalStateDir === path.join(MCT_HOME_DIR, "state"), "info returned unexpected global state dir");
     });
 
     await runNonRequestLeaf("server start", ["server", "start", "--eula"], (data) => {

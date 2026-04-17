@@ -65,6 +65,7 @@ async function runCommand(command, args, options = {}) {
   try {
     const { stdout, stderr } = await execFileAsync(command, args, {
       cwd: options.cwd ?? ROOT_DIR,
+      env: options.env ?? process.env,
       maxBuffer: 32 * 1024 * 1024
     });
     return {
@@ -183,25 +184,27 @@ function getVersionPaths(variantId, minecraftVersion, serverType) {
   const rootDir = path.join(MATRIX_ROOT, variantId);
   return {
     rootDir,
-    configPath: path.join(rootDir, "mct.config.json"),
-    stateDir: path.join(rootDir, "state"),
+    projectDir: path.join(rootDir, "project"),
+    mctHome: path.join(rootDir, "mct-home"),
     reportDir: path.join(rootDir, "reports"),
-    screenshotDir: path.join(rootDir, "screenshots"),
-    // Server: cached globally by type+version (same server jar for all runs)
-    serverDir: path.join(SHARED_SERVERS_DIR, `${serverType ?? "vanilla"}`, minecraftVersion ?? variantId),
-    // Client runtime: cached globally per MC version (libraries, assets, version JARs).
-    // The mod JAR is always freshly copied in from the local build artifact.
-    clientDir: path.join(GLOBAL_CACHE_DIR, "client", "runtime", minecraftVersion ?? variantId)
+    screenshotDir: path.join(rootDir, "screenshots")
   };
 }
 
 async function prepareVersionEnvironment(entry, wsPort, logLine) {
   const paths = getVersionPaths(entry.variantId, entry.minecraftVersion, entry.serverType);
-  await mkdir(paths.rootDir, { recursive: true });
+  await mkdir(paths.projectDir, { recursive: true });
+  await mkdir(paths.mctHome, { recursive: true });
   await mkdir(paths.reportDir, { recursive: true });
   await mkdir(paths.screenshotDir, { recursive: true });
-  await mkdir(paths.serverDir, { recursive: true });
-  await mkdir(paths.clientDir, { recursive: true });
+  const projectName = "real-e2e";
+  const profileName = "default";
+  const serverName = "server";
+  const clientName = "real";
+  const env = {
+    ...process.env,
+    MCT_HOME: paths.mctHome
+  };
 
   await logLine(`variant build start variant=${entry.variantId}`);
   const gradleModule = `version-${entry.minecraftVersion}`;
@@ -213,69 +216,106 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
     throw new Error(`Failed to build ${entry.variantId}: ${buildResult.stderr || buildResult.stdout}`);
   }
 
-  await logLine(`server download start variant=${entry.variantId} provider=${entry.serverType}`);
-  const serverDownload = await runCommandWithRetry(
+  const initResult = await runCommandWithRetry(
     process.execPath,
     [
       CLI_PATH,
-      "--config",
-      paths.configPath,
-      "--state-dir",
-      paths.stateDir,
+      "init",
+      "--name",
+      projectName
+    ],
+    {
+      cwd: paths.projectDir,
+      env
+    }
+  );
+  const initPayload = parseJsonMaybe(initResult.stdout) ?? parseJsonMaybe(initResult.stderr);
+  if (!initResult.ok || initPayload?.success !== true) {
+    throw new Error(`Failed to initialize project for ${entry.variantId}: ${initResult.stderr || initResult.stdout}`);
+  }
+
+  await logLine(`server create start variant=${entry.variantId} provider=${entry.serverType}`);
+  const serverCreate = await runCommandWithRetry(
+    process.execPath,
+    [
+      CLI_PATH,
       "server",
-      "download",
+      "create",
+      serverName,
       "--type",
       entry.serverType,
       "--version",
       entry.minecraftVersion,
-      "--dir",
-      paths.serverDir,
-      ...(entry.serverType !== "vanilla" ? ["--fixtures", FIXTURE_PLUGIN_JAR] : [])
-    ]
+      "--port",
+      "25565",
+      "--eula"
+    ],
+    {
+      cwd: paths.projectDir,
+      env
+    }
   );
-  const serverPayload = parseJsonMaybe(serverDownload.stdout) ?? parseJsonMaybe(serverDownload.stderr);
-  if (!serverDownload.ok || serverPayload?.success !== true) {
-    throw new Error(`Failed to download server for ${entry.variantId}: ${serverDownload.stderr || serverDownload.stdout}`);
+  const serverPayload = parseJsonMaybe(serverCreate.stdout) ?? parseJsonMaybe(serverCreate.stderr);
+  if (!serverCreate.ok || serverPayload?.success !== true) {
+    throw new Error(`Failed to create server for ${entry.variantId}: ${serverCreate.stderr || serverCreate.stdout}`);
   }
 
-  await logLine(`client download start variant=${entry.variantId} wsPort=${wsPort}`);
-  const clientDownload = await runCommandWithRetry(
+  await logLine(`client create start variant=${entry.variantId} wsPort=${wsPort}`);
+  const clientCreate = await runCommandWithRetry(
     process.execPath,
     [
       CLI_PATH,
-      "--config",
-      paths.configPath,
-      "--state-dir",
-      paths.stateDir,
       "client",
-      "download",
+      "create",
+      clientName,
       "--loader",
       entry.loader || "fabric",
       "--version",
       entry.minecraftVersion,
-      "--dir",
-      paths.clientDir,
-      "--name",
-      "real",
       "--ws-port",
-      String(wsPort),
-      "--server",
-      "127.0.0.1:25565"
-    ]
+      String(wsPort)
+    ],
+    {
+      cwd: paths.projectDir,
+      env
+    }
   );
-  const clientPayload = parseJsonMaybe(clientDownload.stdout) ?? parseJsonMaybe(clientDownload.stderr);
-  if (!clientDownload.ok || clientPayload?.success !== true) {
-    throw new Error(`Failed to download client for ${entry.variantId}: ${clientDownload.stderr || clientDownload.stdout}`);
+  const clientPayload = parseJsonMaybe(clientCreate.stdout) ?? parseJsonMaybe(clientCreate.stderr);
+  if (!clientCreate.ok || clientPayload?.success !== true) {
+    throw new Error(`Failed to create client for ${entry.variantId}: ${clientCreate.stderr || clientCreate.stdout}`);
   }
+
+  const projectFilePath = path.join(paths.projectDir, "mct.project.json");
+  await writeFile(projectFilePath, `${JSON.stringify({
+    project: projectName,
+    defaultProfile: profileName,
+    profiles: {
+      [profileName]: {
+        server: serverName,
+        clients: [clientName],
+        deployPlugins: [FIXTURE_PLUGIN_JAR]
+      }
+    },
+    screenshot: {
+      outputDir: paths.screenshotDir
+    },
+    timeout: {
+      serverReady: 120,
+      clientReady: 180,
+      default: 10
+    }
+  }, null, 2)}\n`);
 
   return {
     paths,
     wsPort,
-    build: {
-      ok: true
-    },
-    serverDownload: serverPayload?.data ?? serverPayload,
-    clientDownload: clientPayload?.data ?? clientPayload
+    projectName,
+    profileName,
+    serverName,
+    clientName,
+    init: initPayload?.data ?? initPayload,
+    serverCreate: serverPayload?.data ?? serverPayload,
+    clientCreate: clientPayload?.data ?? clientPayload
   };
 }
 
@@ -336,10 +376,11 @@ async function main() {
       const environment = await prepareVersionEnvironment(entry, DEFAULT_WS_PORT_BASE + index, logLine);
       versionRecord.prepare = {
         wsPort: environment.wsPort,
-        configPath: environment.paths.configPath,
-        stateDir: environment.paths.stateDir,
-        serverDownload: environment.serverDownload,
-        clientDownload: environment.clientDownload
+        projectDir: environment.paths.projectDir,
+        mctHome: environment.paths.mctHome,
+        init: environment.init,
+        serverCreate: environment.serverCreate,
+        clientCreate: environment.clientCreate
       };
 
       const runnerArgs = [RUNNER_PATH];
@@ -347,10 +388,10 @@ async function main() {
         runnerArgs.push("--group", group);
       }
       runnerArgs.push(
-        "--config",
-        environment.paths.configPath,
-        "--state-dir",
-        environment.paths.stateDir,
+        "--project-dir",
+        environment.paths.projectDir,
+        "--mct-home",
+        environment.paths.mctHome,
         "--report-dir",
         environment.paths.reportDir,
         "--screenshot-dir",
