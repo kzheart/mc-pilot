@@ -38,29 +38,43 @@ AI / Test Script
 ### Install
 
 ```bash
-npm install -g mc-pilot
+npm install -g @kzheart_/mc-pilot
 ```
 
-### Download Server and Client Mod
+### Create Project and Instances
 
 ```bash
-# Download Paper server
-mct server download --type paper --version 1.20.4
+# Initialize a project in the current directory
+mct init --name my-plugin
 
-# Download client mod (Fabric)
-mct client download --version 1.20.4
+# Create a Paper server instance for this project
+mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
+
+# Create a Fabric client instance
+mct client create fabric-1.20.4 --version 1.20.4
+```
+
+Then configure `mct.project.json` with a profile that points to the server/client instances you want to use:
+
+```json
+{
+  "project": "my-plugin",
+  "defaultProfile": "1.20",
+  "profiles": {
+    "1.20": {
+      "server": "paper-1.20.4",
+      "clients": ["fabric-1.20.4"],
+      "deployPlugins": ["./build/libs/my-plugin.jar"]
+    }
+  }
+}
 ```
 
 ### Launch and Test
 
 ```bash
-# Start server
-mct server start --eula
-mct server wait-ready
-
-# Launch client
-mct client launch default
-mct client wait-ready default
+# Start server + client + plugin deployment from the active profile
+mct up --profile 1.20
 
 # Control the client
 mct chat command "gamemode creative"
@@ -69,9 +83,12 @@ mct block break 100 65 100
 mct inventory get
 mct screenshot --output ./screenshots/test.png
 
+# Optional: inspect runtime info or export a machine-readable schema for AI agents
+mct info
+mct schema
+
 # Stop
-mct client stop default
-mct server stop
+mct down
 ```
 
 ## CLI Commands
@@ -80,8 +97,11 @@ All commands output JSON by default. Use `--human` for human-readable output.
 
 | Command | Description |
 |---|---|
-| `mct server` | Server management (search/download/start/stop) |
-| `mct client` | Client management (download/launch/stop/list) |
+| `mct init` / `mct up` / `mct down` / `mct use` | Project lifecycle and active profile management |
+| `mct info` | Show current project, active profile and global state root |
+| `mct server` | Server management (search/create/start/stop/status/logs) |
+| `mct client` | Client management (search/create/launch/stop/list/wait-ready) |
+| `mct plugin` | Plugin catalog management and project installation |
 | `mct chat` | Chat (send/command/wait/history) |
 | `mct move` | Movement (coordinates/direction/jump/sneak/sprint) |
 | `mct look` | Camera control (coordinates/entity/angle) |
@@ -105,14 +125,16 @@ All commands output JSON by default. Use `--human` for human-readable output.
 | `mct combat` | Combat combos (kill/engage/chase/clear/pickup) |
 | `mct input` | Raw mouse/keyboard input |
 | `mct wait` | Wait (seconds/ticks/conditions) |
+| `mct events` | Inspect or wait for client event-log entries |
+| `mct schema` | Output a machine-readable CLI/protocol schema |
 
 Use `mct <command> --help` for detailed usage of each command.
 
 ### Global Options
 
 ```
---config <path>    Config file path (default: ./mct.config.json)
---state-dir <path> State directory (default: ./.mct-state/)
+--project <name>   Project name (default: from mct.project.json)
+--profile <name>   Profile name (default: from mct.project.json)
 --client <name>    Target client (required with multiple clients)
 --human            Human-readable output (default: JSON)
 ```
@@ -120,13 +142,13 @@ Use `mct <command> --help` for detailed usage of each command.
 ### Multi-Client
 
 ```bash
-# Download and configure two clients with different WebSocket ports
-mct client download --version 1.20.4 --name p1 --ws-port 25560
-mct client download --version 1.20.4 --name p2 --ws-port 25561
+# Create two clients with different WebSocket ports
+mct client create p1 --version 1.20.4 --ws-port 25560
+mct client create p2 --version 1.20.4 --ws-port 25561
 
 # Launch both
-mct client launch p1 --account Fighter1
-mct client launch p2 --account Fighter2
+mct client launch p1 --server 127.0.0.1:25565 --account Fighter1
+mct client launch p2 --server 127.0.0.1:25565 --account Fighter2
 mct client wait-ready p1
 mct client wait-ready p2
 
@@ -195,7 +217,7 @@ mct client wait-ready p2 --timeout 60
 mct --client p1 chat command "pvp challenge Fighter2"
 mct --client p2 chat wait --match "challenge" --timeout 5
 mct --client p2 chat command "pvp accept"
-mct wait 3
+mct --client p1 wait 3
 mct --client p1 combat kill --nearest --type player
 mct --client p2 status health
 mct --client p1 hud scoreboard
