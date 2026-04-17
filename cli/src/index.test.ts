@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -364,6 +364,87 @@ test("CLI schema command outputs machine-readable command and protocol metadata 
     assert.ok(parsed.data.protocol.actions.some((entry: { name?: string }) => entry.name === "chat.send"));
     assert.ok(parsed.data.protocol.queries.some((entry: { name?: string }) => entry.name === "status.all"));
     assert.ok(parsed.data.protocol.errors.some((entry: { code?: string }) => entry.code === "TIMEOUT"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI events wait returns the first matching event from the log file", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-events-wait-"));
+  const eventsFile = path.join(tempDir, "events.jsonl");
+
+  try {
+    setTimeout(() => {
+      void appendFile(
+        eventsFile,
+        `${JSON.stringify({
+          t: Date.now(),
+          iso: new Date().toISOString(),
+          type: "chat.received",
+          payload: { content: "purchase ok" }
+        })}\n`,
+        "utf8"
+      );
+    }, 150);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.join(process.cwd(), "dist/index.js"),
+      "events",
+      "wait",
+      "--file",
+      eventsFile,
+      "--type",
+      "chat.received",
+      "--match",
+      "purchase",
+      "--since",
+      "5s",
+      "--timeout",
+      "2"
+    ], {
+      cwd: tempDir,
+      env: process.env
+    });
+
+    const parsed = JSON.parse(stdout);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.matched, true);
+    assert.equal(parsed.data.event.type, "chat.received");
+    assert.equal(parsed.data.event.payload.content, "purchase ok");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI events wait exits with TIMEOUT when no matching event arrives", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-events-timeout-"));
+  const eventsFile = path.join(tempDir, "events.jsonl");
+
+  try {
+    await writeFile(eventsFile, "", "utf8");
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        path.join(process.cwd(), "dist/index.js"),
+        "events",
+        "wait",
+        "--file",
+        eventsFile,
+        "--type",
+        "player.died",
+        "--timeout",
+        "1"
+      ], {
+        cwd: tempDir,
+        env: process.env
+      }),
+      (error: NodeJS.ErrnoException & { stderr?: string }) => {
+        const parsed = JSON.parse(String(error.stderr ?? "{}"));
+        assert.equal(parsed.success, false);
+        assert.equal(parsed.error.code, "TIMEOUT");
+        return true;
+      }
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

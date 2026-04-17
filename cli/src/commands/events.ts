@@ -22,6 +22,14 @@ interface ListOptions {
   file?: string;
 }
 
+interface WaitOptions {
+  timeout?: number;
+  since?: string;
+  type?: string;
+  match?: string;
+  file?: string;
+}
+
 function resolveEventsFile(clientName: string | undefined): string {
   if (!clientName) {
     throw new MctError(
@@ -71,6 +79,82 @@ function readAllEvents(filePath: string): EventEntry[] {
   return out;
 }
 
+function filterEvents(events: EventEntry[], options: { sinceMs?: number; type?: string }): EventEntry[] {
+  let filtered = events;
+  if (options.sinceMs !== undefined) {
+    filtered = filtered.filter((event) => event.t >= options.sinceMs!);
+  }
+  if (options.type) {
+    const wanted = new Set(options.type.split(",").map((s) => s.trim()).filter(Boolean));
+    filtered = filtered.filter((event) => wanted.has(event.type));
+  }
+  return filtered;
+}
+
+function buildPayloadText(event: EventEntry): string {
+  return JSON.stringify({
+    type: event.type,
+    payload: event.payload ?? {}
+  });
+}
+
+function buildMatchPattern(raw: string | undefined): RegExp | null {
+  if (!raw) return null;
+  try {
+    return new RegExp(raw);
+  } catch {
+    throw new MctError(
+      { code: "INVALID_PARAMS", message: `Invalid --match pattern: ${raw}` },
+      4
+    );
+  }
+}
+
+async function waitForEvent(
+  filePath: string,
+  options: { timeoutSeconds: number; sinceMs: number; type?: string; match?: string }
+): Promise<{ file: string; matched: true; waitedMs: number; event: EventEntry }> {
+  const deadline = Date.now() + options.timeoutSeconds * 1000;
+  const matchPattern = buildMatchPattern(options.match);
+  const startedAt = Date.now();
+
+  while (Date.now() < deadline) {
+    const events = filterEvents(readAllEvents(filePath), {
+      sinceMs: options.sinceMs,
+      type: options.type
+    });
+
+    const matched = matchPattern
+      ? events.find((event) => matchPattern.test(buildPayloadText(event)))
+      : events[0];
+
+    if (matched) {
+      return {
+        file: filePath,
+        matched: true,
+        waitedMs: Date.now() - startedAt,
+        event: matched
+      };
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new MctError(
+    {
+      code: "TIMEOUT",
+      message: `Timed out after ${options.timeoutSeconds}s waiting for events in ${filePath}`,
+      details: {
+        file: filePath,
+        type: options.type ?? null,
+        match: options.match ?? null,
+        sinceMs: options.sinceMs
+      }
+    },
+    2
+  );
+}
+
 export function createEventsCommand() {
   const command = new Command("events").description(
     "Inspect the client event log (written by the mod to ~/.mct/logs/<client>/events.jsonl)"
@@ -89,16 +173,10 @@ export function createEventsCommand() {
         const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
         const filePath = options.file ?? resolveEventsFile(clientName);
         const events = readAllEvents(filePath);
-
-        let filtered = events;
-        const sinceMs = parseSince(options.since, Date.now());
-        if (sinceMs !== undefined) {
-          filtered = filtered.filter((e) => e.t >= sinceMs);
-        }
-        if (options.type) {
-          const wanted = new Set(options.type.split(",").map((s) => s.trim()).filter(Boolean));
-          filtered = filtered.filter((e) => wanted.has(e.type));
-        }
+        let filtered = filterEvents(events, {
+          sinceMs: parseSince(options.since, Date.now()),
+          type: options.type
+        });
 
         if (!options.all) {
           const tail = options.tail ?? 20;
@@ -135,15 +213,34 @@ export function createEventsCommand() {
           const tail = args[0] ? Number(args[0]) : 20;
           const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
           const filePath = options.file ?? resolveEventsFile(clientName);
-          let events = readAllEvents(filePath);
-          if (options.type) {
-            const wanted = new Set(options.type.split(",").map((s) => s.trim()).filter(Boolean));
-            events = events.filter((e) => wanted.has(e.type));
-          }
+          let events = filterEvents(readAllEvents(filePath), {
+            type: options.type
+          });
           if (events.length > tail) events = events.slice(events.length - tail);
           return { file: filePath, returned: events.length, events };
         }
       )
+    );
+
+  command
+    .command("wait")
+    .description("Wait for a matching event. Defaults to events emitted after this command starts.")
+    .option("--timeout <seconds>", "Timeout in seconds (default 10)", Number)
+    .option("--since <duration>", "Also consider events since duration ago (e.g. 30s, 5m, 1h) or epoch ms")
+    .option("--type <types>", "Comma-separated list of event types to include")
+    .option("--match <pattern>", "Regex matched against event type and payload JSON")
+    .option("--file <path>", "Override the log file path")
+    .action(
+      wrapCommand(async (context, { options, globalOptions }: { options: WaitOptions; globalOptions: { client?: string } }) => {
+        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
+        const filePath = options.file ?? resolveEventsFile(clientName);
+        return waitForEvent(filePath, {
+          timeoutSeconds: options.timeout ?? context.timeout("default"),
+          sinceMs: parseSince(options.since, Date.now()) ?? Date.now(),
+          type: options.type,
+          match: options.match
+        });
+      })
     );
 
   command

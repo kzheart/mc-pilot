@@ -40,6 +40,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "events list",
   "events path",
   "events tail",
+  "events wait",
   "init",
   "plugin add",
   "plugin info",
