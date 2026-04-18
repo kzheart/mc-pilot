@@ -3,8 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "cli",
-    "gui"
+    "cli"
   ],
   "scripts": {
     "build": "npm --prefix cli run build",
@@ -15,9 +14,7 @@
     "test:real:smoke": "node scripts/run-real-mod-test-suite.mjs --group status-input-move",
     "test:real": "node scripts/run-real-mod-test-suite.mjs",
     "test:real:group": "node scripts/real-mod-full-test.mjs",
-    "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups",
-    "gui:dev": "npm --prefix gui run dev",
-    "gui:build": "npm --prefix gui run build"
+    "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups"
   },
   "engines": {
     "node": ">=20"
