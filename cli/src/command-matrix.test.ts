@@ -12,8 +12,26 @@ import type { Command } from "commander";
 import { WebSocketServer } from "ws";
 
 import { buildProgram } from "./index.js";
+import { createDefaultProjectFile } from "./util/project.js";
 
 const execFileAsync = promisify(execFile);
+
+async function writeProjectConfig(
+  mctHome: string,
+  projectDir: string,
+  overrides: Record<string, unknown>
+) {
+  const base = createDefaultProjectFile(projectDir, String(overrides.project ?? "test"));
+  const projectFile = {
+    ...base,
+    ...overrides,
+    screenshot: overrides.screenshot ? { ...base.screenshot, ...(overrides.screenshot as object) } : base.screenshot,
+    timeout: overrides.timeout ? { ...base.timeout, ...(overrides.timeout as object) } : base.timeout
+  };
+  const projectFilePath = path.join(mctHome, "projects", base.projectId, "project.json");
+  await mkdir(path.dirname(projectFilePath), { recursive: true });
+  await writeFile(projectFilePath, JSON.stringify(projectFile, null, 2), "utf8");
+}
 
 interface RequestCase {
   leaf: string;
@@ -733,23 +751,15 @@ async function createRequestTestHarness(options?: { timeoutDefault?: number; res
   // Write project file with timeout config
   const projectDir = path.join(tempDir, "project");
   await mkdir(projectDir, { recursive: true });
-  await writeFile(
-    path.join(projectDir, "mct.project.json"),
-    JSON.stringify(
-      {
-        project: "test",
-        profiles: {},
-        timeout: {
-          serverReady: 5,
-          clientReady: 5,
-          default: options?.timeoutDefault ?? 5
-        }
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
+  await writeProjectConfig(path.join(tempDir, "mct-home"), projectDir, {
+    project: "test",
+    profiles: {},
+    timeout: {
+      serverReady: 5,
+      clientReady: 5,
+      default: options?.timeoutDefault ?? 5
+    }
+  });
 
   return {
     async runCli(args: string[]) {

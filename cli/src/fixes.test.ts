@@ -11,7 +11,7 @@ import { GlobalStateStore } from "./util/global-state.js";
 
 test("resolveProfileServerAddress prefers explicit server and falls back to active profile metadata", async () => {
   const context = {
-    projectName: "demo",
+    projectId: "demo",
     activeProfile: {
       server: "paper",
       clients: ["bot"]
@@ -21,8 +21,8 @@ test("resolveProfileServerAddress prefers explicit server and falls back to acti
 
   assert.equal(await resolveProfileServerAddress(context, "127.0.0.1:30000"), "127.0.0.1:30000");
   assert.equal(
-    await resolveProfileServerAddress(context, undefined, async (projectName, serverName) => {
-      assert.equal(projectName, "demo");
+    await resolveProfileServerAddress(context, undefined, async (projectId, serverName) => {
+      assert.equal(projectId, "demo");
       assert.equal(serverName, "paper");
       return 25569;
     }),

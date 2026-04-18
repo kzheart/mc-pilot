@@ -24,21 +24,21 @@ import type { LoaderType } from "../util/instance-types.js";
 import type { CommandContext } from "../util/context.js";
 
 export async function resolveProfileServerAddress(
-  context: Pick<CommandContext, "projectName" | "activeProfile" | "globalState">,
+  context: Pick<CommandContext, "projectId" | "activeProfile" | "globalState">,
   explicitServer: string | undefined,
-  loadPort?: (projectName: string, serverName: string) => Promise<number>
+  loadPort?: (projectId: string, serverName: string) => Promise<number>
 ): Promise<string | undefined> {
   if (explicitServer) {
     return explicitServer;
   }
-  if (!context.projectName || !context.activeProfile?.server) {
+  if (!context.projectId || !context.activeProfile?.server) {
     return undefined;
   }
 
   try {
     const port = loadPort
-      ? await loadPort(context.projectName, context.activeProfile.server)
-      : (await new ServerInstanceManager(context.globalState, context.projectName).loadMeta(context.activeProfile.server)).port;
+      ? await loadPort(context.projectId, context.activeProfile.server)
+      : (await new ServerInstanceManager(context.globalState, context.projectId).loadMeta(context.activeProfile.server)).port;
     return `127.0.0.1:${port}`;
   } catch {
     return undefined;

@@ -7,6 +7,7 @@ import type {
   GlobalServerState,
   GlobalClientState
 } from "../../../cli/src/util/instance-types";
+import type { MctProjectFile } from "../../../cli/src/util/project";
 
 const MCT_HOME = process.env.MCT_HOME || join(homedir(), ".mct");
 const STATE_DIR = join(MCT_HOME, "state");
@@ -83,7 +84,9 @@ export async function readClientState(): Promise<GlobalClientState> {
 }
 
 export interface ProjectInfo {
+  id: string;
   name: string;
+  rootDir?: string;
   servers: ServerInstanceMeta[];
 }
 
@@ -94,8 +97,17 @@ export async function listProjects(): Promise<ProjectInfo[]> {
     for (const dir of dirs) {
       if (!dir.isDirectory()) continue;
       const projectDir = join(PROJECTS_DIR, dir.name);
+      const projectConfig = await readJsonFile<MctProjectFile | null>(
+        join(projectDir, "project.json"),
+        null
+      );
       const servers = await listServerInstances(dir.name, projectDir);
-      projects.push({ name: dir.name, servers });
+      projects.push({
+        id: dir.name,
+        name: projectConfig?.project ?? dir.name,
+        rootDir: projectConfig?.rootDir,
+        servers
+      });
     }
   } catch {
     // projects dir may not exist yet

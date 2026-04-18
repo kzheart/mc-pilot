@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import path from "node:path";
 
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
@@ -27,6 +28,35 @@ export async function sendClientRequest(
 
 export function resolvePreferredClientName(context: CommandContext, globalOptions: GlobalOptions): string | undefined {
   return globalOptions.client ?? context.activeProfile?.clients[0];
+}
+
+export function resolveProjectRelativePath(context: CommandContext, targetPath: string): string {
+  if (path.isAbsolute(targetPath)) {
+    return targetPath;
+  }
+
+  return path.resolve(context.projectRootDir ?? context.cwd, targetPath);
+}
+
+export function resolveScreenshotOutputPath(
+  context: CommandContext,
+  output: string | undefined,
+  prefix: "screenshot" | "gui"
+): string {
+  if (output) {
+    return resolveProjectRelativePath(context, output);
+  }
+
+  const outputDir = context.projectFile?.screenshot?.outputDir;
+  if (!outputDir) {
+    throw new MctError(
+      { code: "INVALID_PARAMS", message: "--output is required outside a project context." },
+      4
+    );
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return path.join(outputDir, `${prefix}-${timestamp}.png`);
 }
 
 export function createRequestAction<TOptions = Record<string, any>>(

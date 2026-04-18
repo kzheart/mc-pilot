@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { GlobalStateStore } from "./util/global-state.js";
 import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
 import { ServerInstanceManager } from "./instance/ServerInstanceManager.js";
+import { createDefaultProjectFile } from "./util/project.js";
 import { resolveClientInstanceDir, resolveServerInstanceDir } from "./util/paths.js";
 
 const execFileAsync = promisify(execFile);
@@ -119,14 +120,15 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
 
     const initResult = await runCli(projectDir, mctHome, ["init", "--name", "test-project"]);
     assert.equal(initResult.success, true);
+    const projectId = String(initResult.data.projectId);
 
     const globalState = new GlobalStateStore();
-    const serverManager = new ServerInstanceManager(globalState, "test-project");
+    const serverManager = new ServerInstanceManager(globalState, projectId);
     const clientManager = new ClientInstanceManager(globalState);
 
     await serverManager.create({
       name: "paper-dev",
-      project: "test-project",
+      project: projectId,
       type: "paper",
       version: "1.20.4",
       port: serverPort
@@ -138,34 +140,32 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
       launchArgs: ["--runtime-root", "/tmp/runtime", "--version-id", "1.20.4", "--game-dir", "/tmp/game"]
     });
 
-    const projectFilePath = path.join(projectDir, "mct.project.json");
-    await writeFile(projectFilePath, JSON.stringify({
-      project: "test-project",
-      defaultProfile: "dev",
-      profiles: {
-        dev: {
-          server: "paper-dev",
-          clients: ["fabric-dev"]
-        }
-      },
-      screenshot: { outputDir: "./screenshots" },
-      timeout: {
-        serverReady: 5,
-        clientReady: 5,
-        default: 2
+    const projectFilePath = path.join(mctHome, "projects", projectId, "project.json");
+    const projectFile = createDefaultProjectFile(projectDir, "test-project");
+    projectFile.defaultProfile = "dev";
+    projectFile.profiles = {
+      dev: {
+        server: "paper-dev",
+        clients: ["fabric-dev"]
       }
-    }, null, 2));
+    };
+    projectFile.timeout = {
+      serverReady: 5,
+      clientReady: 5,
+      default: 2
+    };
+    await writeFile(projectFilePath, JSON.stringify(projectFile, null, 2));
 
     await globalState.writeServerState({
       servers: {
-        "test-project/paper-dev": {
+        [`${projectId}/paper-dev`]: {
           pid: serverProbe.pid,
-          project: "test-project",
+          project: projectId,
           name: "paper-dev",
           port: serverPort,
           startedAt: new Date().toISOString(),
           logPath: path.join(mctHome, "logs", "server.log"),
-          instanceDir: resolveServerInstanceDir("test-project", "paper-dev")
+          instanceDir: resolveServerInstanceDir(projectId, "paper-dev")
         }
       }
     });
@@ -185,6 +185,7 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
 
     const infoResult = await runCli(projectDir, mctHome, ["info"]);
     assert.equal(infoResult.success, true);
+    assert.equal(infoResult.data.projectId, projectId);
     assert.equal(infoResult.data.project, "test-project");
     assert.equal(infoResult.data.activeProfile.server, "paper-dev");
 

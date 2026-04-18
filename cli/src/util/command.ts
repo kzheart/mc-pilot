@@ -20,8 +20,8 @@ export type CommandAction<TOptions = Record<string, unknown>> = (
 export function attachGlobalOptions(command: Command) {
   return command
     .option("--human", "Human-readable output (default: JSON)")
-    .option("--project <name>", "Project name (default: from mct.project.json)")
-    .option("--profile <name>", "Profile name (default: from mct.project.json)")
+    .option("--project <id>", "Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)")
+    .option("--profile <name>", "Profile name (default: from ~/.mct/projects/<id>/project.json)")
     .option("--client <name>", "Target client name (required when multiple clients are running)");
 }
 

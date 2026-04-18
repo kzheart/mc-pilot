@@ -1,6 +1,13 @@
 import { Command } from "commander";
 
-import { createRequestAction, parseNumberList, withTransportTimeoutBuffer } from "./request-helpers.js";
+import { wrapCommand } from "../util/command.js";
+import {
+  createRequestAction,
+  parseNumberList,
+  resolveScreenshotOutputPath,
+  sendClientRequest,
+  withTransportTimeoutBuffer
+} from "./request-helpers.js";
 
 export function createGuiCommand() {
   const command = new Command("gui").description("GUI / container interaction (use \"gui snapshot\" to inspect slot indices and contents)");
@@ -69,8 +76,14 @@ export function createGuiCommand() {
   command
     .command("screenshot")
     .description("Take a screenshot of the current GUI")
-    .requiredOption("--output <path>", "Output file path")
-    .action(createRequestAction("gui.screenshot", ({ options }) => ({ output: options.output })));
+    .option("--output <path>", "Output file path (default: project screenshot directory)")
+    .action(
+      wrapCommand(async (context, { options, globalOptions }: { options: { output?: string }; globalOptions: { client?: string } }) => {
+        return sendClientRequest(context, globalOptions.client ?? context.activeProfile?.clients[0], "gui.screenshot", {
+          output: resolveScreenshotOutputPath(context, options.output, "gui")
+        });
+      })
+    );
 
   return command;
 }

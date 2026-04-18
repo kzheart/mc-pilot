@@ -8,17 +8,17 @@ import { MctError } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import type { ServerType as InstanceServerType } from "../util/instance-types.js";
 
-function requireProject(context: { projectName: string | null }): string {
-  if (!context.projectName) {
+function requireProject(context: { projectId: string | null }): string {
+  if (!context.projectId) {
     throw new MctError(
-      { code: "NO_PROJECT", message: "No project context. Run 'mct init' first or use --project <name>" },
+      { code: "NO_PROJECT", message: "No project context. Run 'mct init' first or use --project <id>" },
       4
     );
   }
-  return context.projectName;
+  return context.projectId;
 }
 
-function resolveServerName(context: { projectName: string | null; activeProfile: { server: string } | null }, explicit?: string): string {
+function resolveServerName(context: { projectId: string | null; activeProfile: { server: string } | null }, explicit?: string): string {
   if (explicit) return explicit;
   if (context.activeProfile?.server) return context.activeProfile.server;
   throw new MctError(
@@ -128,16 +128,16 @@ export function createServerCommand() {
     .option("--all", "Show running servers across all projects")
     .action(
       wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { all?: boolean } }) => {
-        if (options.all || (!context.projectName && !args[0])) {
+        if (options.all || (!context.projectId && !args[0])) {
           return ServerInstanceManager.statusAll(context.globalState);
         }
-        if (!context.projectName) {
+        if (!context.projectId) {
           throw new MctError(
-            { code: "NO_PROJECT", message: "No project context. Omit the name to inspect all running servers, or use --project <name>." },
+            { code: "NO_PROJECT", message: "No project context. Omit the name to inspect all running servers, or use --project <id>." },
             4
           );
         }
-        const manager = new ServerInstanceManager(context.globalState, context.projectName);
+        const manager = new ServerInstanceManager(context.globalState, context.projectId);
         return manager.status(args[0]);
       })
     );

@@ -24,7 +24,7 @@ async function executeServerCommand(
   serverName: string,
   command: string
 ) {
-  const manager = new ServerInstanceManager(context.globalState, context.projectName!);
+  const manager = new ServerInstanceManager(context.globalState, context.projectId!);
   const result = await manager.exec(serverName, command);
   return {
     ...result,
@@ -91,7 +91,7 @@ export function createChatCommand() {
             if (preferredClient) {
               return sendClientRequest(context, preferredClient, "chat.command", { command: commandText });
             }
-            if (!context.projectName) {
+            if (!context.projectId) {
               return sendClientRequest(context, undefined, "chat.command", { command: commandText });
             }
             const serverName = options.server ?? context.activeProfile?.server;
@@ -110,7 +110,7 @@ export function createChatCommand() {
             throw new MctError({ code: "INVALID_PARAMS", message: `--via must be \"auto\", \"server\" or \"client\", got: ${via}` }, 4);
           }
 
-          if (!context.projectName) {
+          if (!context.projectId) {
             throw new MctError({ code: "NO_PROJECT", message: "--via server requires a project context. Use --via client or run inside an mct project." }, 4);
           }
           const serverName = options.server ?? context.activeProfile?.server;

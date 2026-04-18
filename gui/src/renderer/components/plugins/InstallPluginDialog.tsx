@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Download } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { useServerStore, type ProjectInfo } from "@/stores/server-store";
+import { useServerStore } from "@/stores/server-store";
 import { usePluginStore, type PluginEntry } from "@/stores/plugin-store";
 
 interface InstallPluginDialogProps {
@@ -50,7 +50,7 @@ export function InstallPluginDialog({
   }, [plugin, open]);
 
   // Auto-select server when project changes
-  const currentProject = projects.find((p) => p.name === selectedProject);
+  const currentProject = projects.find((p) => p.id === selectedProject);
   useEffect(() => {
     if (currentProject?.servers.length === 1) {
       setSelectedServer(currentProject.servers[0].name);
@@ -109,7 +109,7 @@ export function InstallPluginDialog({
             >
               <option value="">--</option>
               {projects.map((p) => (
-                <option key={p.name} value={p.name}>
+                <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}

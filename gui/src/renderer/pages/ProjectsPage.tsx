@@ -33,6 +33,11 @@ export function ProjectsPage() {
                       count: project.servers.length
                     })}
                   </p>
+                  {project.rootDir && (
+                    <p className="text-xs text-muted-foreground break-all">
+                      {project.rootDir}
+                    </p>
+                  )}
                 </div>
               </div>
               {project.servers.length > 0 && (

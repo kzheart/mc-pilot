@@ -54,11 +54,13 @@ mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
 mct client create fabric-1.20.4 --version 1.20.4
 ```
 
-Then configure `mct.project.json` with a profile that points to the server/client instances you want to use:
+`mct init` now creates a global project config at `~/.mct/projects/<projectId>/project.json`, where `projectId` is derived from the current directory path. Edit that file to configure the profile that points to the server/client instances you want to use:
 
 ```json
 {
+  "projectId": "-Users-kzheart-code-minecraft-my-plugin",
   "project": "my-plugin",
+  "rootDir": "/Users/kzheart/code/minecraft/my-plugin",
   "defaultProfile": "1.20",
   "profiles": {
     "1.20": {
@@ -81,7 +83,8 @@ mct chat command "gamemode creative"
 mct move to 100 64 100
 mct block break 100 65 100
 mct inventory get
-mct screenshot --output ./screenshots/test.png
+mct screenshot
+mct gui screenshot
 
 # Optional: inspect runtime info or export a machine-readable schema for AI agents
 mct info
@@ -133,8 +136,8 @@ Use `mct <command> --help` for detailed usage of each command.
 ### Global Options
 
 ```
---project <name>   Project name (default: from mct.project.json)
---profile <name>   Profile name (default: from mct.project.json)
+--project <id>     Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)
+--profile <name>   Profile name (default: from ~/.mct/projects/<id>/project.json)
 --client <name>    Target client (required with multiple clients)
 --human            Human-readable output (default: JSON)
 ```
@@ -166,7 +169,7 @@ mct --client p2 status health
 ```bash
 mct chat command "shop"
 mct gui wait-open --timeout 5
-mct gui screenshot --output ./screenshots/shop.png
+mct gui screenshot
 mct gui snapshot                      # inspect slot layout
 mct gui click 11                      # click a category
 mct gui wait-update --timeout 3

@@ -9,8 +9,27 @@ import assert from "node:assert/strict";
 import net from "node:net";
 
 import { WebSocketServer } from "ws";
+import { createDefaultProjectFile } from "./util/project.js";
 
 const execFileAsync = promisify(execFile);
+
+async function writeProjectConfig(
+  mctHome: string,
+  projectDir: string,
+  overrides: Record<string, unknown>
+) {
+  const base = createDefaultProjectFile(projectDir, String(overrides.project ?? "test"));
+  const projectFile = {
+    ...base,
+    ...overrides,
+    screenshot: overrides.screenshot ? { ...base.screenshot, ...(overrides.screenshot as object) } : base.screenshot,
+    timeout: overrides.timeout ? { ...base.timeout, ...(overrides.timeout as object) } : base.timeout
+  };
+  const projectFilePath = path.join(mctHome, "projects", base.projectId, "project.json");
+  await mkdir(path.dirname(projectFilePath), { recursive: true });
+  await writeFile(projectFilePath, JSON.stringify(projectFile, null, 2), "utf8");
+  return { projectId: base.projectId, projectFilePath };
+}
 
 async function getFreePort() {
   return await new Promise<number>((resolve, reject) => {
@@ -83,10 +102,7 @@ test("CLI parses chat command and sends request to default client", async () => 
       )
     );
 
-    await writeFile(
-      path.join(projectDir, "mct.project.json"),
-      JSON.stringify({ project: "test", profiles: {} }, null, 2)
-    );
+    await writeProjectConfig(mctHome, projectDir, { project: "test", profiles: {} });
 
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(process.cwd(), "dist/index.js"),
@@ -130,6 +146,10 @@ test("CLI request commands prefer the active profile client over the global defa
 
   const defaultServer = new WebSocketServer({ port: defaultPort });
   const profileServer = new WebSocketServer({ port: profilePort });
+  await Promise.all([
+    new Promise<void>((resolve) => defaultServer.once("listening", () => resolve())),
+    new Promise<void>((resolve) => profileServer.once("listening", () => resolve()))
+  ]);
 
   defaultServer.on("connection", (socket) => {
     socket.on("message", (raw) => {
@@ -178,23 +198,29 @@ test("CLI request commands prefer the active profile client over the global defa
       )
     );
 
-    await writeFile(
-      path.join(projectDir, "mct.project.json"),
-      JSON.stringify(
-        {
-          project: "test",
-          defaultProfile: "dev",
-          profiles: {
-            dev: {
-              server: "paper",
-              clients: ["profile-bot"]
-            }
-          }
-        },
-        null,
-        2
-      )
-    );
+    await writeProjectConfig(mctHome, projectDir, {
+      project: "test",
+      defaultProfile: "dev",
+      profiles: {
+        dev: {
+          server: "paper",
+          clients: ["profile-bot"]
+        }
+      }
+    });
+
+    const info = JSON.parse((await execFileAsync(process.execPath, [
+      path.join(process.cwd(), "dist/index.js"),
+      "info"
+    ], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        MCT_HOME: mctHome
+      }
+    })).stdout);
+    assert.equal(info.success, true);
+    assert.equal(info.data.activeProfile.clients[0], "profile-bot");
 
     const { stdout } = await execFileAsync(process.execPath, [
       path.join(process.cwd(), "dist/index.js"),
@@ -230,6 +256,7 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
   const wsPort = await getFreePort();
 
   const server = new WebSocketServer({ port: wsPort });
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 
   server.on("connection", (socket) => {
     socket.on("message", (raw) => {
@@ -272,23 +299,16 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
       )
     );
 
-    await writeFile(
-      path.join(projectDir, "mct.project.json"),
-      JSON.stringify(
-        {
-          project: "test",
-          defaultProfile: "dev",
-          profiles: {
-            dev: {
-              server: "paper",
-              clients: ["bot"]
-            }
-          }
-        },
-        null,
-        2
-      )
-    );
+    await writeProjectConfig(mctHome, projectDir, {
+      project: "test",
+      defaultProfile: "dev",
+      profiles: {
+        dev: {
+          server: "paper",
+          clients: ["bot"]
+        }
+      }
+    });
 
     const slashSend = JSON.parse((await execFileAsync(process.execPath, [
       path.join(process.cwd(), "dist/index.js"),

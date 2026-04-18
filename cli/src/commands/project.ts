@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
@@ -7,48 +6,38 @@ import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { MctError } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import {
-  loadProjectFile,
+  createDefaultProjectFile,
+  loadProjectFileForCwd,
+  resolveProjectFilePath,
   resolveProfile,
   writeProjectFile,
-  type MctProfile,
-  type MctProjectFile
 } from "../util/project.js";
 
 export function createInitCommand() {
   return new Command("init")
-    .description("Initialize a new MC Pilot project in the current directory")
+    .description("Initialize a new MC Pilot project for the current directory")
     .option("--name <name>", "Project name (default: directory name)")
     .action(
       wrapCommand(async (context, { options }: { options: { name?: string } }) => {
-        const existing = await loadProjectFile(context.cwd);
+        const existing = await loadProjectFileForCwd(context.cwd);
         if (existing) {
           throw new MctError(
-            { code: "PROJECT_EXISTS", message: "mct.project.json already exists in this directory" },
+            { code: "PROJECT_EXISTS", message: `Project config already exists for this directory: ${existing.filePath}` },
             4
           );
         }
 
         const projectName = options.name ?? path.basename(context.cwd);
-
-        const project: MctProjectFile = {
-          project: projectName,
-          profiles: {},
-          screenshot: {
-            outputDir: "./screenshots"
-          },
-          timeout: {
-            serverReady: 120,
-            clientReady: 60,
-            default: 10
-          }
-        };
-
-        await writeProjectFile(context.cwd, project);
+        const project = createDefaultProjectFile(context.cwd, projectName);
+        await writeProjectFile(project.projectId, project);
 
         return {
           created: true,
+          projectId: project.projectId,
           project: projectName,
-          file: "mct.project.json"
+          rootDir: project.rootDir,
+          file: resolveProjectFilePath(project.projectId),
+          configPath: resolveProjectFilePath(project.projectId)
         };
       })
     );
@@ -60,8 +49,8 @@ export function createDeployCommand() {
     .option("--profile <name>", "Profile name")
     .action(
       wrapCommand(async (context, { options }: { options: { profile?: string } }) => {
-        const { projectFile, projectName } = context;
-        if (!projectFile || !projectName) {
+        const { projectFile, projectId, projectRootDir } = context;
+        if (!projectFile || !projectId || !projectRootDir) {
           throw new MctError({ code: "NO_PROJECT", message: "No project context. Run 'mct init' first." }, 4);
         }
 
@@ -74,8 +63,8 @@ export function createDeployCommand() {
           return { deployed: [], message: "No deployPlugins configured in profile" };
         }
 
-        const manager = new ServerInstanceManager(context.globalState, projectName);
-        const deployed = await manager.deploy(profile.server, profile.deployPlugins, context.cwd);
+        const manager = new ServerInstanceManager(context.globalState, projectId);
+        const deployed = await manager.deploy(profile.server, profile.deployPlugins, projectRootDir);
 
         return { deployed, server: profile.server };
       })
@@ -89,8 +78,8 @@ export function createUpCommand() {
     .option("--eula", "Auto-accept EULA")
     .action(
       wrapCommand(async (context, { options }: { options: { profile?: string; eula?: boolean } }) => {
-        const { projectFile, projectName } = context;
-        if (!projectFile || !projectName) {
+        const { projectFile, projectId, projectRootDir } = context;
+        if (!projectFile || !projectId || !projectRootDir) {
           throw new MctError({ code: "NO_PROJECT", message: "No project context. Run 'mct init' first." }, 4);
         }
 
@@ -99,13 +88,13 @@ export function createUpCommand() {
           throw new MctError({ code: "NO_PROFILE", message: "No profile specified and no defaultProfile set" }, 4);
         }
 
-        const serverManager = new ServerInstanceManager(context.globalState, projectName);
+        const serverManager = new ServerInstanceManager(context.globalState, projectId);
         const clientManager = new ClientInstanceManager(context.globalState);
         const results: Record<string, unknown> = {};
 
         // 1. Deploy plugins
         if (profile.deployPlugins && profile.deployPlugins.length > 0) {
-          results.deployed = await serverManager.deploy(profile.server, profile.deployPlugins, context.cwd);
+          results.deployed = await serverManager.deploy(profile.server, profile.deployPlugins, projectRootDir);
         }
 
         // 2. Start server
@@ -146,8 +135,8 @@ export function createDownCommand() {
     .option("--profile <name>", "Profile name")
     .action(
       wrapCommand(async (context, { options }: { options: { profile?: string } }) => {
-        const { projectFile, projectName } = context;
-        if (!projectFile || !projectName) {
+        const { projectFile, projectId } = context;
+        if (!projectFile || !projectId) {
           throw new MctError({ code: "NO_PROJECT", message: "No project context. Run 'mct init' first." }, 4);
         }
 
@@ -156,7 +145,7 @@ export function createDownCommand() {
           throw new MctError({ code: "NO_PROFILE", message: "No profile specified and no defaultProfile set" }, 4);
         }
 
-        const serverManager = new ServerInstanceManager(context.globalState, projectName);
+        const serverManager = new ServerInstanceManager(context.globalState, projectId);
         const clientManager = new ClientInstanceManager(context.globalState);
         const results: Record<string, unknown> = {};
 
@@ -206,7 +195,7 @@ export function createUseCommand() {
         }
 
         projectFile.defaultProfile = profileName;
-        await writeProjectFile(context.cwd, projectFile);
+        await writeProjectFile(projectFile.projectId, projectFile);
 
         return {
           defaultProfile: profileName,

@@ -37,7 +37,7 @@ export function buildProgram() {
   program
     .name("mct")
     .description(
-      "MC Pilot – Minecraft plugin/mod automated testing CLI\n\n" +
+        "MC Pilot – Minecraft plugin/mod automated testing CLI\n\n" +
         "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
         "All commands output JSON by default. Use --human for human-readable output.\n\n" +
         "Quick start:\n" +
@@ -65,7 +65,10 @@ export function buildProgram() {
       wrapCommand(async (context) => {
         return {
           cwd: context.cwd,
+          projectId: context.projectId,
           project: context.projectName,
+          projectRootDir: context.projectRootDir,
+          projectConfigPath: context.projectConfigPath,
           activeProfile: context.activeProfile,
           globalStateDir: context.globalState.getRootDir()
         };

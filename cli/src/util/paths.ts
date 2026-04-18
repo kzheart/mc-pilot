@@ -21,6 +21,14 @@ export function resolveProjectDir(project: string): string {
   return path.join(resolveProjectsDir(), project);
 }
 
+export function resolveProjectConfigPath(project: string): string {
+  return path.join(resolveProjectDir(project), "project.json");
+}
+
+export function resolveProjectScreenshotsDir(project: string): string {
+  return path.join(resolveProjectDir(project), "screenshots");
+}
+
 export function resolveServerInstanceDir(project: string, server: string): string {
   return path.join(resolveProjectDir(project), server);
 }

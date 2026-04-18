@@ -23,7 +23,9 @@ interface ServerInstanceMeta {
 }
 
 export interface ProjectInfo {
+  id: string;
   name: string;
+  rootDir?: string;
   servers: ServerInstanceMeta[];
 }
 

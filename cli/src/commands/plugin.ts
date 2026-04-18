@@ -98,13 +98,13 @@ export function createPluginCommand() {
       .description("Install a plugin (with dependencies) to a server")
       .argument("<id>", "Plugin ID")
       .requiredOption("--server <name>", "Target server instance name")
-      .option("--project <name>", "Project name")
+      .option("--project <id>", "Project ID")
       .action(
         wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { server: string; project?: string } }) => {
-          const project = options.project ?? context.projectName;
+          const project = options.project ?? context.projectId;
           if (!project) {
             throw new MctError(
-              { code: "NO_PROJECT", message: "No project specified. Use --project or run from a project directory." },
+              { code: "NO_PROJECT", message: "No project specified. Use --project <id> or run from a project directory." },
               4
             );
           }

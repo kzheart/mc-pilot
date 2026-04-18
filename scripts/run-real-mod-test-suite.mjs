@@ -127,6 +127,12 @@ function slugify(value) {
     .slice(0, 48);
 }
 
+function slugifyProjectId(value) {
+  return String(value)
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-");
+}
+
 function resolveServerType(minecraftVersion) {
   const support = getMinecraftSupport(minecraftVersion);
   if (!support) {
@@ -285,8 +291,11 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
     throw new Error(`Failed to create client for ${entry.variantId}: ${clientCreate.stderr || clientCreate.stdout}`);
   }
 
-  const projectFilePath = path.join(paths.projectDir, "mct.project.json");
+  const projectId = initPayload?.data?.projectId ?? slugifyProjectId(paths.projectDir);
+  const projectFilePath = path.join(paths.mctHome, "projects", projectId, "project.json");
   await writeFile(projectFilePath, `${JSON.stringify({
+    projectId,
+    rootDir: paths.projectDir,
     project: projectName,
     defaultProfile: profileName,
     profiles: {
@@ -308,6 +317,7 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
 
   return {
     paths,
+    projectId,
     wsPort,
     projectName,
     profileName,
