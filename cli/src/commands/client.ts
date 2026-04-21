@@ -133,7 +133,7 @@ export function createClientCommand() {
             await access(cacheArtifactPath);
             sourcePath = cacheArtifactPath;
           } catch {
-            const modVersion = variant.modVersion ?? "0.1.0";
+            const modVersion = variant.modVersion ?? "0.9.1";
             const baseUrl = process.env.MCT_MOD_DOWNLOAD_BASE_URL || "https://github.com/kzheart/mc-pilot/releases/download";
             const downloadUrl = `${baseUrl}/v${modVersion}/${artifactFileName}`;
             await downloadFile(downloadUrl, cacheArtifactPath, fetch);

@@ -98,7 +98,7 @@ export async function resolveArtifact(
   } catch {}
 
   // 3. Download from GitHub Releases
-  const modVersion = variant.modVersion ?? "0.1.0";
+  const modVersion = variant.modVersion ?? "0.9.1";
   const releaseTag = `v${modVersion}`;
   const downloadUrl = `${GITHUB_RELEASE_BASE_URL}/${releaseTag}/${artifactFileName}`;
 
