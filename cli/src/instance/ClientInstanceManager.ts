@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { GlobalStateStore } from "../util/global-state.js";
-import type { ClientInstanceMeta, ClientRuntimeEntry, LoaderType } from "../util/instance-types.js";
+import type { ClientInstanceMeta, ClientRuntimeEntry, GlobalClientState, LoaderType } from "../util/instance-types.js";
 import { resolveMctHome, resolveClientInstanceDir, resolveClientsDir } from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { getListeningPids, isProcessRunning, killProcessTree } from "../util/process.js";
@@ -46,140 +46,131 @@ export class ClientInstanceManager {
   constructor(private readonly globalState: GlobalStateStore) {}
 
   async create(options: CreateClientOptions): Promise<ClientInstanceMeta> {
-    const instanceDir = resolveClientInstanceDir(options.name);
-    await mkdir(instanceDir, { recursive: true });
+    return this.globalState.withClientLock(async () => {
+      const instanceDir = resolveClientInstanceDir(options.name);
+      await mkdir(instanceDir, { recursive: true });
 
-    const wsPort = options.wsPort ?? (await this.findAvailablePort());
+      const wsPort = options.wsPort ?? (await this.findAvailablePort());
 
-    const meta: ClientInstanceMeta = {
-      name: options.name,
-      loader: options.loader ?? "fabric",
-      mcVersion: options.version,
-      wsPort,
-      account: options.account,
-      headless: options.headless,
-      launchArgs: options.launchArgs,
-      env: options.env,
-      createdAt: new Date().toISOString()
-    };
+      const meta: ClientInstanceMeta = {
+        name: options.name,
+        loader: options.loader ?? "fabric",
+        mcVersion: options.version,
+        wsPort,
+        account: options.account,
+        headless: options.headless,
+        launchArgs: options.launchArgs,
+        env: options.env,
+        createdAt: new Date().toISOString()
+      };
 
-    await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
-    return meta;
+      await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+      return meta;
+    });
   }
 
   async launch(clientName: string, options: LaunchClientOptions = {}): Promise<ClientRuntimeEntry> {
-    let state = await this.globalState.readClientState();
-    const existing = state.clients[clientName];
+    return this.globalState.withClientLock(async () => {
+      const state = await this.globalState.readClientState();
+      const existing = state.clients[clientName];
 
-    if (existing && isProcessRunning(existing.pid)) {
-      if (options.force) {
-        await this.stop(clientName);
-        state = await this.globalState.readClientState();
-      } else {
+      if (existing && isProcessRunning(existing.pid)) {
+        if (options.force) {
+          await this.stopTrackedClient(state, clientName, existing);
+        } else {
+          throw new MctError(
+            {
+              code: "CLIENT_ALREADY_RUNNING",
+              message: `Client ${clientName} is already running. Pass --force to kill and relaunch.`,
+              details: existing
+            },
+            3
+          );
+        }
+      }
+
+      const meta = await this.loadMeta(clientName);
+      const instanceDir = resolveClientInstanceDir(clientName);
+      const wsPort = options.wsPort ?? meta.wsPort;
+
+      if (!meta.launchArgs || meta.launchArgs.length === 0) {
         throw new MctError(
-          {
-            code: "CLIENT_ALREADY_RUNNING",
-            message: `Client ${clientName} is already running. Pass --force to kill and relaunch.`,
-            details: existing
-          },
-          3
+          { code: "INVALID_PARAMS", message: `Client ${clientName} has no launchArgs configured` },
+          4
         );
       }
-    }
 
-    const meta = await this.loadMeta(clientName);
-    const instanceDir = resolveClientInstanceDir(clientName);
-    const wsPort = options.wsPort ?? meta.wsPort;
-
-    if (!meta.launchArgs || meta.launchArgs.length === 0) {
-      throw new MctError(
-        { code: "INVALID_PARAMS", message: `Client ${clientName} has no launchArgs configured` },
-        4
-      );
-    }
-
-    // Kill any existing processes on the port
-    const listeningPids = getListeningPids(wsPort);
-    for (const pid of listeningPids) {
-      killProcessTree(pid);
-    }
-    if (listeningPids.length > 0) {
-      const deadline = Date.now() + 10_000;
-      while (Date.now() < deadline) {
-        if (getListeningPids(wsPort).length === 0) {
-          break;
+      const listeningPids = getListeningPids(wsPort);
+      for (const pid of listeningPids) {
+        killProcessTree(pid);
+      }
+      if (listeningPids.length > 0) {
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline) {
+          if (getListeningPids(wsPort).length === 0) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 250));
         }
-        await new Promise((resolve) => setTimeout(resolve, 250));
       }
-    }
 
-    const launchCommand = [process.execPath, getLaunchScriptPath(), ...meta.launchArgs];
-    const minecraftDir = path.join(instanceDir, "minecraft");
+      const launchCommand = [process.execPath, getLaunchScriptPath(), ...meta.launchArgs];
+      const minecraftDir = path.join(instanceDir, "minecraft");
 
-    const logsDir = path.join(resolveMctHome(), "logs");
-    mkdirSync(logsDir, { recursive: true });
-    const logPath = path.join(logsDir, `client-${clientName}.log`);
-    const stdout = openSync(logPath, "a");
+      const logsDir = path.join(resolveMctHome(), "logs");
+      mkdirSync(logsDir, { recursive: true });
+      const logPath = path.join(logsDir, `client-${clientName}.log`);
+      const stdout = openSync(logPath, "a");
 
-    const child = spawn(launchCommand[0], launchCommand.slice(1), {
-      cwd: minecraftDir,
-      detached: true,
-      stdio: ["ignore", stdout, stdout],
-      env: {
-        ...process.env,
-        ...meta.env,
-        MCT_CLIENT_NAME: clientName,
-        MCT_CLIENT_VERSION: meta.mcVersion,
-        MCT_CLIENT_ACCOUNT: options.account ?? meta.account ?? "",
-        MCT_CLIENT_SERVER: options.server ?? "",
-        MCT_CLIENT_WS_PORT: String(wsPort),
-        MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false)
-      }
+      const child = spawn(launchCommand[0], launchCommand.slice(1), {
+        cwd: minecraftDir,
+        detached: true,
+        stdio: ["ignore", stdout, stdout],
+        env: {
+          ...process.env,
+          ...meta.env,
+          MCT_CLIENT_NAME: clientName,
+          MCT_CLIENT_VERSION: meta.mcVersion,
+          MCT_CLIENT_ACCOUNT: options.account ?? meta.account ?? "",
+          MCT_CLIENT_SERVER: options.server ?? "",
+          MCT_CLIENT_WS_PORT: String(wsPort),
+          MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false)
+        }
+      });
+
+      child.unref();
+
+      const entry: ClientRuntimeEntry = {
+        pid: child.pid ?? 0,
+        name: clientName,
+        wsPort,
+        startedAt: new Date().toISOString(),
+        logPath,
+        instanceDir
+      };
+
+      state.defaultClient ??= clientName;
+      state.clients[clientName] = entry;
+      await this.globalState.writeClientState(state);
+
+      return entry;
     });
-
-    child.unref();
-
-    const entry: ClientRuntimeEntry = {
-      pid: child.pid ?? 0,
-      name: clientName,
-      wsPort,
-      startedAt: new Date().toISOString(),
-      logPath,
-      instanceDir
-    };
-
-    state.defaultClient ??= clientName;
-    state.clients[clientName] = entry;
-    await this.globalState.writeClientState(state);
-
-    return entry;
   }
 
   async stop(clientName: string) {
-    const state = await this.globalState.readClientState();
-    const entry = state.clients[clientName];
+    return this.globalState.withClientLock(async () => {
+      const state = await this.globalState.readClientState();
+      const entry = state.clients[clientName];
 
-    if (!entry) {
-      return { stopped: false, alreadyStopped: true, name: clientName };
-    }
-
-    if (isProcessRunning(entry.pid)) {
-      killProcessTree(entry.pid);
-    }
-
-    for (const pid of getListeningPids(entry.wsPort)) {
-      if (pid !== entry.pid) {
-        killProcessTree(pid);
+      if (!entry) {
+        return { stopped: false, alreadyStopped: true, name: clientName };
       }
-    }
 
-    delete state.clients[clientName];
-    if (state.defaultClient === clientName) {
-      state.defaultClient = Object.keys(state.clients)[0];
-    }
-    await this.globalState.writeClientState(state);
+      await this.stopTrackedClient(state, clientName, entry);
+      await this.globalState.writeClientState(state);
 
-    return { stopped: true, name: clientName, pid: entry.pid };
+      return { stopped: true, name: clientName, pid: entry.pid };
+    });
   }
 
   async isAlreadyRunning(clientName: string): Promise<boolean> {
@@ -460,5 +451,22 @@ export class ClientInstanceManager {
     }
 
     return port;
+  }
+
+  private async stopTrackedClient(state: GlobalClientState, clientName: string, entry: ClientRuntimeEntry) {
+    if (isProcessRunning(entry.pid)) {
+      killProcessTree(entry.pid);
+    }
+
+    for (const pid of getListeningPids(entry.wsPort)) {
+      if (pid !== entry.pid) {
+        killProcessTree(pid);
+      }
+    }
+
+    delete state.clients[clientName];
+    if (state.defaultClient === clientName) {
+      state.defaultClient = Object.keys(state.clients)[0];
+    }
   }
 }

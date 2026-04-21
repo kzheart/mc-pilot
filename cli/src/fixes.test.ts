@@ -6,6 +6,7 @@ import process from "node:process";
 import test from "node:test";
 
 import { resolveProfileServerAddress } from "./commands/client.js";
+import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
 import { ensureServerPortProperty, ServerInstanceManager } from "./instance/ServerInstanceManager.js";
 import { GlobalStateStore } from "./util/global-state.js";
 
@@ -117,6 +118,85 @@ test("ServerInstanceManager.readLogs strips ANSI by default and preserves them w
 
     assert.deepEqual(clean.lines, ["[INFO] Ready"]);
     assert.match(raw.lines[0]!, /\u001b\[38;2;85;85;85m/);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ClientInstanceManager.create assigns unique ws ports across concurrent callers", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-create-race-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const createClient = (name: string) => {
+      const manager = new ClientInstanceManager(new GlobalStateStore());
+      return manager.create({
+        name,
+        version: "1.20.4"
+      });
+    };
+
+    const clients = await Promise.all(
+      Array.from({ length: 6 }, (_value, index) => createClient(`bot-${index}`))
+    );
+
+    assert.equal(new Set(clients.map((entry) => entry.wsPort)).size, clients.length);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("GlobalStateStore.updateClientState serializes concurrent client state mutations", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-state-lock-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const alphaEntry = {
+      pid: 101,
+      name: "alpha",
+      wsPort: 25580,
+      startedAt: new Date().toISOString(),
+      logPath: path.join(process.env.MCT_HOME!, "logs", "alpha.log"),
+      instanceDir: path.join(process.env.MCT_HOME!, "clients", "alpha")
+    };
+    const bravoEntry = {
+      pid: 102,
+      name: "bravo",
+      wsPort: 25581,
+      startedAt: new Date().toISOString(),
+      logPath: path.join(process.env.MCT_HOME!, "logs", "bravo.log"),
+      instanceDir: path.join(process.env.MCT_HOME!, "clients", "bravo")
+    };
+
+    const slowStore = new GlobalStateStore();
+    const fastStore = new GlobalStateStore();
+
+    await Promise.all([
+      slowStore.updateClientState(async (state) => {
+        state.defaultClient = "alpha";
+        state.clients.alpha = alphaEntry;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }),
+      fastStore.updateClientState((state) => {
+        state.clients.bravo = bravoEntry;
+      })
+    ]);
+
+    const finalState = await new GlobalStateStore().readClientState();
+    assert.equal(finalState.defaultClient, "alpha");
+    assert.deepEqual(Object.keys(finalState.clients).sort(), ["alpha", "bravo"]);
   } finally {
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
