@@ -26,6 +26,10 @@ export const statusInputMoveGroup = {
 
     await runClientLeaf("status experience", ["status", "experience"], (data) => {
       expect(data.level === 30, "unexpected experience level");
+      expect(data.points === 101, `status experience points did not match fixture XP: ${JSON.stringify(data)}`);
+      expect(data.nextLevelPoints === 112, "status experience nextLevelPoints did not match level 30 formula");
+      expect(data.pointsToNextLevel === 11, "status experience pointsToNextLevel did not match fixture XP");
+      expect(typeof data.totalExperience === "number" && data.totalExperience > data.nextLevelPoints, "status experience totalExperience was missing");
     });
 
     await runClientLeaf("status gamemode", ["status", "gamemode"], (data) => {
@@ -38,6 +42,7 @@ export const statusInputMoveGroup = {
 
     await runClientLeaf("status all", ["status", "all"], (data) => {
       expect(data.health?.food === 20, "status all missing health");
+      expect(data.experience?.points === 101, "status all missing normalized experience points");
       expect(data.position?.onGround === true, "status all missing position");
     });
 

@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
 const BUILT_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-paper-fixture-0.1.0.jar");
 const RESOURCEPACK_PATH = path.join(ROOT_DIR, "tmp/real-e2e/resourcepack/test-pack.zip");
-const RESOURCEPACK_PORT = 18080;
+const RESOURCEPACK_PORT = Number.parseInt(process.env.MCT_REAL_RESOURCEPACK_PORT ?? "18080", 10);
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
 let PROJECT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/project");
 let MCT_HOME_DIR = path.join(ROOT_DIR, "tmp/real-e2e/mct-home");
@@ -288,11 +288,10 @@ async function getClientResiduePatterns() {
     return cachedClientResiduePatterns;
   }
 
+  const clientGameDir = path.join(MCT_HOME_DIR, "clients", CLIENT_NAME, "minecraft");
   const patterns = [...new Set([
-    path.basename(path.join(MCT_HOME_DIR, "clients", CLIENT_NAME)),
-    CLIENT_NAME,
-    `client-${CLIENT_NAME}.log`,
-    "launch-fabric-client.mjs"
+    `--game-dir ${clientGameDir}`,
+    clientGameDir
   ].filter(Boolean))];
 
   cachedClientResiduePatterns = patterns;

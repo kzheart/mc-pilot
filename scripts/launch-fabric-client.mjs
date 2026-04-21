@@ -108,9 +108,17 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
-async function syncBuiltMod(instanceRoot, repoRoot, variantId) {
-  const artifactName = `mct-client-mod-${variantId.endsWith("-fabric") ? "fabric" : variantId.split("-").pop()}-${variantId.replace(/-fabric$|-forge$|-neoforge$/, "")}.jar`;
-  const sourceJar = path.join(repoRoot, "client-mod", "versions", variantId, "build", "libs", artifactName);
+function getLocalBuildArtifactPath(repoRoot, variant) {
+  const artifactName = `mct-client-mod-${variant.loader ?? "fabric"}-${variant.minecraftVersion}.jar`;
+  const gradleModule = variant.gradleModule || `version-${variant.minecraftVersion}`;
+  return {
+    artifactName,
+    sourceJar: path.join(repoRoot, "client-mod", gradleModule, "build", "libs", artifactName)
+  };
+}
+
+async function syncBuiltMod(instanceRoot, repoRoot, variant) {
+  const { artifactName, sourceJar } = getLocalBuildArtifactPath(repoRoot, variant);
   const targetDir = path.join(instanceRoot, "minecraft", "mods");
   const targetJar = path.join(targetDir, artifactName);
 
@@ -175,7 +183,7 @@ async function ensureAutomationOptions(gameDir, server) {
 }
 
 async function buildLaunchSpec(options) {
-  const repoRoot = process.cwd();
+  const repoRoot = path.resolve(__dirname, "..");
   const defaultVariant = getDefaultVariant();
   const minecraftVersion = process.env.MCT_CLIENT_VERSION || options["minecraft-version"] || defaultVariant.minecraftVersion;
   const modVariantId = process.env.MCT_CLIENT_MOD_VARIANT || options["mod-variant"] || `${minecraftVersion}-fabric`;
@@ -188,7 +196,7 @@ async function buildLaunchSpec(options) {
   const nativesDir = options["natives-dir"] || path.join(instanceRoot, "natives");
   const gameDir = path.join(instanceRoot, "minecraft");
   const packMeta = await readJson(path.join(instanceRoot, "mmc-pack.json"));
-  await syncBuiltMod(instanceRoot, repoRoot, modVariantId);
+  await syncBuiltMod(instanceRoot, repoRoot, selectedVariant);
   const componentMetas = new Map();
   for (const component of packMeta.components) {
     const componentMetaPath = path.join(metaRoot, component.uid, `${component.version}.json`);

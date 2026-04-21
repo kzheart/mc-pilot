@@ -2,7 +2,8 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -10,8 +11,6 @@ import { promisify } from "node:util";
 
 import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
-
-const DEFAULT_WS_PORT_BASE = 25580;
 
 const execFileAsync = promisify(execFile);
 
@@ -95,6 +94,38 @@ function parseJsonMaybe(text) {
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function findAvailablePort(host = "127.0.0.1") {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to resolve an ephemeral port")));
+        return;
+      }
+
+      const port = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
+async function findDistinctPorts(count) {
+  const ports = new Set();
+  while (ports.size < count) {
+    ports.add(await findAvailablePort());
+  }
+  return [...ports];
 }
 
 async function runCommandWithRetry(command, args, options = {}, retryOptions = {}) {
@@ -197,7 +228,7 @@ function getVersionPaths(variantId, minecraftVersion, serverType) {
   };
 }
 
-async function prepareVersionEnvironment(entry, wsPort, logLine) {
+async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const paths = getVersionPaths(entry.variantId, entry.minecraftVersion, entry.serverType);
   await mkdir(paths.projectDir, { recursive: true });
   await mkdir(paths.mctHome, { recursive: true });
@@ -253,7 +284,7 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
       "--version",
       entry.minecraftVersion,
       "--port",
-      "25565",
+      String(serverPort),
       "--eula"
     ],
     {
@@ -290,6 +321,11 @@ async function prepareVersionEnvironment(entry, wsPort, logLine) {
   if (!clientCreate.ok || clientPayload?.success !== true) {
     throw new Error(`Failed to create client for ${entry.variantId}: ${clientCreate.stderr || clientCreate.stdout}`);
   }
+
+  const artifactFileName = `mct-client-mod-${entry.loader || "fabric"}-${entry.minecraftVersion}.jar`;
+  const buildArtifactPath = path.join(CLIENT_MOD_DIR, gradleModule, "build", "libs", artifactFileName);
+  const installedModPath = path.join(paths.mctHome, "clients", clientName, "minecraft", "mods", artifactFileName);
+  await copyFile(buildArtifactPath, installedModPath);
 
   const projectId = initPayload?.data?.projectId ?? slugifyProjectId(paths.projectDir);
   const projectFilePath = path.join(paths.mctHome, "projects", projectId, "project.json");
@@ -383,9 +419,12 @@ async function main() {
 
     try {
       await logLine(`variant start variant=${entry.variantId}`);
-      const environment = await prepareVersionEnvironment(entry, DEFAULT_WS_PORT_BASE + index, logLine);
+      const [wsPort, serverPort, resourcePackPort] = await findDistinctPorts(3);
+      const environment = await prepareVersionEnvironment(entry, wsPort, serverPort, logLine);
       versionRecord.prepare = {
         wsPort: environment.wsPort,
+        serverPort,
+        resourcePackPort,
         projectDir: environment.paths.projectDir,
         mctHome: environment.paths.mctHome,
         init: environment.init,
@@ -410,7 +449,13 @@ async function main() {
         entry.variantId
       );
 
-      const runResult = await runCommand(process.execPath, runnerArgs, { allowFailure: true });
+      const runResult = await runCommand(process.execPath, runnerArgs, {
+        allowFailure: true,
+        env: {
+          ...process.env,
+          MCT_REAL_RESOURCEPACK_PORT: String(resourcePackPort)
+        }
+      });
       const payload = parseJsonMaybe(runResult.stdout) ?? parseJsonMaybe(runResult.stderr);
       versionRecord.ok = runResult.ok && payload?.success === true;
       versionRecord.durationMs = Date.now() - startedAt;
