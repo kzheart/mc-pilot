@@ -8,25 +8,27 @@ function wait(ms: number) {
   });
 }
 
+export async function isTcpPortReachable(host: string, port: number) {
+  return await new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ host, port });
+
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
 export async function waitForTcpPort(host: string, port: number, timeoutSeconds: number) {
   const deadline = Date.now() + timeoutSeconds * 1000;
 
   while (Date.now() < deadline) {
-    const reachable = await new Promise<boolean>((resolve) => {
-      const socket = net.createConnection({ host, port });
-
-      socket.once("connect", () => {
-        socket.destroy();
-        resolve(true);
-      });
-
-      socket.once("error", () => {
-        socket.destroy();
-        resolve(false);
-      });
-    });
-
-    if (reachable) {
+    if (await isTcpPortReachable(host, port)) {
       return {
         reachable: true,
         host,

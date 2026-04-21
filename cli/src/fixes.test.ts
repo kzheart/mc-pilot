@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -119,6 +120,181 @@ test("ServerInstanceManager.readLogs strips ANSI by default and preserves them w
     assert.deepEqual(clean.lines, ["[INFO] Ready"]);
     assert.match(raw.lines[0]!, /\u001b\[38;2;85;85;85m/);
   } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.waitReady reports startup phase and recent logs on timeout", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-timeout-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await writeFile(logPath, "Downloading mojang_1.20.4.jar\nApplying patches\n", "utf8");
+
+    const stateDir = path.join(process.env.MCT_HOME!, "state");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "servers.json"),
+      JSON.stringify(
+        {
+          servers: {
+            "demo/paper": {
+              pid: process.pid,
+              project: "demo",
+              name: "paper",
+              port: 1,
+              startedAt: new Date().toISOString(),
+              logPath,
+              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
+            }
+          }
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    await assert.rejects(
+      () => manager.waitReady("paper", 0.05),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal((error as { code?: string }).code, "TIMEOUT");
+        const details = (error as { details?: { phase?: string; recentLines?: string[] } }).details;
+        assert.equal(details?.phase, "downloading");
+        assert.deepEqual(details?.recentLines, ["Downloading mojang_1.20.4.jar", "Applying patches"]);
+        return true;
+      }
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.waitReady returns recent startup logs when the port becomes reachable", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-ready-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const listener = net.createServer();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = listener.address();
+    assert.ok(address && typeof address !== "string");
+
+    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await writeFile(logPath, "Preparing level \"world\"\nDone (3.531s)! For help, type \"help\"\n", "utf8");
+
+    const stateDir = path.join(process.env.MCT_HOME!, "state");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "servers.json"),
+      JSON.stringify(
+        {
+          servers: {
+            "demo/paper": {
+              pid: process.pid,
+              project: "demo",
+              name: "paper",
+              port: address.port,
+              startedAt: new Date().toISOString(),
+              logPath,
+              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
+            }
+          }
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    const result = await manager.waitReady("paper", 0.5);
+    assert.equal(result.phase, "ready");
+    assert.equal(result.lastLine, "Done (3.531s)! For help, type \"help\"");
+    assert.deepEqual(result.recentLines, ["Preparing level \"world\"", "Done (3.531s)! For help, type \"help\""]);
+  } finally {
+    listener.close();
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.waitReady preserves the live startup phase when the port becomes reachable early", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-phase-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const listener = net.createServer();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = listener.address();
+    assert.ok(address && typeof address !== "string");
+
+    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await writeFile(logPath, "Preparing level \"world\"\nPreparing start region for dimension minecraft:overworld\n", "utf8");
+
+    const stateDir = path.join(process.env.MCT_HOME!, "state");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "servers.json"),
+      JSON.stringify(
+        {
+          servers: {
+            "demo/paper": {
+              pid: process.pid,
+              project: "demo",
+              name: "paper",
+              port: address.port,
+              startedAt: new Date().toISOString(),
+              logPath,
+              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
+            }
+          }
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    const result = await manager.waitReady("paper", 0.5);
+    assert.equal(result.phase, "initializing-world");
+    assert.equal(result.lastLine, "Preparing start region for dimension minecraft:overworld");
+    assert.deepEqual(result.recentLines, [
+      "Preparing level \"world\"",
+      "Preparing start region for dimension minecraft:overworld"
+    ]);
+  } finally {
+    listener.close();
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
     } else {

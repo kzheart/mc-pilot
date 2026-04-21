@@ -7,16 +7,24 @@ import type { GlobalStateStore } from "../util/global-state.js";
 import type { ServerInstanceMeta, ServerRuntimeEntry, ServerType } from "../util/instance-types.js";
 import { resolveMctHome, resolveProjectDir, resolveServerInstanceDir } from "../util/paths.js";
 import { MctError } from "../util/errors.js";
-import { waitForTcpPort } from "../util/net.js";
+import { isTcpPortReachable } from "../util/net.js";
 import { isProcessRunning, killProcessTree } from "../util/process.js";
 import { CacheManager } from "../download/CacheManager.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
 
 const INSTANCE_FILE = "instance.json";
 const ANSI_ESCAPE_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+const SERVER_READY_POLL_MS = 500;
 
 export function stripAnsiCodes(text: string): string {
   return text.replace(ANSI_ESCAPE_PATTERN, "");
+}
+
+interface ServerStartupSnapshot {
+  phase: string;
+  logPath: string;
+  recentLines: string[];
+  lastLine: string | null;
 }
 
 export async function ensureServerPortProperty(instanceDir: string, port: number): Promise<void> {
@@ -153,7 +161,7 @@ export class ServerInstanceManager {
     // then exec java with stdin reading from the FIFO
     const child = spawn("bash", [
       "-c",
-      'exec 3<>"$MCT_STDIN_PIPE"; exec java "$@" <"$MCT_STDIN_PIPE"',
+      'exec 3<>"$MCT_STDIN_PIPE"; exec java "$@" 0<&3',
       "mct-server",
       ...jvmArgs, "-jar", jarFile, "nogui"
     ], {
@@ -272,7 +280,61 @@ export class ServerInstanceManager {
       );
     }
 
-    return waitForTcpPort("127.0.0.1", entry.port, timeoutSeconds);
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    let snapshot = await this.describeStartup(entry.logPath);
+
+    while (Date.now() < deadline) {
+      if (!isProcessRunning(entry.pid)) {
+        throw new MctError(
+          {
+            code: "SERVER_EXITED",
+            message: `Server ${stateKey} exited before becoming ready (${snapshot.phase})`,
+            details: {
+              pid: entry.pid,
+              host: "127.0.0.1",
+              port: entry.port,
+              phase: snapshot.phase,
+              logPath: snapshot.logPath,
+              lastLine: snapshot.lastLine,
+              recentLines: snapshot.recentLines
+            }
+          },
+          5
+        );
+      }
+
+      if (await isTcpPortReachable("127.0.0.1", entry.port)) {
+        snapshot = await this.describeStartup(entry.logPath);
+        return {
+          reachable: true,
+          host: "127.0.0.1",
+          port: entry.port,
+          phase: snapshot.phase,
+          logPath: snapshot.logPath,
+          lastLine: snapshot.lastLine,
+          recentLines: snapshot.recentLines
+        };
+      }
+
+      snapshot = await this.describeStartup(entry.logPath);
+      await new Promise((resolve) => setTimeout(resolve, SERVER_READY_POLL_MS));
+    }
+
+    throw new MctError(
+      {
+        code: "TIMEOUT",
+        message: `Timed out waiting for 127.0.0.1:${entry.port} (${snapshot.phase})`,
+        details: {
+          host: "127.0.0.1",
+          port: entry.port,
+          phase: snapshot.phase,
+          logPath: snapshot.logPath,
+          lastLine: snapshot.lastLine,
+          recentLines: snapshot.recentLines
+        }
+      },
+      2
+    );
   }
 
   async exec(serverName: string, command: string): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
@@ -420,6 +482,23 @@ export class ServerInstanceManager {
     return entry;
   }
 
+  private async describeStartup(logPath: string): Promise<ServerStartupSnapshot> {
+    const raw = await readFile(logPath, "utf8").catch(() => "");
+    const recentLines = raw
+      .split(/\r?\n/)
+      .map((line) => stripAnsiCodes(line).trim())
+      .filter((line) => line.length > 0)
+      .slice(-10);
+    const lastLine = recentLines[recentLines.length - 1] ?? null;
+
+    return {
+      phase: detectServerStartupPhase(recentLines),
+      logPath,
+      recentLines,
+      lastLine
+    };
+  }
+
   private async requireRunning(serverName: string): Promise<ServerRuntimeEntry> {
     const entry = await this.requireRuntimeEntry(serverName);
     if (!isProcessRunning(entry.pid)) {
@@ -525,4 +604,27 @@ export class ServerInstanceManager {
 
     return port;
   }
+}
+
+function detectServerStartupPhase(lines: string[]) {
+  const joined = lines.join("\n");
+  if (/Done \(.+\)! For help, type "help"/.test(joined)) {
+    return "ready";
+  }
+  if (/Preparing start region|Preparing level/.test(joined)) {
+    return "initializing-world";
+  }
+  if (/Starting Minecraft server on/.test(joined)) {
+    return "binding-port";
+  }
+  if (/Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version/.test(joined)) {
+    return "bootstrapping";
+  }
+  if (/Downloading |Applying patches/.test(joined)) {
+    return "downloading";
+  }
+  if (lines.length > 0) {
+    return "starting";
+  }
+  return "waiting-for-log";
 }
