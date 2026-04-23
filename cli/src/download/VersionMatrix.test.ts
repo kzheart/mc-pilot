@@ -20,6 +20,7 @@ test("getVersionMatrix exposes documented server and client support entries", ()
   assert.equal(current.servers.paper.latestBuild, 496);
   assert.equal(current.clients.fabric.supported, true);
   assert.equal(current.clients.forge.loaderVersion, "49.0.49");
+  assert.equal(current.clients.forge.validation, "limited");
   assert.equal(current.clients.neoforge.supported, false);
 });
 
@@ -88,6 +89,42 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       loaderVersion: "0.16.14",
       modVersion: "0.9.1",
       validation: "verified",
+      javaVersion: "17+"
+    }
+  ]);
+});
+
+test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
+  const results = searchClientVersions({ loader: "forge" }).filter(
+    (entry) => entry.minecraftVersion === "1.20.4" || entry.minecraftVersion === "1.20.2" || entry.minecraftVersion === "1.20.1"
+  );
+
+  assert.deepEqual(results, [
+    {
+      loader: "forge",
+      minecraftVersion: "1.20.4",
+      supported: true,
+      loaderVersion: "49.0.49",
+      modVersion: "0.9.1",
+      validation: "limited",
+      javaVersion: "17+"
+    },
+    {
+      loader: "forge",
+      minecraftVersion: "1.20.2",
+      supported: true,
+      loaderVersion: "48.1.0",
+      modVersion: "0.9.1",
+      validation: "limited",
+      javaVersion: "17+"
+    },
+    {
+      loader: "forge",
+      minecraftVersion: "1.20.1",
+      supported: true,
+      loaderVersion: "47.3.0",
+      modVersion: "0.9.1",
+      validation: "limited",
       javaVersion: "17+"
     }
   ]);

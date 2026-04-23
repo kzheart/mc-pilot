@@ -91,7 +91,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     },
     clients: {
       fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.9.1" },
-      forge: { supported: true, loaderVersion: "49.0.49", modVersion: "0.9.1" },
+      forge: { supported: true, loaderVersion: "49.0.49", modVersion: "0.9.1", validation: "limited" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
   },
@@ -106,7 +106,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     },
     clients: {
       fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.9.1", validation: "verified" },
-      forge: { supported: false, notes: "当前未接入此 loader" },
+      forge: { supported: true, loaderVersion: "48.1.0", modVersion: "0.9.1", validation: "limited" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
   },
@@ -136,7 +136,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     },
     clients: {
       fabric: { supported: true, loaderVersion: "0.16.14", modVersion: "0.9.1" },
-      forge: { supported: true, loaderVersion: "47.x", modVersion: "0.9.1" },
+      forge: { supported: true, loaderVersion: "47.3.0", modVersion: "0.9.1", validation: "limited" },
       neoforge: { supported: false, notes: "不支持此版本" }
     }
   },
@@ -206,8 +206,8 @@ function overlayClientSupport(entry: MinecraftSupportEntry, loader: ClientLoader
   };
 }
 
-export function getVersionMatrix() {
-  return VERSION_MATRIX.map((entry) => ({
+function overlayMinecraftSupport(entry: MinecraftSupportEntry): MinecraftSupportEntry {
+  return {
     minecraftVersion: entry.minecraftVersion,
     javaVersion: entry.javaVersion,
     servers: { ...entry.servers },
@@ -216,7 +216,11 @@ export function getVersionMatrix() {
       forge: overlayClientSupport(entry, "forge"),
       neoforge: overlayClientSupport(entry, "neoforge")
     }
-  }));
+  };
+}
+
+export function getVersionMatrix() {
+  return VERSION_MATRIX.map((entry) => overlayMinecraftSupport(entry));
 }
 
 export function getSupportedMinecraftVersions() {
@@ -224,7 +228,8 @@ export function getSupportedMinecraftVersions() {
 }
 
 export function getMinecraftSupport(version: string) {
-  return VERSION_MATRIX.find((entry) => entry.minecraftVersion === version);
+  const entry = VERSION_MATRIX.find((candidate) => candidate.minecraftVersion === version);
+  return entry ? overlayMinecraftSupport(entry) : undefined;
 }
 
 export function searchServerVersions(filter?: {

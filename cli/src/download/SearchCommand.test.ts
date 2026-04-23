@@ -72,6 +72,27 @@ test("buildClientSearchResults carries variant validation metadata into grouped 
   });
 });
 
+test("buildClientSearchResults exposes configured Forge variants", () => {
+  const [result] = buildClientSearchResults({
+    loader: "forge",
+    version: "1.20.2"
+  });
+
+  assert.deepEqual(result, {
+    version: "1.20.2",
+    javaVersion: "17+",
+    loaders: [
+      {
+        loader: "forge",
+        supported: true,
+        loaderVersion: "48.1.0",
+        modVersion: "0.9.1",
+        validation: "limited"
+      }
+    ]
+  });
+});
+
 test("buildProgram registers discovery-oriented CLI commands", () => {
   const leaves = collectLeafCommands();
 

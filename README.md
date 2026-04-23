@@ -4,10 +4,10 @@ Automated testing framework for Minecraft plugins and mods. Control a real Minec
 
 ## Features
 
-- **Real client** — Controls a real Minecraft client via Fabric Mod, natively compatible with all server features
+- **Real client** — Controls a real Minecraft client via Fabric/Forge Mod, natively compatible with all server features
 - **AI-driven** — All operations exposed as CLI commands, designed for AI agents (e.g. Claude Code) to call
 - **Zero intrusion** — Test plugins as-is, no modifications needed
-- **Multi-version** — Supports Minecraft 1.18.2 ~ 1.21.4 (Fabric)
+- **Multi-version** — Supports Minecraft 1.18.2 ~ 1.21.4 (Fabric), plus Forge for 1.20.1/1.20.2/1.20.4
 - **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
 
 ## Architecture
@@ -248,8 +248,11 @@ mct block get 200 64 200              # confirm block WAS broken
 |---|---|---|
 | 1.18.2 | Fabric | Supported |
 | 1.20.1 | Fabric | Supported |
+| 1.20.1 | Forge | Supported (limited validation) |
 | 1.20.2 | Fabric | Supported |
+| 1.20.2 | Forge | Supported (limited validation) |
 | 1.20.4 | Fabric | Supported (default) |
+| 1.20.4 | Forge | Supported (limited validation) |
 | 1.21.1 | Fabric | Supported |
 | 1.21.4 | Fabric | Supported |
 
@@ -258,7 +261,7 @@ mct block get 200 64 200              # confirm block WAS broken
 ```
 mc-pilot/
 ├── cli/              # CLI tool (TypeScript)
-├── client-mod/       # Fabric client mod (Java, multi-version modules)
+├── client-mod/       # Fabric/Forge client mod (Java, multi-version modules)
 ├── protocol/         # WebSocket protocol definitions
 ├── examples/         # Example test scripts
 ├── scripts/          # Internal E2E test scripts
