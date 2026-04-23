@@ -14,7 +14,7 @@ import {
   loadModVariantCatalog
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
-import { prepareManagedFabricRuntime } from "./FabricRuntimeDownloader.js";
+import { prepareManagedClientRuntime } from "./FabricRuntimeDownloader.js";
 
 function getLaunchScriptPath() {
   const thisFile = fileURLToPath(import.meta.url);
@@ -44,21 +44,11 @@ export interface DownloadClientDependencies {
   cacheManager?: CacheManager;
   detectJavaImpl?: typeof detectJava;
   fetchImpl?: typeof fetch;
-  prepareManagedRuntimeImpl?: typeof prepareManagedFabricRuntime;
+  prepareManagedRuntimeImpl?: typeof prepareManagedClientRuntime;
 }
 
 function ensureSupportedVariant(variant: ModVariant) {
-  if (variant.loader !== "fabric") {
-    throw new MctError(
-      {
-        code: "UNSUPPORTED_LOADER",
-        message: `Loader ${variant.loader} is not implemented yet`
-      },
-      4
-    );
-  }
-
-  if (!variant.fabricLoaderVersion || !variant.yarnMappings) {
+  if (variant.support !== "ready" && variant.support !== "configured") {
     throw new MctError(
       {
         code: "VARIANT_NOT_BUILDABLE",
@@ -67,6 +57,44 @@ function ensureSupportedVariant(variant: ModVariant) {
           support: variant.support,
           validation: variant.validation
         }
+      },
+      4
+    );
+  }
+
+  if (variant.loader === "fabric" && (!variant.fabricLoaderVersion || !variant.yarnMappings)) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} is not buildable yet`,
+        details: {
+          support: variant.support,
+          validation: variant.validation
+        }
+      },
+      4
+    );
+  }
+
+  if (variant.loader === "forge" && !variant.forgeVersion) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} is not buildable yet`,
+        details: {
+          support: variant.support,
+          validation: variant.validation
+        }
+      },
+      4
+    );
+  }
+
+  if (variant.loader !== "fabric" && variant.loader !== "forge") {
+    throw new MctError(
+      {
+        code: "UNSUPPORTED_LOADER",
+        message: `Loader ${variant.loader} is not implemented yet`
       },
       4
     );
@@ -181,6 +209,16 @@ function resolveLaunchRuntimePaths(cwd: string, options: DownloadClientOptions):
 }
 
 function buildLaunchArgs(runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
+  if (variant.loader !== "fabric") {
+    throw new MctError(
+      {
+        code: "INVALID_PARAMS",
+        message: `Custom runtime directories are not supported for ${variant.loader} clients yet`
+      },
+      4
+    );
+  }
+
   return [
     "--instance-dir",
     runtimePaths.instanceDir,
@@ -253,11 +291,13 @@ export async function downloadClientModToDir(
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
   const detectJavaImpl = dependencies.detectJavaImpl ?? detectJava;
   const fetchImpl = dependencies.fetchImpl ?? fetch;
-  const prepareManagedRuntimeImpl = dependencies.prepareManagedRuntimeImpl ?? prepareManagedFabricRuntime;
+  const prepareManagedRuntimeImpl = dependencies.prepareManagedRuntimeImpl ?? prepareManagedClientRuntime;
   const catalog = await loadModVariantCatalog();
   const variant = options.version
     ? findVariantByVersionAndLoader(catalog, options.version, loader)
-    : getDefaultVariant(catalog);
+    : loader === "fabric"
+      ? getDefaultVariant(catalog)
+      : undefined;
 
   if (!variant) {
     throw new MctError(

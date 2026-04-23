@@ -7,19 +7,8 @@ import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
 import { MctError } from "../util/errors.js";
 import { createRequestAction } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
-import { CacheManager } from "../download/CacheManager.js";
-import {
-  findVariantByVersionAndLoader,
-  getDefaultVariant,
-  getModArtifactFileName,
-  loadModVariantCatalog
-} from "../download/ModVariantCatalog.js";
-import { detectJava } from "../download/JavaDetector.js";
-import { prepareManagedFabricRuntime } from "../download/client/FabricRuntimeDownloader.js";
-import { copyFileIfMissing, downloadFile } from "../download/DownloadUtils.js";
+import { downloadClientModToDir } from "../download/client/ClientDownloader.js";
 import { resolveClientInstanceDir } from "../util/paths.js";
-import { access, mkdir } from "node:fs/promises";
-import path from "node:path";
 import type { LoaderType } from "../util/instance-types.js";
 import type { CommandContext } from "../util/context.js";
 
@@ -69,7 +58,7 @@ export function createClientCommand() {
     .description("Create a new client instance")
     .argument("<name>", "Client instance name (e.g. fabric-1.20.4)")
     .option("--version <version>", "Minecraft version (default: 1.21.4)")
-    .option("--loader <loader>", "Client loader: fabric (default: fabric)")
+    .option("--loader <loader>", "Client loader: fabric|forge (default: fabric)")
     .option("--ws-port <port>", "WebSocket port (auto-assigned if omitted)", Number)
     .option("--account <account>", "Offline username or account identifier")
     .option("--headless", "Launch in headless mode")
@@ -89,101 +78,36 @@ export function createClientCommand() {
         const clientName = args[0]!;
         const loader = options.loader ?? "fabric";
         const version = options.version ?? "1.21.4";
-        const cacheManager = new CacheManager();
-        const catalog = await loadModVariantCatalog();
-        const variant = findVariantByVersionAndLoader(catalog, version, loader);
-
-        if (!variant) {
-          throw new MctError(
-            { code: "VARIANT_NOT_FOUND", message: `No mod variant found for ${version} / ${loader}` },
-            4
-          );
-        }
-
-        if (variant.loader !== "fabric") {
-          throw new MctError(
-            { code: "UNSUPPORTED_LOADER", message: `Loader ${variant.loader} is not implemented yet` },
-            4
-          );
-        }
-
-        // Check Java
-        const java = await detectJava(options.java ?? "java");
-        const requiredJava = variant.javaVersion ?? 17;
-        if (!java.available || (java.majorVersion ?? 0) < requiredJava) {
-          throw new MctError(
-            { code: "JAVA_NOT_FOUND", message: `Java ${requiredJava}+ is required for ${variant.id}` },
-            4
-          );
-        }
-
-        // Resolve mod artifact
-        const artifactFileName = getModArtifactFileName(variant);
-        const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
-        const gradleModule = (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
-        const localBuildPath = path.join(process.cwd(), "client-mod", gradleModule, "build", "libs", artifactFileName);
-
-        let sourcePath: string;
-        try {
-          await access(localBuildPath);
-          sourcePath = localBuildPath;
-          await copyFileIfMissing(localBuildPath, cacheArtifactPath);
-        } catch {
-          try {
-            await access(cacheArtifactPath);
-            sourcePath = cacheArtifactPath;
-          } catch {
-            const modVersion = variant.modVersion ?? "0.9.1";
-            const baseUrl = process.env.MCT_MOD_DOWNLOAD_BASE_URL || "https://github.com/kzheart/mc-pilot/releases/download";
-            const downloadUrl = `${baseUrl}/v${modVersion}/${artifactFileName}`;
-            await downloadFile(downloadUrl, cacheArtifactPath, fetch);
-            sourcePath = cacheArtifactPath;
-          }
-        }
-
-        // Set up client instance directory
         const instanceDir = resolveClientInstanceDir(clientName);
-        const minecraftDir = path.join(instanceDir, "minecraft");
-        const modsDir = path.join(minecraftDir, "mods");
-        await mkdir(modsDir, { recursive: true });
-        await copyFileIfMissing(sourcePath, path.join(modsDir, artifactFileName));
-
-        // Prepare Fabric runtime
-        const runtimeRootDir = path.join(cacheManager.getRootDir(), "client", "runtime", variant.minecraftVersion);
-        const managedRuntime = await prepareManagedFabricRuntime(variant, {
-          runtimeRootDir,
-          gameDir: minecraftDir
-        }, { fetchImpl: fetch });
-
-        const launchArgs = [
-          "--runtime-root", managedRuntime.runtimeRootDir,
-          "--version-id", managedRuntime.versionId,
-          "--game-dir", managedRuntime.gameDir
-        ];
+        const downloaded = await downloadClientModToDir(process.cwd(), instanceDir, {
+          version,
+          loader,
+          java: options.java
+        });
 
         const manager = new ClientInstanceManager(_context.globalState);
         const meta = await manager.create({
           name: clientName,
-          loader,
-          version: variant.minecraftVersion,
+          loader: downloaded.loader,
+          version: downloaded.minecraftVersion,
           wsPort: options.wsPort,
           account: options.account,
           headless: options.headless,
-          launchArgs,
+          launchArgs: downloaded.launchArgs,
           env: {
-            MCT_CLIENT_MOD_VARIANT: variant.id,
-            MCT_CLIENT_MOD_JAR: path.join(modsDir, artifactFileName)
+            MCT_CLIENT_MOD_VARIANT: downloaded.variantId,
+            MCT_CLIENT_MOD_JAR: downloaded.jar
           }
         });
 
         return {
           created: true,
           ...meta,
-          javaCommand: java.command,
-          javaVersion: java.majorVersion,
-          modsDir,
-          runtimeRootDir: managedRuntime.runtimeRootDir,
-          runtimeVersionId: managedRuntime.versionId
+          javaCommand: downloaded.javaCommand,
+          javaVersion: downloaded.javaVersion,
+          modsDir: downloaded.modsDir,
+          runtimeRootDir: downloaded.runtimeRootDir,
+          runtimeVersionId: downloaded.runtimeVersionId
         };
       })
     );

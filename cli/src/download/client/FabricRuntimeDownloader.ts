@@ -3,7 +3,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { MinecraftFolder, Version } from "@xmcl/core";
-import { getVersionList, installDependencies, installFabric, installVersion } from "@xmcl/installer";
+import { getVersionList, installDependencies, installFabric, installForge, installVersion } from "@xmcl/installer";
 import { Agent, interceptors } from "undici";
 
 import { MctError } from "../../util/errors.js";
@@ -69,28 +69,20 @@ export interface PrepareFabricRuntimeOptions {
   gameDir: string;
 }
 
-export async function prepareManagedFabricRuntime(
+type LoaderInstaller = (minecraft: MinecraftFolder, fetchImpl: typeof fetch) => Promise<string>;
+
+async function prepareManagedRuntime(
   variant: ModVariant,
   runtimeOptions: PrepareFabricRuntimeOptions,
-  dependencies: PrepareFabricRuntimeDependencies = {}
+  dependencies: PrepareFabricRuntimeDependencies,
+  expectedVersionId: string,
+  installLoader: LoaderInstaller
 ): Promise<PreparedFabricRuntime> {
   const fetchImpl = dependencies.fetchImpl ?? fetchWithRetry;
-  const loaderVersion = variant.fabricLoaderVersion;
-  if (!loaderVersion) {
-    throw new MctError(
-      {
-        code: "VARIANT_NOT_BUILDABLE",
-        message: `Variant ${variant.id} does not define a Fabric loader version`
-      },
-      4
-    );
-  }
-
   const { runtimeRootDir, gameDir } = runtimeOptions;
   await mkdir(runtimeRootDir, { recursive: true });
   await mkdir(gameDir, { recursive: true });
 
-  const expectedVersionId = `${variant.minecraftVersion}-fabric${loaderVersion}`;
   const readyMarker = path.join(runtimeRootDir, `.ready-${expectedVersionId}`);
 
   try {
@@ -118,13 +110,7 @@ export async function prepareManagedFabricRuntime(
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER
   });
-  const installedVersionId = await installFabric({
-    minecraftVersion: variant.minecraftVersion,
-    version: loaderVersion,
-    minecraft,
-    side: "client",
-    fetch: fetchImpl
-  });
+  const installedVersionId = await installLoader(minecraft, fetchImpl);
   const resolvedVersion = await Version.parse(minecraft, installedVersionId);
   await installDependencies(resolvedVersion, {
     side: "client",
@@ -141,4 +127,93 @@ export async function prepareManagedFabricRuntime(
     gameDir,
     versionId: installedVersionId
   };
+}
+
+export async function prepareManagedFabricRuntime(
+  variant: ModVariant,
+  runtimeOptions: PrepareFabricRuntimeOptions,
+  dependencies: PrepareFabricRuntimeDependencies = {}
+): Promise<PreparedFabricRuntime> {
+  const loaderVersion = variant.fabricLoaderVersion;
+  if (!loaderVersion) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} does not define a Fabric loader version`
+      },
+      4
+    );
+  }
+
+  return prepareManagedRuntime(
+    variant,
+    runtimeOptions,
+    dependencies,
+    `${variant.minecraftVersion}-fabric${loaderVersion}`,
+    (minecraft, fetchImpl) =>
+      installFabric({
+        minecraftVersion: variant.minecraftVersion,
+        version: loaderVersion,
+        minecraft,
+        side: "client",
+        fetch: fetchImpl
+      })
+  );
+}
+
+export async function prepareManagedForgeRuntime(
+  variant: ModVariant,
+  runtimeOptions: PrepareFabricRuntimeOptions,
+  dependencies: PrepareFabricRuntimeDependencies = {}
+): Promise<PreparedFabricRuntime> {
+  const forgeVersion = variant.forgeVersion;
+  if (!forgeVersion) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} does not define a Forge version`
+      },
+      4
+    );
+  }
+
+  return prepareManagedRuntime(
+    variant,
+    runtimeOptions,
+    dependencies,
+    `${variant.minecraftVersion}-forge-${forgeVersion}`,
+    (minecraft) =>
+      installForge(
+        {
+          mcversion: variant.minecraftVersion,
+          version: forgeVersion
+        },
+        minecraft,
+        {
+          side: "client",
+          dispatcher: DOWNLOAD_DISPATCHER
+        }
+      )
+  );
+}
+
+export async function prepareManagedClientRuntime(
+  variant: ModVariant,
+  runtimeOptions: PrepareFabricRuntimeOptions,
+  dependencies: PrepareFabricRuntimeDependencies = {}
+): Promise<PreparedFabricRuntime> {
+  if (variant.loader === "fabric") {
+    return prepareManagedFabricRuntime(variant, runtimeOptions, dependencies);
+  }
+  if (variant.loader === "forge") {
+    return prepareManagedForgeRuntime(variant, runtimeOptions, dependencies);
+  }
+
+  throw new MctError(
+    {
+      code: "UNSUPPORTED_LOADER",
+      message: `Loader ${variant.loader} is not implemented yet`
+    },
+    4
+  );
 }

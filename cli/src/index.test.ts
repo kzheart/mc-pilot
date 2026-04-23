@@ -58,8 +58,9 @@ test("CLI parses chat command and sends request to default client", async () => 
   const mctHome = path.join(tempDir, "mct-home");
   const globalStateDir = path.join(mctHome, "state");
   const projectDir = path.join(tempDir, "project");
+  const wsPort = await getFreePort();
 
-  const server = new WebSocketServer({ port: 25594 });
+  const server = new WebSocketServer({ port: wsPort });
 
   server.on("connection", (socket) => {
     socket.on("message", (raw) => {
@@ -89,7 +90,7 @@ test("CLI parses chat command and sends request to default client", async () => 
           clients: {
             bot: {
               name: "bot",
-              wsPort: 25594,
+              wsPort,
               pid: process.pid,
               startedAt: new Date().toISOString(),
               logPath: path.join(globalStateDir, "bot.log"),

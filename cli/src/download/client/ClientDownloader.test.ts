@@ -96,6 +96,54 @@ test("downloadClientModToDir prepares a self-managed runtime", async () => {
   }
 });
 
+test("downloadClientModToDir prepares a Forge runtime", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
+  const buildDir = path.join(tempDir, "client-mod", "version-1.20.4-forge", "build", "libs");
+  const jarPath = path.join(buildDir, "mct-client-mod-forge-1.20.4.jar");
+  const targetDir = path.join(tempDir, "client-instance");
+  const forgeVersionId = "1.20.4-forge-49.0.49";
+
+  await mkdir(buildDir, { recursive: true });
+  await writeFile(jarPath, "forge-mod-jar", "utf8");
+
+  try {
+    const result = await downloadClientModToDir(
+      tempDir,
+      targetDir,
+      {
+        version: "1.20.4",
+        loader: "forge"
+      },
+      {
+        cacheManager: new CacheManager(path.join(tempDir, "cache")),
+        detectJavaImpl: async () => ({
+          available: true,
+          command: "java",
+          majorVersion: 17
+        }),
+        prepareManagedRuntimeImpl: async (variant: ModVariant, runtimeOptions: { runtimeRootDir: string; gameDir: string }) => {
+          assert.equal(variant.id, "1.20.4-forge");
+          const { runtimeRootDir, gameDir } = runtimeOptions;
+          await mkdir(path.join(runtimeRootDir, "versions", forgeVersionId), { recursive: true });
+          return {
+            runtimeRootDir,
+            gameDir,
+            versionId: forgeVersionId
+          };
+        }
+      }
+    );
+
+    assert.equal(result.variantId, "1.20.4-forge");
+    assert.equal(result.loader, "forge");
+    assert.equal(result.runtimeVersionId, forgeVersionId);
+    assert.equal(await readFile(result.jar, "utf8"), "forge-mod-jar");
+    assert.deepEqual(result.launchArgs.slice(0, 2), ["--runtime-root", path.join(tempDir, "cache", "client", "runtime", "1.20.4")]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadClientModToDir rejects missing local build artifacts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
 
