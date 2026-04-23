@@ -4,9 +4,11 @@ plugins {
 
 repositories {
     gradlePluginPortal()
+    maven("https://maven.architectury.dev/")
     maven("https://maven.fabricmc.net/")
+    maven("https://maven.minecraftforge.net/")
 }
 
 dependencies {
-    implementation("net.fabricmc:fabric-loom:1.9-SNAPSHOT")
+    implementation("dev.architectury.loom:dev.architectury.loom.gradle.plugin:1.9.428")
 }

@@ -4,35 +4,39 @@ plugins {
 
 val mcVersion: String by project
 val yarnMappings: String by project
-val fabricLoader: String by project
+val forgeVersion: String by project
 val javaVersion: String by project
+val forgeMajor = forgeVersion.substringBefore(".")
 
 version = rootProject.property("mod_version") as String
 group = rootProject.property("maven_group") as String
 
 base {
-    archivesName.set("mct-client-mod-fabric-$mcVersion")
+    archivesName.set("mct-client-mod-forge-$mcVersion")
 }
 
 repositories {
     mavenCentral()
+    maven("https://maven.architectury.dev/")
+    maven("https://maven.fabricmc.net/")
+    maven("https://maven.minecraftforge.net/")
 }
 
-dependencies {
-    minecraft("com.mojang:minecraft:$mcVersion")
-    mappings("net.fabricmc:yarn:$yarnMappings:v2")
-    modImplementation("net.fabricmc:fabric-loader:$fabricLoader")
-    implementation("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
-    include("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
-}
-
-loom {
+extensions.configure<net.fabricmc.loom.api.LoomGradleExtensionAPI>("loom") {
+    forge {}
     mixin {
         defaultRefmapName.set("mct.refmap.json")
     }
 }
 
-// Code generation: TargetVariant.java
+dependencies {
+    minecraft("com.mojang:minecraft:$mcVersion")
+    mappings("net.fabricmc:yarn:$yarnMappings:v2")
+    add("forge", "net.minecraftforge:forge:$mcVersion-$forgeVersion")
+    implementation("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
+    include("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
+}
+
 val genDir = layout.buildDirectory.dir("generated/src/main/java")
 
 tasks.register("generateVersionInfo") {
@@ -62,14 +66,16 @@ tasks.named("compileJava") { dependsOn("generateVersionInfo") }
 tasks.processResources {
     inputs.property("version", project.version)
     inputs.property("mcVersion", mcVersion)
-    inputs.property("fabricLoader", fabricLoader)
+    inputs.property("forgeVersion", forgeVersion)
+    inputs.property("forgeMajor", forgeMajor)
     inputs.property("javaVersion", javaVersion)
 
-    filesMatching("fabric.mod.json") {
+    filesMatching("META-INF/mods.toml") {
         expand(
             "version" to project.version,
             "mc_version" to mcVersion,
-            "fabric_loader" to fabricLoader,
+            "forge_version" to forgeVersion,
+            "forge_major" to forgeMajor,
             "java_version" to javaVersion
         )
     }
@@ -84,6 +90,12 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(javaVersion.toInt())
     options.encoding = "UTF-8"
+}
+
+tasks.withType<Jar>().configureEach {
+    manifest {
+        attributes("MixinConfigs" to "mct.mixins.json")
+    }
 }
 
 tasks.withType<org.gradle.api.tasks.bundling.AbstractArchiveTask>().configureEach {
