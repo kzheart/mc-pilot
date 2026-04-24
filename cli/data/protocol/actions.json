@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "requestFormat": {
+    "id": "uuid-v4",
+    "action": "string",
+    "params": "object"
+  },
+  "responseFormat": {
+    "id": "uuid-v4",
+    "success": "boolean",
+    "data": "object|null",
+    "error": "object|null"
+  },
+  "actions": [
+    {
+      "name": "chat.send",
+      "params": ["message"],
+      "description": "发送聊天消息"
+    },
+    {
+      "name": "chat.command",
+      "params": ["command"],
+      "description": "执行聊天命令"
+    },
+    {
+      "name": "chat.wait",
+      "params": ["match", "timeout"],
+      "description": "等待匹配的聊天消息"
+    },
+    {
+      "name": "move.to",
+      "params": ["x", "y", "z"],
+      "description": "寻路移动到指定坐标"
+    },
+    {
+      "name": "move.direction",
+      "params": ["direction", "blocks"],
+      "description": "朝指定方向移动"
+    },
+    {
+      "name": "move.jump",
+      "params": [],
+      "description": "跳跃一次"
+    },
+    {
+      "name": "move.sneak",
+      "params": ["enabled"],
+      "description": "切换潜行"
+    },
+    {
+      "name": "move.sprint",
+      "params": ["enabled"],
+      "description": "切换疾跑"
+    },
+    {
+      "name": "look.at",
+      "params": ["x", "y", "z"],
+      "description": "看向坐标"
+    },
+    {
+      "name": "look.entity",
+      "params": ["filter"],
+      "description": "看向实体"
+    },
+    {
+      "name": "look.set",
+      "params": ["yaw", "pitch"],
+      "description": "设置精确视角"
+    },
+    {
+      "name": "block.break",
+      "params": ["x", "y", "z"],
+      "description": "破坏方块"
+    },
+    {
+      "name": "block.place",
+      "params": ["x", "y", "z", "face"],
+      "description": "放置方块"
+    },
+    {
+      "name": "block.interact",
+      "params": ["x", "y", "z"],
+      "description": "右键交互方块"
+    },
+    {
+      "name": "entity.attack",
+      "params": ["filter"],
+      "description": "攻击实体"
+    },
+    {
+      "name": "entity.interact",
+      "params": ["filter"],
+      "description": "右键交互实体"
+    },
+    {
+      "name": "entity.mount",
+      "params": ["filter"],
+      "description": "骑乘实体"
+    },
+    {
+      "name": "entity.dismount",
+      "params": [],
+      "description": "离开载具"
+    },
+    {
+      "name": "entity.steer",
+      "params": ["forward", "sideways", "jump", "sneak"],
+      "description": "控制载具"
+    },
+    {
+      "name": "inventory.hotbar",
+      "params": ["slot"],
+      "description": "切换快捷栏"
+    },
+    {
+      "name": "inventory.drop",
+      "params": ["all"],
+      "description": "丢弃手持物品"
+    },
+    {
+      "name": "inventory.use",
+      "params": [],
+      "description": "使用手持物品"
+    },
+    {
+      "name": "inventory.swap-hands",
+      "params": [],
+      "description": "交换主副手"
+    },
+    {
+      "name": "gui.click",
+      "params": ["slot", "button", "key"],
+      "description": "点击 GUI 槽位"
+    },
+    {
+      "name": "gui.drag",
+      "params": ["slots", "button"],
+      "description": "拖拽 GUI 槽位"
+    },
+    {
+      "name": "gui.close",
+      "params": [],
+      "description": "关闭 GUI"
+    },
+    {
+      "name": "gui.wait-open",
+      "params": ["timeout"],
+      "description": "等待 GUI 打开"
+    },
+    {
+      "name": "gui.wait-update",
+      "params": ["timeout"],
+      "description": "等待 GUI 更新"
+    },
+    {
+      "name": "gui.screenshot",
+      "params": ["output"],
+      "description": "GUI 截图"
+    },
+    {
+      "name": "capture.screenshot",
+      "params": ["output", "region", "gui"],
+      "description": "屏幕截图"
+    },
+    {
+      "name": "sign.edit",
+      "params": ["x", "y", "z", "lines"],
+      "description": "编辑告示牌"
+    },
+    {
+      "name": "book.write",
+      "params": ["pages"],
+      "description": "写入书本"
+    },
+    {
+      "name": "book.sign",
+      "params": ["title", "author"],
+      "description": "签名书本"
+    },
+    {
+      "name": "channel.send",
+      "params": ["channel", "data"],
+      "description": "发送 Plugin Channel 消息"
+    },
+    {
+      "name": "channel.listen",
+      "params": ["channel", "timeout"],
+      "description": "等待 Plugin Channel 消息"
+    },
+    {
+      "name": "resourcepack.accept",
+      "params": [],
+      "description": "接受资源包"
+    },
+    {
+      "name": "resourcepack.reject",
+      "params": [],
+      "description": "拒绝资源包"
+    },
+    {
+      "name": "craft.craft",
+      "params": ["recipe"],
+      "description": "工作台合成"
+    },
+    {
+      "name": "craft.anvil",
+      "params": ["inputSlot", "rename"],
+      "description": "铁砧操作"
+    },
+    {
+      "name": "craft.enchant",
+      "params": ["option"],
+      "description": "附魔台操作"
+    },
+    {
+      "name": "craft.trade",
+      "params": ["index"],
+      "description": "交易操作"
+    },
+    {
+      "name": "wait.perform",
+      "params": ["seconds", "ticks", "untilHealthAbove", "untilGuiOpen", "untilOnGround", "timeout"],
+      "description": "等待与同步"
+    },
+    {
+      "name": "client.reconnect",
+      "params": ["address"],
+      "description": "让客户端重新连接到指定服务器地址"
+    }
+  ]
+}

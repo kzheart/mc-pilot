@@ -26,6 +26,7 @@ export interface CreateClientOptions {
   wsPort?: number;
   account?: string;
   headless?: boolean;
+  mute?: boolean;
   launchArgs?: string[];
   env?: Record<string, string>;
 }
@@ -35,6 +36,7 @@ export interface LaunchClientOptions {
   account?: string;
   wsPort?: number;
   headless?: boolean;
+  mute?: boolean;
   force?: boolean;
 }
 
@@ -59,6 +61,7 @@ export class ClientInstanceManager {
         wsPort,
         account: options.account,
         headless: options.headless,
+        mute: options.mute,
         launchArgs: options.launchArgs,
         env: options.env,
         createdAt: new Date().toISOString()
@@ -92,6 +95,7 @@ export class ClientInstanceManager {
       const meta = await this.loadMeta(clientName);
       const instanceDir = resolveClientInstanceDir(clientName);
       const wsPort = options.wsPort ?? meta.wsPort;
+      const mute = options.mute ?? meta.mute;
 
       if (!meta.launchArgs || meta.launchArgs.length === 0) {
         throw new MctError(
@@ -134,7 +138,8 @@ export class ClientInstanceManager {
           MCT_CLIENT_ACCOUNT: options.account ?? meta.account ?? "",
           MCT_CLIENT_SERVER: options.server ?? "",
           MCT_CLIENT_WS_PORT: String(wsPort),
-          MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false)
+          MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false),
+          ...(mute === undefined ? {} : { MCT_CLIENT_MUTE: String(mute) })
         }
       });
 

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "errors": [
+    {
+      "code": "CONNECTION_FAILED",
+      "exitCode": 1,
+      "description": "无法连接到客户端 WebSocket"
+    },
+    {
+      "code": "TIMEOUT",
+      "exitCode": 2,
+      "description": "操作等待超时"
+    },
+    {
+      "code": "CLIENT_NOT_FOUND",
+      "exitCode": 3,
+      "description": "找不到客户端"
+    },
+    {
+      "code": "CLIENT_NOT_RUNNING",
+      "exitCode": 3,
+      "description": "客户端未运行"
+    },
+    {
+      "code": "CLIENT_ALREADY_RUNNING",
+      "exitCode": 3,
+      "description": "客户端已在运行"
+    },
+    {
+      "code": "INVALID_PARAMS",
+      "exitCode": 4,
+      "description": "参数格式错误或缺少必要配置"
+    },
+    {
+      "code": "SERVER_NOT_RUNNING",
+      "exitCode": 5,
+      "description": "服务端未运行"
+    },
+    {
+      "code": "SERVER_ALREADY_RUNNING",
+      "exitCode": 5,
+      "description": "服务端已在运行"
+    },
+    {
+      "code": "GUI_NOT_OPEN",
+      "exitCode": 3,
+      "description": "没有打开的 GUI"
+    },
+    {
+      "code": "SLOT_OUT_OF_RANGE",
+      "exitCode": 3,
+      "description": "槽位索引超出范围"
+    },
+    {
+      "code": "ENTITY_NOT_FOUND",
+      "exitCode": 3,
+      "description": "找不到匹配实体"
+    },
+    {
+      "code": "BLOCK_OUT_OF_RANGE",
+      "exitCode": 3,
+      "description": "目标方块超出交互距离"
+    },
+    {
+      "code": "PATHFINDING_FAILED",
+      "exitCode": 3,
+      "description": "寻路失败"
+    },
+    {
+      "code": "NOT_IN_WORLD",
+      "exitCode": 3,
+      "description": "玩家不在世界中"
+    },
+    {
+      "code": "INTERNAL_ERROR",
+      "exitCode": 1,
+      "description": "CLI 内部错误"
+    }
+  ]
+}

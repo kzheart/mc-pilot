@@ -1,10 +1,10 @@
 {
   "name": "@kzheart_/mc-pilot",
-  "version": "0.9.1",
+  "version": "0.9.5",
   "description": "Minecraft plugin/mod automated testing CLI – control a real Minecraft client to simulate player actions",
   "type": "module",
   "bin": {
-    "mct": "./bin/mct"
+    "mct": "bin/mct"
   },
   "files": [
     "bin/",
@@ -27,7 +27,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/kzheart/mc-pilot.git",
+    "url": "git+https://github.com/kzheart/mc-pilot.git",
     "directory": "cli"
   },
   "license": "MIT",
@@ -44,10 +44,12 @@
     "@xmcl/file-transfer": "^2.0.3",
     "@xmcl/installer": "^6.1.2",
     "commander": "^14.0.1",
+    "pngjs": "^7.0.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"

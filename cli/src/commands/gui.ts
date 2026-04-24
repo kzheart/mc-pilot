@@ -13,6 +13,7 @@ export function createGuiCommand() {
   const command = new Command("gui").description("GUI / container interaction (use \"gui snapshot\" to inspect slot indices and contents)");
 
   command.command("info").description("Get current GUI info (title, type, slot count)").action(createRequestAction("gui.info", () => ({})));
+  command.command("layout").description("Get precise GUI bounds and slot screen coordinates").action(createRequestAction("gui.layout", () => ({})));
   command.command("snapshot").description("Get full GUI snapshot with all slot contents").action(createRequestAction("gui.snapshot", () => ({})));
 
   command

@@ -17,12 +17,12 @@ interface ProtocolEntry {
   exitCode?: number;
 }
 
-function resolveRepoRoot() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+function resolvePackageRoot() {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
 function loadJsonFile<T>(relativePath: string): T {
-  const filePath = path.join(resolveRepoRoot(), relativePath);
+  const filePath = path.join(resolvePackageRoot(), relativePath);
   return JSON.parse(readFileSync(filePath, "utf8")) as T;
 }
 
@@ -91,9 +91,9 @@ function collectLeafCommands(commands: Array<ReturnType<typeof serializeCommand>
 }
 
 export function buildSchemaDocument(program: Command) {
-  const actions = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("protocol/actions.json");
-  const queries = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("protocol/queries.json");
-  const errors = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("protocol/errors.json");
+  const actions = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/actions.json");
+  const queries = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/queries.json");
+  const errors = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/errors.json");
   const commands = program.commands.map((command) => serializeCommand(command));
 
   return {

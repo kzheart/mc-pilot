@@ -106,6 +106,21 @@ function substitute(template, variables) {
   return template.replace(/\$\{([^}]+)\}/g, (_, key) => variables[key] ?? "");
 }
 
+function parseOptionalBoolean(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
 async function ensureFile(filePath, downloadUrl) {
   try {
     await access(filePath);
@@ -170,7 +185,7 @@ async function syncConfiguredMod(gameDir) {
   await copyFile(sourceJar, targetJar);
 }
 
-async function ensureAutomationOptions(gameDir, server) {
+async function ensureAutomationOptions(gameDir, server, mute) {
   const optionsPath = path.join(gameDir, "options.txt");
   const values = new Map();
 
@@ -191,6 +206,23 @@ async function ensureAutomationOptions(gameDir, server) {
   values.set("joinedFirstServer", "true");
   values.set("tutorialStep", "none");
   values.set("pauseOnLostFocus", "false");
+  if (mute !== undefined) {
+    const volume = mute ? "0.0" : "1.0";
+    for (const category of [
+      "master",
+      "music",
+      "record",
+      "weather",
+      "block",
+      "hostile",
+      "neutral",
+      "player",
+      "ambient",
+      "voice"
+    ]) {
+      values.set(`soundCategory_${category}`, volume);
+    }
+  }
   if (server) {
     values.set("lastServer", server);
   }
@@ -214,6 +246,7 @@ async function buildLaunchSpec(options) {
   const nativesDir = options["natives-dir"] || path.join(instanceRoot, "natives");
   const gameDir = path.join(instanceRoot, "minecraft");
   const packMeta = await readJson(path.join(instanceRoot, "mmc-pack.json"));
+  const mute = parseOptionalBoolean(process.env.MCT_CLIENT_MUTE);
   await syncBuiltMod(instanceRoot, repoRoot, selectedVariant);
   const componentMetas = new Map();
   for (const component of packMeta.components) {
@@ -263,7 +296,7 @@ async function buildLaunchSpec(options) {
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName);
   const server = process.env.MCT_CLIENT_SERVER || "";
-  await ensureAutomationOptions(gameDir, server);
+  await ensureAutomationOptions(gameDir, server, mute);
   const [serverHost, serverPort = "25565"] = server.split(":");
   const classpath = [
     path.join(librariesRoot, mainJarPath),
@@ -316,12 +349,13 @@ async function buildManifestLaunchSpec(options) {
 
   const manifest = await readJson(manifestPath);
   const gameDir = manifest.gameDir;
+  const mute = parseOptionalBoolean(process.env.MCT_CLIENT_MUTE);
   await syncConfiguredMod(gameDir);
 
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName);
   const server = process.env.MCT_CLIENT_SERVER || "";
-  await ensureAutomationOptions(gameDir, server);
+  await ensureAutomationOptions(gameDir, server, mute);
   const [serverHost, serverPort = "25565"] = server.split(":");
   const substitutions = {
     auth_player_name: accountName,

@@ -13,6 +13,7 @@ import { createEntityCommand } from "./commands/entity.js";
 import { createEventsCommand } from "./commands/events.js";
 import { createGuiCommand } from "./commands/gui.js";
 import { createHudCommand } from "./commands/hud.js";
+import { createImageCommand } from "./commands/image.js";
 import { createInputCommand } from "./commands/input.js";
 import { createInventoryCommand } from "./commands/inventory.js";
 import { createLookCommand } from "./commands/look.js";
@@ -99,6 +100,7 @@ export function buildProgram() {
   program.addCommand(createEntityCommand());
   program.addCommand(createInventoryCommand());
   program.addCommand(createGuiCommand());
+  program.addCommand(createImageCommand());
   program.addCommand(createScreenshotCommand());
   program.addCommand(createScreenCommand());
   program.addCommand(createHudCommand());

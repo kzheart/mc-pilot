@@ -9,6 +9,7 @@
     "BossBarHudMixin",
     "ChatHudMixin",
     "DeathScreenMixin",
+    "HandledScreenAccessor",
     "InGameHudAccessor",
     "InGameHudStateMixin",
     "KeyboardInvoker",

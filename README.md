@@ -52,6 +52,9 @@ mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
 
 # Create a Fabric client instance
 mct client create fabric-1.20.4 --version 1.20.4
+
+# Optional: create a permanently muted client for automated testing
+mct client create fabric-1.20.4-muted --version 1.20.4 --mute
 ```
 
 `mct init` now creates a global project config at `~/.mct/projects/<projectId>/project.json`, where `projectId` is derived from the current directory path. Edit that file to configure the profile that points to the server/client instances you want to use:
@@ -77,6 +80,10 @@ mct client create fabric-1.20.4 --version 1.20.4
 ```bash
 # Start server + client + plugin deployment from the active profile
 mct up --profile 1.20
+
+# Optional: mute or re-enable audio for a specific launch
+mct client launch fabric-1.20.4 --mute
+mct client launch fabric-1.20.4 --no-mute
 
 # Control the client
 mct chat command "gamemode creative"

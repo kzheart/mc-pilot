@@ -56,6 +56,7 @@ public final class GuiInventoryHandler extends ActionHandler {
             case "inventory.use" -> runOnClientThread(this::useHeldItem);
             case "inventory.swap-hands" -> swapHands();
             case "gui.info" -> runOnClientThread(() -> ClientDataHelper.screenToMap(client));
+            case "gui.layout" -> runOnClientThread(this::guiLayout);
             case "gui.snapshot" -> runOnClientThread(this::guiSnapshot);
             case "gui.slot" -> runOnClientThread(() -> guiSlot(params));
             case "gui.click" -> runOnClientThread(() -> guiClick(params));
@@ -136,8 +137,20 @@ public final class GuiInventoryHandler extends ActionHandler {
     private Map<String, Object> guiSnapshot() {
         HandledScreen<?> screen = requireHandledScreen();
         LinkedHashMap<String, Object> result = new LinkedHashMap<>(ClientDataHelper.screenToMap(client));
-        result.put("slots", ClientDataHelper.slotsToList(screen.getScreenHandler().slots));
+        result.put("slots", ClientDataHelper.slotsToList(screen.getScreenHandler().slots, screen));
         result.put("cursorItem", ClientDataHelper.itemToMap(screen.getScreenHandler().getCursorStack()));
+        return result;
+    }
+
+    private Map<String, Object> guiLayout() {
+        HandledScreen<?> screen = requireHandledScreen();
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(ClientDataHelper.screenToMap(client));
+        result.put("slots", ClientDataHelper.slotsToList(screen.getScreenHandler().slots, screen));
+        result.put("scaledWidth", client.getWindow().getScaledWidth());
+        result.put("scaledHeight", client.getWindow().getScaledHeight());
+        result.put("framebufferWidth", client.getWindow().getFramebufferWidth());
+        result.put("framebufferHeight", client.getWindow().getFramebufferHeight());
+        result.put("scaleFactor", client.getWindow().getScaleFactor());
         return result;
     }
 
@@ -148,7 +161,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         if (slot < 0 || slot >= handler.slots.size()) {
             throw new ActionException("INVALID_PARAMS");
         }
-        return Map.of("slot", slot, "item", ClientDataHelper.itemToMap(handler.getSlot(slot).getStack()));
+        return ClientDataHelper.slotToMap(handler.getSlot(slot), screen);
     }
 
     private Map<String, Object> guiClick(Map<String, Object> params) {

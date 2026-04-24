@@ -77,6 +77,8 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "server status",
   "server stop",
   "server wait-ready",
+  "image bbox",
+  "image locate-template",
   "info",
   "up",
   "use"

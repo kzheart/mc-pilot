@@ -62,6 +62,8 @@ export function createClientCommand() {
     .option("--ws-port <port>", "WebSocket port (auto-assigned if omitted)", Number)
     .option("--account <account>", "Offline username or account identifier")
     .option("--headless", "Launch in headless mode")
+    .option("--mute", "Mute all in-game audio for this client")
+    .option("--no-mute", "Keep in-game audio enabled for this client")
     .option("--java <command>", "Java command to use")
     .action(
       wrapCommand(async (_context, { args, options }: {
@@ -72,6 +74,7 @@ export function createClientCommand() {
           wsPort?: number;
           account?: string;
           headless?: boolean;
+          mute?: boolean;
           java?: string;
         };
       }) => {
@@ -93,6 +96,7 @@ export function createClientCommand() {
           wsPort: options.wsPort,
           account: options.account,
           headless: options.headless,
+          mute: options.mute,
           launchArgs: downloaded.launchArgs,
           env: {
             MCT_CLIENT_MOD_VARIANT: downloaded.variantId,
@@ -120,6 +124,8 @@ export function createClientCommand() {
     .option("--account <account>", "Offline username or account identifier")
     .option("--ws-port <port>", "WebSocket port override", Number)
     .option("--headless", "Launch in headless mode")
+    .option("--mute", "Mute all in-game audio for this launch")
+    .option("--no-mute", "Keep in-game audio enabled for this launch")
     .option("--force", "Kill any existing client with the same name before launching")
     .action(
       wrapCommand(async (
@@ -129,7 +135,14 @@ export function createClientCommand() {
           options
         }: {
           args: (string | undefined)[];
-          options: { server?: string; account?: string; wsPort?: number; headless?: boolean; force?: boolean };
+          options: {
+            server?: string;
+            account?: string;
+            wsPort?: number;
+            headless?: boolean;
+            mute?: boolean;
+            force?: boolean;
+          };
         }
       ) => {
         const clientName = args[0] ?? context.activeProfile?.clients[0];

@@ -18,6 +18,7 @@ export interface ClientInstanceMeta {
   wsPort: number;
   account?: string;
   headless?: boolean;
+  mute?: boolean;
   launchArgs?: string[];
   env?: Record<string, string>;
   createdAt: string;

@@ -6,9 +6,11 @@ import com.mct.mixin.AbstractSignEditScreenAccessor;
 import com.mct.version.*;
 import net.minecraft.block.entity.SignBlockEntity;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.ConnectScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
@@ -105,6 +107,9 @@ public final class VersionAdaptersImpl {
 
             @Override
             public Map<String, Object> accept(MinecraftClient client, ClientStateTracker stateTracker) {
+                if (pressResourcePackPromptButton(client, true)) {
+                    return stateTracker.getResourcePackState();
+                }
                 if (client.currentScreen != null) {
                     ServerInfo si = client.getCurrentServerEntry();
                     if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.ENABLED);
@@ -116,6 +121,9 @@ public final class VersionAdaptersImpl {
 
             @Override
             public Map<String, Object> reject(MinecraftClient client, ClientStateTracker stateTracker) {
+                if (pressResourcePackPromptButton(client, false)) {
+                    return stateTracker.getResourcePackState();
+                }
                 if (client.currentScreen != null) {
                     ServerInfo si = client.getCurrentServerEntry();
                     if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.PROMPT);
@@ -133,6 +141,34 @@ public final class VersionAdaptersImpl {
                 return si;
             }
         };
+    }
+
+    private static boolean pressResourcePackPromptButton(MinecraftClient client, boolean accept) {
+        Screen screen = client.currentScreen;
+        if (screen == null || !isResourcePackPrompt(screen)) {
+            return false;
+        }
+        List<ButtonWidget> buttons = new ArrayList<>();
+        for (Element child : screen.children()) {
+            if (child instanceof ButtonWidget button) {
+                buttons.add(button);
+            }
+        }
+        if (buttons.isEmpty()) {
+            return false;
+        }
+        buttons.get(accept ? 0 : Math.min(1, buttons.size() - 1)).onPress();
+        return true;
+    }
+
+    private static boolean isResourcePackPrompt(Screen screen) {
+        String screenClass = screen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+        Text titleText = screen.getTitle();
+        String title = titleText != null ? titleText.getString().toLowerCase(java.util.Locale.ROOT) : "";
+        return screenClass.contains("resource")
+            || screenClass.contains("confirm")
+            || title.contains("resource pack")
+            || title.contains("server pack");
     }
 
     private static ReconnectAdapter createReconnectAdapter() {
