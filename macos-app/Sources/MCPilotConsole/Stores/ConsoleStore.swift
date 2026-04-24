@@ -83,10 +83,11 @@ final class ConsoleStore: ObservableObject {
     private func applyInfo(_ result: CommandResult) {
         guard result.succeeded,
               let data = result.stdout.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
         }
 
+        let json = (raw["data"] as? [String: Any]) ?? raw
         status.projectName = stringValue(json["project"]) ?? status.projectName
         status.projectId = stringValue(json["projectId"]) ?? status.projectId
         status.activeProfile = stringValue(json["activeProfile"]) ?? status.activeProfile
@@ -105,6 +106,9 @@ final class ConsoleStore: ObservableObject {
 
     private func stringValue(_ value: Any?) -> String? {
         guard let value else { return nil }
+        if value is NSNull {
+            return nil
+        }
         if let string = value as? String {
             return string.isEmpty ? nil : string
         }
@@ -116,10 +120,21 @@ final class ConsoleStore: ObservableObject {
     }
 
     private static func defaultWorkingDirectory() -> String {
+        if let override = ProcessInfo.processInfo.environment["MCT_WORKING_DIRECTORY"], !override.isEmpty {
+            return override
+        }
+
         let current = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         if current.lastPathComponent == "macos-app" {
             return current.deletingLastPathComponent().path
         }
+
+        let bundleURL = Bundle.main.bundleURL
+        let components = bundleURL.pathComponents
+        if let index = components.lastIndex(of: "macos-app"), index > 1 {
+            return "/" + components[1..<index].joined(separator: "/")
+        }
+
         return current.path
     }
 }

@@ -27,7 +27,7 @@ final class ConsoleStoreTests: XCTestCase {
                     "mct info": CommandResult(
                         command: "mct info",
                         exitCode: 0,
-                        stdout: #"{"project":"ShopPlugin","projectId":"shop","activeProfile":"1.20","projectRootDir":"/tmp/shop"}"#,
+                        stdout: #"{"success":true,"data":{"project":"ShopPlugin","projectId":"shop","activeProfile":"1.20","projectRootDir":"/tmp/shop"}}"#,
                         stderr: "",
                         startedAt: now,
                         finishedAt: now
@@ -59,6 +59,48 @@ final class ConsoleStoreTests: XCTestCase {
         XCTAssertEqual(store.status.activeProfile, "1.20")
         XCTAssertEqual(store.status.state, .ready)
         XCTAssertEqual(store.history.count, 3)
+    }
+
+    func testRefreshKeepsUnknownForNullProjectFields() async throws {
+        let now = Date()
+        let store = ConsoleStore(
+            client: FakeMCTClient(
+                responses: [
+                    "mct info": CommandResult(
+                        command: "mct info",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":{"project":null,"projectId":null,"activeProfile":null,"projectRootDir":null}}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    ),
+                    "mct server status": CommandResult(
+                        command: "mct server status",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":[]}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    ),
+                    "mct client list": CommandResult(
+                        command: "mct client list",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":{"clients":[]}}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    )
+                ]
+            )
+        )
+
+        store.refresh()
+        try await waitUntilIdle(store)
+
+        XCTAssertEqual(store.status.projectName, "Unknown")
+        XCTAssertEqual(store.status.projectId, "Unknown")
+        XCTAssertEqual(store.status.activeProfile, "Unknown")
+        XCTAssertEqual(store.status.projectRootDir, "")
     }
 
     private func waitUntilIdle(_ store: ConsoleStore) async throws {
