@@ -7,14 +7,19 @@ final class ConsoleStore: ObservableObject {
     @Published var selectedProjectId: String?
     @Published private(set) var status = EnvironmentStatus()
     @Published private(set) var history: [CommandResult] = []
+    @Published private(set) var serverLog = ""
     @Published private(set) var isRunning = false
 
     private let client: MCTClient
 
-    init(client: MCTClient = ProcessMCTClient()) {
+    init(client: MCTClient = ProcessMCTClient(), projects initialProjects: [MCTProject]? = nil) {
         self.client = client
         self.workingDirectory = Self.defaultWorkingDirectory()
-        reloadProjects()
+        if let initialProjects {
+            projects = initialProjects
+        } else {
+            reloadProjects()
+        }
     }
 
     func reloadProjects() {
@@ -29,8 +34,9 @@ final class ConsoleStore: ObservableObject {
         workingDirectory = project.rootDir
         status.projectName = project.name
         status.projectId = project.id
-        status.activeProfile = project.defaultProfile.isEmpty ? "Unknown" : project.defaultProfile
+        status.activeProfile = project.activeProfile?.name ?? (project.defaultProfile.isEmpty ? "Unknown" : project.defaultProfile)
         status.projectRootDir = project.rootDir
+        serverLog = ""
         refresh()
     }
 
@@ -75,6 +81,60 @@ final class ConsoleStore: ObservableObject {
         }
     }
 
+    func startServer() {
+        runTask {
+            self.status.state = .loading
+            let result = await self.runAndRecord(MCTCommands.serverStart(self.currentServerName))
+            self.status.state = result.succeeded ? .ready : .failed
+            self.status.lastUpdated = Date()
+            await self.refreshServerLogsInCurrentTask()
+        }
+    }
+
+    func stopServer() {
+        runTask {
+            self.status.state = .loading
+            let result = await self.runAndRecord(MCTCommands.serverStop(self.currentServerName))
+            self.status.state = result.succeeded ? .idle : .failed
+            self.status.lastUpdated = Date()
+            await self.refreshServerLogsInCurrentTask()
+        }
+    }
+
+    func launchClient(_ name: String) {
+        runTask {
+            let result = await self.runAndRecord(MCTCommands.clientLaunch(name))
+            self.status.state = result.succeeded ? self.status.state : .failed
+            self.status.lastUpdated = Date()
+        }
+    }
+
+    func stopClient(_ name: String) {
+        runTask {
+            let result = await self.runAndRecord(MCTCommands.clientStop(name))
+            self.status.state = result.succeeded ? self.status.state : .failed
+            self.status.lastUpdated = Date()
+        }
+    }
+
+    func refreshServerLogs() {
+        runTask {
+            await self.refreshServerLogsInCurrentTask()
+        }
+    }
+
+    func sendServerCommand(_ command: String) {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        runTask {
+            let result = await self.runAndRecord(MCTCommands.serverExec(trimmed, server: self.currentServerName))
+            self.status.state = result.succeeded ? self.status.state : .failed
+            self.status.lastUpdated = Date()
+            await self.refreshServerLogsInCurrentTask()
+        }
+    }
+
     func runCustom(arguments: String) {
         let parts = ShellWords.split(arguments)
         guard !parts.isEmpty else { return }
@@ -98,6 +158,13 @@ final class ConsoleStore: ObservableObject {
         history.insert(result, at: 0)
         history = Array(history.prefix(20))
         return result
+    }
+
+    private func refreshServerLogsInCurrentTask() async {
+        let result = await runAndRecord(MCTCommands.serverLogs(currentServerName))
+        serverLog = result.displayOutput
+        status.serverSummary = summary(for: result)
+        status.lastUpdated = Date()
     }
 
     private func applyInfo(_ result: CommandResult) {
@@ -140,6 +207,22 @@ final class ConsoleStore: ObservableObject {
 
     private var workingDirectoryURL: URL {
         URL(fileURLWithPath: workingDirectory, isDirectory: true)
+    }
+
+    var selectedProject: MCTProject? {
+        projects.first { $0.id == selectedProjectId }
+    }
+
+    var currentProfile: MCTProjectProfile? {
+        selectedProject?.activeProfile
+    }
+
+    var currentServerName: String? {
+        currentProfile?.server
+    }
+
+    var currentClientNames: [String] {
+        currentProfile?.clients ?? []
     }
 
     private static func defaultWorkingDirectory() -> String {
