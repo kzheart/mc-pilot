@@ -6,7 +6,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(status: store.status, isRunning: store.isRunning)
+            SidebarView(store: store)
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {

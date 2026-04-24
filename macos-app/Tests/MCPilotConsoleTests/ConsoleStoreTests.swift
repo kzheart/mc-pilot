@@ -103,6 +103,46 @@ final class ConsoleStoreTests: XCTestCase {
         XCTAssertEqual(store.status.projectRootDir, "")
     }
 
+    func testRefreshIgnoresObjectActiveProfile() async throws {
+        let now = Date()
+        let store = ConsoleStore(
+            client: FakeMCTClient(
+                responses: [
+                    "mct info": CommandResult(
+                        command: "mct info",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":{"project":"RiftKey","projectId":"rift","activeProfile":{"server":"paper"},"projectRootDir":"/tmp/rift"}}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    ),
+                    "mct server status": CommandResult(
+                        command: "mct server status",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":[]}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    ),
+                    "mct client list": CommandResult(
+                        command: "mct client list",
+                        exitCode: 0,
+                        stdout: #"{"success":true,"data":{"clients":[]}}"#,
+                        stderr: "",
+                        startedAt: now,
+                        finishedAt: now
+                    )
+                ]
+            )
+        )
+
+        store.refresh()
+        try await waitUntilIdle(store)
+
+        XCTAssertEqual(store.status.projectName, "RiftKey")
+        XCTAssertEqual(store.status.activeProfile, "Unknown")
+    }
+
     private func waitUntilIdle(_ store: ConsoleStore) async throws {
         for _ in 0..<20 {
             if !store.isRunning {

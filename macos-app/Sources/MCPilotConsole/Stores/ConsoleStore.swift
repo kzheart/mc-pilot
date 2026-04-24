@@ -3,6 +3,8 @@ import Foundation
 @MainActor
 final class ConsoleStore: ObservableObject {
     @Published var workingDirectory: String
+    @Published private(set) var projects: [MCTProject] = []
+    @Published var selectedProjectId: String?
     @Published private(set) var status = EnvironmentStatus()
     @Published private(set) var history: [CommandResult] = []
     @Published private(set) var isRunning = false
@@ -12,6 +14,24 @@ final class ConsoleStore: ObservableObject {
     init(client: MCTClient = ProcessMCTClient()) {
         self.client = client
         self.workingDirectory = Self.defaultWorkingDirectory()
+        reloadProjects()
+    }
+
+    func reloadProjects() {
+        projects = ProjectCatalog.loadProjects()
+        if selectedProjectId == nil {
+            selectedProjectId = projects.first(where: { $0.rootDir == workingDirectory })?.id
+        }
+    }
+
+    func selectProject(_ project: MCTProject) {
+        selectedProjectId = project.id
+        workingDirectory = project.rootDir
+        status.projectName = project.name
+        status.projectId = project.id
+        status.activeProfile = project.defaultProfile.isEmpty ? "Unknown" : project.defaultProfile
+        status.projectRootDir = project.rootDir
+        refresh()
     }
 
     func refresh() {
@@ -112,7 +132,10 @@ final class ConsoleStore: ObservableObject {
         if let string = value as? String {
             return string.isEmpty ? nil : string
         }
-        return String(describing: value)
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
     }
 
     private var workingDirectoryURL: URL {

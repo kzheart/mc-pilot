@@ -1,19 +1,28 @@
 import SwiftUI
 
 struct SidebarView: View {
-    let status: EnvironmentStatus
-    let isRunning: Bool
+    @ObservedObject var store: ConsoleStore
 
     var body: some View {
-        List {
-            Section("Project") {
-                Label(status.projectName, systemImage: "shippingbox")
-                Label(status.activeProfile, systemImage: "switch.2")
+        List(selection: $store.selectedProjectId) {
+            Section("Projects") {
+                ForEach(store.projects) { project in
+                    ProjectRow(project: project)
+                        .tag(project.id)
+                        .onTapGesture {
+                            store.selectProject(project)
+                        }
+                }
+
+                if store.projects.isEmpty {
+                    Label("No projects found", systemImage: "tray")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Runtime") {
-                Label(status.state.rawValue, systemImage: stateIcon)
-                Label(isRunning ? "Command running" : "Ready for command", systemImage: isRunning ? "clock" : "keyboard")
+                Label(store.status.state.rawValue, systemImage: stateIcon)
+                Label(store.isRunning ? "Command running" : "Ready for command", systemImage: store.isRunning ? "clock" : "keyboard")
             }
         }
         .listStyle(.sidebar)
@@ -21,7 +30,7 @@ struct SidebarView: View {
     }
 
     private var stateIcon: String {
-        switch status.state {
+        switch store.status.state {
         case .idle:
             return "circle"
         case .loading:
@@ -32,6 +41,28 @@ struct SidebarView: View {
             return "exclamationmark.triangle"
         case .failed:
             return "xmark.octagon"
+        }
+    }
+}
+
+private struct ProjectRow: View {
+    let project: MCTProject
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "shippingbox")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(project.name)
+                    .lineLimit(1)
+                Text(project.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
         }
     }
 }
