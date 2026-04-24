@@ -4,14 +4,11 @@ struct SidebarView: View {
     @ObservedObject var store: ConsoleStore
 
     var body: some View {
-        List(selection: $store.selectedProjectId) {
+        List(selection: projectSelection) {
             Section("Projects") {
                 ForEach(store.projects) { project in
                     ProjectRow(project: project)
                         .tag(project.id)
-                        .onTapGesture {
-                            store.selectProject(project)
-                        }
                 }
 
                 if store.projects.isEmpty {
@@ -27,6 +24,20 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("MC Pilot")
+    }
+
+    private var projectSelection: Binding<String?> {
+        Binding(
+            get: { store.selectedProjectId },
+            set: { projectId in
+                guard let projectId,
+                      let project = store.projects.first(where: { $0.id == projectId }) else {
+                    store.selectedProjectId = projectId
+                    return
+                }
+                store.selectProject(project)
+            }
+        )
     }
 
     private var stateIcon: String {
