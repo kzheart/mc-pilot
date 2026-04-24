@@ -12,6 +12,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HeaderView(store: store)
                     ActionPanelView(store: store, customArguments: $customArguments)
+                    RuntimeManagementView(store: store)
                     StatusGridView(status: store.status)
                     CommandHistoryView(history: store.history)
                 }
