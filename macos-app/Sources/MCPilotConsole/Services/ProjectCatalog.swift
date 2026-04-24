@@ -33,12 +33,32 @@ enum ProjectCatalog {
 
         let name = (json["project"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? projectId
         let defaultProfile = json["defaultProfile"] as? String ?? ""
+        let activeProfile = loadActiveProfile(
+            name: defaultProfile,
+            profiles: json["profiles"] as? [String: Any]
+        )
 
         return MCTProject(
             id: projectId,
             name: name,
             rootDir: rootDir,
-            defaultProfile: defaultProfile
+            defaultProfile: defaultProfile,
+            activeProfile: activeProfile
         )
+    }
+
+    private static func loadActiveProfile(name: String, profiles: [String: Any]?) -> MCTProjectProfile? {
+        guard !name.isEmpty,
+              let profile = profiles?[name] as? [String: Any],
+              let server = profile["server"] as? String,
+              !server.isEmpty else {
+            return nil
+        }
+
+        let clients = (profile["clients"] as? [Any])?
+            .compactMap { $0 as? String }
+            .filter { !$0.isEmpty } ?? []
+
+        return MCTProjectProfile(name: name, server: server, clients: clients)
     }
 }
