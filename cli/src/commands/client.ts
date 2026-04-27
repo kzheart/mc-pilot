@@ -101,7 +101,9 @@ export function createClientCommand() {
           env: {
             MCT_CLIENT_MOD_VARIANT: downloaded.variantId,
             MCT_CLIENT_MOD_JAR: downloaded.jar
-          }
+          },
+          javaCommand: downloaded.javaCommand,
+          javaVersion: downloaded.javaVersion
         });
 
         return {

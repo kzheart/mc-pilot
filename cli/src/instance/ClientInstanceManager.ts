@@ -29,6 +29,8 @@ export interface CreateClientOptions {
   mute?: boolean;
   launchArgs?: string[];
   env?: Record<string, string>;
+  javaCommand?: string;
+  javaVersion?: number;
 }
 
 export interface LaunchClientOptions {
@@ -64,6 +66,8 @@ export class ClientInstanceManager {
         mute: options.mute,
         launchArgs: options.launchArgs,
         env: options.env,
+        javaCommand: options.javaCommand,
+        javaVersion: options.javaVersion,
         createdAt: new Date().toISOString()
       };
 
@@ -139,6 +143,7 @@ export class ClientInstanceManager {
           MCT_CLIENT_SERVER: options.server ?? "",
           MCT_CLIENT_WS_PORT: String(wsPort),
           MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false),
+          ...(meta.javaCommand ? { MCT_CLIENT_JAVA: meta.javaCommand } : {}),
           ...(mute === undefined ? {} : { MCT_CLIENT_MUTE: String(mute) })
         }
       });

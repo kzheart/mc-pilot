@@ -21,6 +21,8 @@ export interface ClientInstanceMeta {
   mute?: boolean;
   launchArgs?: string[];
   env?: Record<string, string>;
+  javaCommand?: string;
+  javaVersion?: number;
   createdAt: string;
 }
 

@@ -51,6 +51,21 @@ export interface ClientSearchResult {
 
 const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
+    minecraftVersion: "1.21.11",
+    javaVersion: "21+",
+    servers: {
+      vanilla: { supported: true },
+      paper: { supported: true, latestBuild: 69 },
+      purpur: { supported: true, latestBuild: 2568 },
+      spigot: { supported: true, requiresBuildTools: true }
+    },
+    clients: {
+      fabric: { supported: true, loaderVersion: "0.19.2", modVersion: "0.9.1", validation: "verified" },
+      forge: { supported: false, notes: "不支持此版本" },
+      neoforge: { supported: false, validation: "planned", notes: "计划中" }
+    }
+  },
+  {
     minecraftVersion: "1.21.4",
     javaVersion: "21+",
     servers: {

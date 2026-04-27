@@ -15,5 +15,5 @@ include("version-1.18.2", "version-1.20.1", "version-1.20.2", "version-1.20.4")
 include("version-1.20.1-forge", "version-1.20.2-forge", "version-1.20.4-forge")
 
 if (javaVersionMajor >= 21) {
-    include("version-1.21.1", "version-1.21.4")
+    include("version-1.21.1", "version-1.21.4", "version-1.21.11")
 }

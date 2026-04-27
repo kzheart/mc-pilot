@@ -1,7 +1,7 @@
 {
   "defaultVariant": "1.20.4-fabric",
   "buildSystem": "multi-module",
-  "versions": ["1.18.2", "1.20.1", "1.20.2", "1.20.4", "1.21.1", "1.21.4"],
+  "versions": ["1.18.2", "1.20.1", "1.20.2", "1.20.4", "1.21.1", "1.21.4", "1.21.11"],
   "variants": [
     {
       "id": "1.18.2-fabric",
@@ -137,6 +137,18 @@
       "modVersion": "0.9.1",
       "neoforgeVersion": "21.4.75",
       "javaVersion": 21
+    },
+    {
+      "id": "1.21.11-fabric",
+      "minecraftVersion": "1.21.11",
+      "loader": "fabric",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "fabricLoaderVersion": "0.19.2",
+      "yarnMappings": "1.21.11+build.5",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.11"
     }
   ]
 }

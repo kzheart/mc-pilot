@@ -24,7 +24,10 @@ const DOWNLOAD_DISPATCHER = new Agent({
   connect: {
     timeout: 30_000
   },
-  connections: 2
+  headersTimeout: 30_000,
+  bodyTimeout: 30_000,
+  connections: 1,
+  pipelining: 0
 }).compose(
   interceptors.retry({
     maxRetries: 4,
@@ -115,8 +118,8 @@ async function prepareManagedRuntime(
   await installDependencies(resolvedVersion, {
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER,
-    assetsDownloadConcurrency: 2,
-    librariesDownloadConcurrency: 2
+    assetsDownloadConcurrency: 1,
+    librariesDownloadConcurrency: 1
   });
 
   await applyArm64LwjglPatch(runtimeRootDir, installedVersionId, { fetchImpl });
