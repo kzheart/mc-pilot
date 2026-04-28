@@ -12,6 +12,7 @@ import { getListeningPids, isProcessRunning, killProcessTree } from "../util/pro
 import { WebSocketClient } from "../client/WebSocketClient.js";
 
 const INSTANCE_FILE = "instance.json";
+const DEFAULT_CLIENT_MUTE = true;
 
 function getLaunchScriptPath() {
   const thisFile = fileURLToPath(import.meta.url);
@@ -63,7 +64,7 @@ export class ClientInstanceManager {
         wsPort,
         account: options.account,
         headless: options.headless,
-        mute: options.mute,
+        mute: options.mute ?? DEFAULT_CLIENT_MUTE,
         launchArgs: options.launchArgs,
         env: options.env,
         javaCommand: options.javaCommand,
@@ -99,7 +100,7 @@ export class ClientInstanceManager {
       const meta = await this.loadMeta(clientName);
       const instanceDir = resolveClientInstanceDir(clientName);
       const wsPort = options.wsPort ?? meta.wsPort;
-      const mute = options.mute ?? meta.mute;
+      const mute = options.mute ?? meta.mute ?? DEFAULT_CLIENT_MUTE;
 
       if (!meta.launchArgs || meta.launchArgs.length === 0) {
         throw new MctError(

@@ -290,6 +290,12 @@ const REQUEST_CASES: RequestCase[] = [
     params: {}
   },
   {
+    leaf: "gui layout",
+    argv: ["gui", "layout"],
+    action: "gui.layout",
+    params: {}
+  },
+  {
     leaf: "gui screenshot",
     argv: ["gui", "screenshot", "--output", "/tmp/gui.png"],
     action: "gui.screenshot",

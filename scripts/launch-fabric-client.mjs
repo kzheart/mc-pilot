@@ -5,9 +5,11 @@ import { access, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/p
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { createQuickPlayMultiplayer, launch as launchMinecraft } from "@xmcl/core";
+import { DEFAULT_EXTRA_JVM_ARGS, createQuickPlayMultiplayer, launch as launchMinecraft } from "@xmcl/core";
 
 import { getDefaultVariant, getVariantById } from "./mod-variant.mjs";
+
+const DEFAULT_CLIENT_LANGUAGE = "zh_cn";
 
 function parseArgs(argv) {
   const parsed = {};
@@ -88,6 +90,45 @@ function substitute(template, variables) {
   return template.replace(/\$\{([^}]+)\}/g, (_, key) => variables[key] ?? "");
 }
 
+function parseOptionalBoolean(value) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
+function getClientLanguage() {
+  return process.env.MCT_CLIENT_LANGUAGE || DEFAULT_CLIENT_LANGUAGE;
+}
+
+function localeJavaArgs(language) {
+  const [languageCode = "zh", countryCode] = String(language).replace("-", "_").split("_");
+  return [
+    `-Duser.language=${languageCode || "zh"}`,
+    ...(countryCode ? [`-Duser.country=${countryCode.toUpperCase()}`] : [])
+  ];
+}
+
+function normalizeLocaleJavaArgs(javaArgs, language) {
+  return [
+    ...javaArgs.filter((entry) => !entry.startsWith("-Duser.language=") && !entry.startsWith("-Duser.country=")),
+    ...localeJavaArgs(language)
+  ];
+}
+
+function xmclExtraJvmArgs(language, maxMemory) {
+  const defaultArgs = maxMemory ? DEFAULT_EXTRA_JVM_ARGS.filter((entry) => entry !== "-Xmx2G") : DEFAULT_EXTRA_JVM_ARGS;
+  return normalizeLocaleJavaArgs([...defaultArgs], language);
+}
+
 async function ensureFile(filePath, downloadUrl) {
   try {
     await access(filePath);
@@ -152,7 +193,7 @@ async function syncConfiguredMod(gameDir) {
   await copyFile(sourceJar, targetJar);
 }
 
-async function ensureAutomationOptions(gameDir, server) {
+async function ensureAutomationOptions(gameDir, server, mute, language = DEFAULT_CLIENT_LANGUAGE) {
   const optionsPath = path.join(gameDir, "options.txt");
   const values = new Map();
 
@@ -173,6 +214,24 @@ async function ensureAutomationOptions(gameDir, server) {
   values.set("joinedFirstServer", "true");
   values.set("tutorialStep", "none");
   values.set("pauseOnLostFocus", "false");
+  values.set("lang", language);
+  if (mute !== undefined) {
+    const volume = mute ? "0.0" : "1.0";
+    for (const category of [
+      "master",
+      "music",
+      "record",
+      "weather",
+      "block",
+      "hostile",
+      "neutral",
+      "player",
+      "ambient",
+      "voice"
+    ]) {
+      values.set(`soundCategory_${category}`, volume);
+    }
+  }
   if (server) {
     values.set("lastServer", server);
   }
@@ -196,6 +255,8 @@ async function buildLaunchSpec(options) {
   const nativesDir = options["natives-dir"] || path.join(instanceRoot, "natives");
   const gameDir = path.join(instanceRoot, "minecraft");
   const packMeta = await readJson(path.join(instanceRoot, "mmc-pack.json"));
+  const mute = parseOptionalBoolean(process.env.MCT_CLIENT_MUTE);
+  const language = getClientLanguage();
   await syncBuiltMod(instanceRoot, repoRoot, selectedVariant);
   const componentMetas = new Map();
   for (const component of packMeta.components) {
@@ -245,7 +306,7 @@ async function buildLaunchSpec(options) {
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName);
   const server = process.env.MCT_CLIENT_SERVER || "";
-  await ensureAutomationOptions(gameDir, server);
+  await ensureAutomationOptions(gameDir, server, mute, language);
   const [serverHost, serverPort = "25565"] = server.split(":");
   const classpath = [
     path.join(librariesRoot, mainJarPath),
@@ -283,7 +344,7 @@ async function buildLaunchSpec(options) {
       "-XstartOnFirstThread",
       "-Xms512m",
       `-Xmx${options["max-mem"] || "1024m"}`,
-      "-Duser.language=en",
+      ...localeJavaArgs(language),
       `-Djava.library.path=${nativesDir}`,
       "-DFabricMcEmu=net.minecraft.client.main.Main"
     ]
@@ -298,12 +359,14 @@ async function buildManifestLaunchSpec(options) {
 
   const manifest = await readJson(manifestPath);
   const gameDir = manifest.gameDir;
+  const mute = parseOptionalBoolean(process.env.MCT_CLIENT_MUTE);
+  const language = getClientLanguage();
   await syncConfiguredMod(gameDir);
 
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName);
   const server = process.env.MCT_CLIENT_SERVER || "";
-  await ensureAutomationOptions(gameDir, server);
+  await ensureAutomationOptions(gameDir, server, mute, language);
   const [serverHost, serverPort = "25565"] = server.split(":");
   const substitutions = {
     auth_player_name: accountName,
@@ -322,9 +385,9 @@ async function buildManifestLaunchSpec(options) {
     gameArgs.push("--quickPlayMultiplayer", `${serverHost}:${serverPort}`);
   }
 
-  const javaArgs = manifest.javaArgs
+  const javaArgs = normalizeLocaleJavaArgs(manifest.javaArgs
     .map((entry) => substitute(entry, substitutions))
-    .filter((entry) => !entry.includes("${"));
+    .filter((entry) => !entry.includes("${")), language);
 
   return {
     cwd: gameDir,
@@ -366,15 +429,19 @@ async function launchXmclManagedClient(options) {
   const accountName = process.env.MCT_CLIENT_ACCOUNT || options.account || "TEST1";
   const accountUuid = offlineUuid(accountName).replaceAll("-", "");
   const server = process.env.MCT_CLIENT_SERVER || "";
-  await ensureAutomationOptions(gameDir, server);
+  const mute = parseOptionalBoolean(process.env.MCT_CLIENT_MUTE);
+  const language = getClientLanguage();
+  await ensureAutomationOptions(gameDir, server, mute, language);
   const [serverHost, serverPort = "25565"] = server.split(":");
+  const maxMemory = parseMaxMemory(options["max-mem"]);
 
   return launchMinecraft({
     gamePath: gameDir,
     resourcePath: runtimeRoot,
     javaPath: options.java || process.env.MCT_CLIENT_JAVA || "java",
     minMemory: 512,
-    maxMemory: parseMaxMemory(options["max-mem"]),
+    maxMemory,
+    extraJVMArgs: xmclExtraJvmArgs(language, maxMemory),
     version: versionId,
     gameProfile: {
       name: accountName,

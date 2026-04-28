@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -20,7 +20,7 @@ async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 4000) {
   throw new Error(`Condition was not met within ${timeoutMs}ms`);
 }
 
-test("ClientInstanceManager launch applies mute and unmute audio settings via options.txt", async () => {
+test("ClientInstanceManager launch defaults to Simplified Chinese and muted audio", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-mute-"));
   const previousMctHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
@@ -33,8 +33,12 @@ test("ClientInstanceManager launch applies mute and unmute audio settings via op
     const gameDir = path.join(instanceDir, "minecraft");
     const manifestPath = path.join(instanceDir, "launch-manifest.json");
     const optionsPath = path.join(gameDir, "options.txt");
+    const javaArgsPath = path.join(tempDir, "java-args.txt");
+    const fakeJavaPath = path.join(tempDir, "fake-java.sh");
 
     await mkdir(gameDir, { recursive: true });
+    await writeFile(fakeJavaPath, `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`, "utf8");
+    await chmod(fakeJavaPath, 0o755);
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -46,7 +50,7 @@ test("ClientInstanceManager launch applies mute and unmute audio settings via op
           assetsIndexId: "1.20",
           classpathEntries: [],
           mainClass: "net.minecraft.client.main.Main",
-          javaArgs: [],
+          javaArgs: ["-Duser.language=en"],
           gameArgs: []
         },
         null,
@@ -59,15 +63,30 @@ test("ClientInstanceManager launch applies mute and unmute audio settings via op
       name: clientName,
       version: "1.20.4",
       wsPort: 25560,
-      mute: true,
-      launchArgs: ["--manifest", manifestPath, "--java", "/usr/bin/true"]
+      launchArgs: ["--manifest", manifestPath, "--java", fakeJavaPath]
     });
 
     await manager.launch(clientName);
     await waitFor(async () => {
       try {
         const content = await readFile(optionsPath, "utf8");
-        return content.includes("soundCategory_master:0.0") && content.includes("soundCategory_voice:0.0");
+        return (
+          content.includes("lang:zh_cn") &&
+          content.includes("soundCategory_master:0.0") &&
+          content.includes("soundCategory_voice:0.0")
+        );
+      } catch {
+        return false;
+      }
+    });
+    await waitFor(async () => {
+      try {
+        const content = await readFile(javaArgsPath, "utf8");
+        return (
+          content.includes("-Duser.language=zh\n") &&
+          content.includes("-Duser.country=CN\n") &&
+          !content.includes("-Duser.language=en")
+        );
       } catch {
         return false;
       }
