@@ -7,13 +7,15 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      MCT_HOME: ${{ runner.temp }}/mct-home
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - uses: actions/setup-java@v4
@@ -28,12 +30,14 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Build and test CLI
-        run: npm test
+      - name: Run CLI unit tests
+        run: npm run test:cli
 
-      - name: Run system E2E
+      - name: Run CLI system E2E
         run: npm run test:e2e
 
       - name: Validate client-mod (all versions)
         run: ./gradlew build -x test -q
         working-directory: client-mod
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
