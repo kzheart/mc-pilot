@@ -79,6 +79,74 @@ test("ensureServerPortProperty repairs an existing server-port entry", async () 
   }
 });
 
+test("ServerInstanceManager.start uses the server instance javaCommand", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-java-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const markerPath = path.join(tempDir, "java-args.txt");
+    const fakeJavaPath = path.join(tempDir, "fake-java.sh");
+    await writeFile(
+      fakeJavaPath,
+      `#!/bin/sh\nprintf '%s\\n' "$0" "$@" > "${markerPath}"\n`,
+      { encoding: "utf8", mode: 0o755 }
+    );
+
+    const instanceDir = path.join(process.env.MCT_HOME!, "projects", "demo", "paper");
+    await mkdir(instanceDir, { recursive: true });
+    await writeFile(path.join(instanceDir, "paper.jar"), "not-a-real-jar", "utf8");
+    await writeFile(
+      path.join(instanceDir, "instance.json"),
+      JSON.stringify(
+        {
+          name: "paper",
+          project: "demo",
+          type: "paper",
+          mcVersion: "1.21.11",
+          port: 25569,
+          javaCommand: fakeJavaPath,
+          javaVersion: 21,
+          jvmArgs: ["-Xmx1G"],
+          createdAt: new Date().toISOString()
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    await manager.start("paper", { eula: true });
+
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      try {
+        const content = await readFile(markerPath, "utf8");
+        assert.deepEqual(content.trim().split("\n"), [
+          fakeJavaPath,
+          "-Xmx1G",
+          "-jar",
+          path.join(instanceDir, "paper.jar"),
+          "nogui"
+        ]);
+        return;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+
+    assert.fail("fake java command was not invoked");
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("ServerInstanceManager.readLogs strips ANSI by default and preserves them with --raw-colors", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-logs-"));
   const previousHome = process.env.MCT_HOME;

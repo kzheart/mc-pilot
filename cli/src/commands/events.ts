@@ -43,6 +43,27 @@ function resolveEventsFile(clientName: string | undefined): string {
   return path.join(resolveMctHome(), "logs", clientName, "events.jsonl");
 }
 
+function resolveEventClientNames(context: { activeProfile: { clients: string[] } | null }, explicitClient: string | undefined, allClients: boolean): string[] {
+  if (allClients) {
+    const clients = context.activeProfile?.clients ?? [];
+    if (clients.length === 0) {
+      throw new MctError(
+        { code: "INVALID_PARAMS", message: "--all-clients requires an active profile with clients" },
+        4
+      );
+    }
+    return clients;
+  }
+  const clientName = explicitClient ?? context.activeProfile?.clients[0];
+  if (!clientName) {
+    throw new MctError(
+      { code: "INVALID_PARAMS", message: "Client name is required. Use --client <name> or set an active profile." },
+      4
+    );
+  }
+  return [clientName];
+}
+
 function parseSince(raw: string | undefined, nowMs: number): number | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
@@ -246,19 +267,31 @@ export function createEventsCommand() {
   command
     .command("clear")
     .description("Truncate the event log for the active client")
+    .option("--all-clients", "Clear event logs for every client in the active profile")
     .option("--file <path>", "Override the log file path")
     .action(
-      wrapCommand(async (context, { options, globalOptions }: { options: { file?: string }; globalOptions: { client?: string } }) => {
+      wrapCommand(async (context, { options, globalOptions }: { options: { file?: string; allClients?: boolean }; globalOptions: { client?: string } }) => {
         const { truncateSync, existsSync: exists, mkdirSync } = await import("node:fs");
-        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
-        const filePath = options.file ?? resolveEventsFile(clientName);
-        if (exists(filePath)) {
-          truncateSync(filePath, 0);
-          return { cleared: true, file: filePath };
+        if (options.file) {
+          if (exists(options.file)) {
+            truncateSync(options.file, 0);
+            return { cleared: true, file: options.file };
+          }
+          mkdirSync(path.dirname(options.file), { recursive: true });
+          return { cleared: false, reason: "file_not_found", file: options.file };
         }
-        // ensure directory exists for future writes
-        mkdirSync(path.dirname(filePath), { recursive: true });
-        return { cleared: false, reason: "file_not_found", file: filePath };
+
+        const clients = resolveEventClientNames(context, globalOptions.client, Boolean(options.allClients));
+        const results = clients.map((clientName) => {
+          const filePath = resolveEventsFile(clientName);
+          if (exists(filePath)) {
+            truncateSync(filePath, 0);
+            return { client: clientName, cleared: true, file: filePath };
+          }
+          mkdirSync(path.dirname(filePath), { recursive: true });
+          return { client: clientName, cleared: false, reason: "file_not_found", file: filePath };
+        });
+        return { cleared: results.some((result) => result.cleared), clients: results };
       })
     );
 

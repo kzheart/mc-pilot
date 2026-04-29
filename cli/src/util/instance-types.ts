@@ -8,6 +8,8 @@ export interface ServerInstanceMeta {
   mcVersion: string;
   port: number;
   jvmArgs: string[];
+  javaCommand?: string;
+  javaVersion?: number;
   createdAt: string;
 }
 
@@ -34,6 +36,7 @@ export interface ServerRuntimeEntry {
   startedAt: string;
   logPath: string;
   instanceDir: string;
+  logStartOffset?: number;
   stdinPipe?: string;
 }
 

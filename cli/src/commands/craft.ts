@@ -1,6 +1,29 @@
 import { Command } from "commander";
 
+import { MctError } from "../util/errors.js";
 import { createRequestAction, parseJson } from "./request-helpers.js";
+
+function normalizeCraftRecipe(raw: unknown) {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+
+  if (raw && typeof raw === "object" && Array.isArray((raw as { slots?: unknown }).slots)) {
+    const slots = (raw as { slots: unknown[] }).slots;
+    if (slots.length !== 9) {
+      throw new MctError({ code: "INVALID_PARAMS", message: "recipe.slots must contain exactly 9 entries" }, 4);
+    }
+    return [slots.slice(0, 3), slots.slice(3, 6), slots.slice(6, 9)];
+  }
+
+  throw new MctError(
+    {
+      code: "INVALID_PARAMS",
+      message: "recipe must be a 3x3 row array or {\"slots\":[...9 entries...]}"
+    },
+    4
+  );
+}
 
 export function createCraftCommand() {
   return new Command("craft")
@@ -12,11 +35,23 @@ export function createCraftCommand() {
     )
     .requiredOption(
       "--recipe <json>",
-      "Recipe JSON: 9-slot array in row-major order (top-left to bottom-right).\n" +
+      "Recipe JSON: 3 row arrays, or {\"slots\":[...9 entries...]} in row-major order.\n" +
         "Use item IDs without namespace (e.g. \"oak_planks\", not \"minecraft:oak_planks\").\n" +
-        "Example: '{\"slots\":[\"oak_planks\",\"oak_planks\",null,\"oak_planks\",\"oak_planks\",null,null,null,null]}'"
+        "Example: '[[\"oak_planks\",null,null],[\"oak_planks\",null,null],[null,null,null]]'"
     )
-    .action(createRequestAction("craft.craft", ({ options }) => ({ recipe: parseJson(String(options.recipe), "recipe") })));
+    .action(createRequestAction("craft.craft", ({ options }) => ({ recipe: normalizeCraftRecipe(parseJson(String(options.recipe), "recipe")) })));
+}
+
+export function createRecipeCommand() {
+  const command = new Command("recipe").description("Task-level recipe helpers");
+
+  command
+    .command("craft-table")
+    .description("Craft with the currently open crafting table")
+    .requiredOption("--recipe <json>", "Recipe JSON: 3 row arrays or {\"slots\":[...9 entries...]}")
+    .action(createRequestAction("craft.craft", ({ options }) => ({ recipe: normalizeCraftRecipe(parseJson(String(options.recipe), "recipe")) })));
+
+  return command;
 }
 
 export function createAnvilCommand() {

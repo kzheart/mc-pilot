@@ -598,6 +598,17 @@ public final class WorldHandler extends ActionHandler {
 
     private Map<String, Object> craft(Map<String, Object> params) {
         Object recipeValue = getRequired(params, "recipe");
+        if (recipeValue instanceof Map<?, ?> recipeMap) {
+            Object slotsValue = recipeMap.get("slots");
+            if (!(slotsValue instanceof List<?> slots) || slots.size() != 9) {
+                throw new ActionException("INVALID_PARAMS");
+            }
+            List<List<?>> normalizedRows = new ArrayList<>();
+            normalizedRows.add(slots.subList(0, 3));
+            normalizedRows.add(slots.subList(3, 6));
+            normalizedRows.add(slots.subList(6, 9));
+            recipeValue = normalizedRows;
+        }
         if (!(recipeValue instanceof List<?> rows) || rows.size() != 3) {
             throw new ActionException("INVALID_PARAMS");
         }

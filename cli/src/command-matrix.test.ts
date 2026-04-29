@@ -59,6 +59,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "events path",
   "events tail",
   "events wait",
+  "gui click-title",
   "init",
   "plugin add",
   "plugin info",
@@ -71,6 +72,8 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "server create",
   "server exec",
   "server logs",
+  "server logs-mark",
+  "server readiness",
   "server search",
   "server start",
   "server list",
@@ -81,7 +84,8 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "image locate-template",
   "info",
   "up",
-  "use"
+  "use",
+  "wait-log"
 ];
 
 const REQUEST_CASES: RequestCase[] = [
@@ -183,9 +187,9 @@ const REQUEST_CASES: RequestCase[] = [
   },
   {
     leaf: "craft",
-    argv: ["craft", "--recipe", "{\"type\":\"minecraft:crafting_shapeless\"}"],
+    argv: ["craft", "--recipe", "{\"slots\":[\"oak_planks\",null,null,\"oak_planks\",null,null,null,null,null]}"],
     action: "craft.craft",
-    params: { recipe: { type: "minecraft:crafting_shapeless" } }
+    params: { recipe: [["oak_planks", null, null], ["oak_planks", null, null], [null, null, null]] }
   },
   {
     leaf: "combat chase",
@@ -552,6 +556,12 @@ const REQUEST_CASES: RequestCase[] = [
     argv: ["position", "get"],
     action: "position.get",
     params: {}
+  },
+  {
+    leaf: "recipe craft-table",
+    argv: ["recipe", "craft-table", "--recipe", "[[null,\"diamond\",null],[null,\"stick\",null],[null,\"stick\",null]]"],
+    action: "craft.craft",
+    params: { recipe: [[null, "diamond", null], [null, "stick", null], [null, "stick", null]] }
   },
   {
     leaf: "resourcepack accept",

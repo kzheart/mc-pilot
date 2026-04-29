@@ -172,6 +172,19 @@ export function createServerCommand() {
     );
 
   command
+    .command("readiness")
+    .description("Report process, port and log readiness diagnostics")
+    .argument("[name]", "Server instance name (default: from active profile)")
+    .action(
+      wrapCommand(async (context, { args }) => {
+        const project = requireProject(context);
+        const serverName = resolveServerName(context, args[0]);
+        const manager = new ServerInstanceManager(context.globalState, project);
+        return manager.readiness(serverName);
+      })
+    );
+
+  command
     .command("exec")
     .description("Send a console command directly to the server stdin FIFO (bypasses client chat)")
     .argument("<command...>", "Command text (leading slash optional, e.g. \"say hi\" or \"op TEST1\")")
@@ -192,6 +205,8 @@ export function createServerCommand() {
     .option("--tail <n>", "Show only the last N lines", Number)
     .option("--grep <pattern>", "Filter lines by regex")
     .option("--since <lineNumber>", "Skip the first N lines (0-indexed)", Number)
+    .option("--since-start", "Only read log content written after the current server process was started")
+    .option("--after-marker <marker>", "Only read log lines after the last line containing this marker")
     .option("--follow", "Wait for new log lines (requires --timeout)")
     .option("--timeout <seconds>", "Max seconds to wait when --follow is set", Number)
     .option("--first-match", "With --follow, exit as soon as the first matching line appears")
@@ -209,6 +224,8 @@ export function createServerCommand() {
               tail?: number;
               grep?: string;
               since?: number;
+              sinceStart?: boolean;
+              afterMarker?: string;
               follow?: boolean;
               timeout?: number;
               firstMatch?: boolean;
@@ -234,10 +251,26 @@ export function createServerCommand() {
             tail: options.tail,
             grep: options.grep,
             since: options.since,
+            sinceStart: Boolean(options.sinceStart),
+            afterMarker: options.afterMarker,
             rawColors: Boolean(options.rawColors)
           });
         }
       )
+    );
+
+  command
+    .command("logs-mark")
+    .description("Append a marker line to the server log and return the marker")
+    .argument("[name]", "Server instance name (default: from active profile)")
+    .option("--label <label>", "Optional marker label")
+    .action(
+      wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { label?: string } }) => {
+        const project = requireProject(context);
+        const serverName = resolveServerName(context, args[0]);
+        const manager = new ServerInstanceManager(context.globalState, project);
+        return manager.markLogs(serverName, options.label);
+      })
     );
 
   return command;

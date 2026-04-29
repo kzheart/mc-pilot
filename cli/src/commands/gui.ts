@@ -78,11 +78,37 @@ export function createGuiCommand() {
     .command("screenshot")
     .description("Take a screenshot of the current GUI")
     .option("--output <path>", "Output file path (default: project screenshot directory)")
+    .option("--timeout <seconds>", "Screenshot response timeout in seconds (default 30)", Number)
     .action(
-      wrapCommand(async (context, { options, globalOptions }: { options: { output?: string }; globalOptions: { client?: string } }) => {
-        return sendClientRequest(context, globalOptions.client ?? context.activeProfile?.clients[0], "gui.screenshot", {
-          output: resolveScreenshotOutputPath(context, options.output, "gui")
-        });
+      wrapCommand(async (context, { options, globalOptions }: { options: { output?: string; timeout?: number }; globalOptions: { client?: string } }) => {
+        return sendClientRequest(
+          context,
+          globalOptions.client ?? context.activeProfile?.clients[0],
+          "gui.screenshot",
+          { output: resolveScreenshotOutputPath(context, options.output, "gui") },
+          options.timeout ?? Math.max(30, context.timeout("default"))
+        );
+      })
+    );
+
+  command
+    .command("click-title")
+    .description("Click a GUI slot by title text match")
+    .argument("<title>", "Regex matched against item displayName or type")
+    .option("--button <button>", "Click button: left|right|middle|shift-left|shift-right", "left")
+    .action(
+      wrapCommand(async (context, { args, options, globalOptions }: { args: (string | undefined)[]; options: { button?: string }; globalOptions: { client?: string } }) => {
+        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
+        const snapshot = await sendClientRequest(context, clientName, "gui.snapshot", {});
+        const slots = (((snapshot as { data?: { data?: { slots?: unknown[] } } }).data?.data?.slots)
+          ?? ((snapshot as { data?: { slots?: unknown[] } }).data?.slots)
+          ?? []) as Array<{ slot?: number; item?: { type?: string; displayName?: string } }>;
+        const pattern = new RegExp(String(args[0]));
+        const found = slots.find((slot) => slot.item && (pattern.test(String(slot.item.displayName ?? "")) || pattern.test(String(slot.item.type ?? ""))));
+        if (!found || found.slot === undefined) {
+          return { clicked: false, matched: false, title: args[0], slots: slots.length };
+        }
+        return sendClientRequest(context, clientName, "gui.click", { slot: found.slot, button: options.button ?? "left" });
       })
     );
 

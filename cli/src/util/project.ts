@@ -64,17 +64,25 @@ export async function loadProjectFileById(projectId: string): Promise<MctProject
 }
 
 export async function loadProjectFileForCwd(cwd: string): Promise<ResolvedProjectConfig | null> {
-  const projectId = slugifyProjectId(normalizeProjectRoot(cwd));
-  const projectFile = await loadProjectFileById(projectId);
-  if (!projectFile) {
-    return null;
-  }
+  let current = normalizeProjectRoot(cwd);
 
-  return {
-    projectId,
-    filePath: resolveProjectFilePath(projectId),
-    projectFile
-  };
+  while (true) {
+    const projectId = slugifyProjectId(current);
+    const projectFile = await loadProjectFileById(projectId);
+    if (projectFile) {
+      return {
+        projectId,
+        filePath: resolveProjectFilePath(projectId),
+        projectFile
+      };
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
 }
 
 export async function loadProjectFileForId(projectId: string): Promise<ResolvedProjectConfig | null> {

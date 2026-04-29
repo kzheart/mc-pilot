@@ -76,8 +76,10 @@ export function createUpCommand() {
     .description("Deploy plugins, start server and clients, wait for ready")
     .option("--profile <name>", "Profile name")
     .option("--eula", "Auto-accept EULA")
+    .option("--server-only-ok", "Only deploy/start/wait for the server; skip launching and waiting for clients")
+    .option("--skip-client-ready", "Launch/reconnect clients but do not wait for them to join a world")
     .action(
-      wrapCommand(async (context, { options }: { options: { profile?: string; eula?: boolean } }) => {
+      wrapCommand(async (context, { options }: { options: { profile?: string; eula?: boolean; serverOnlyOk?: boolean; skipClientReady?: boolean } }) => {
         const { projectFile, projectId, projectRootDir } = context;
         if (!projectFile || !projectId || !projectRootDir) {
           throw new MctError({ code: "NO_PROJECT", message: "No project context. Run 'mct init' first." }, 4);
@@ -102,7 +104,13 @@ export function createUpCommand() {
 
         // 3. Wait for server
         const serverMeta = await serverManager.loadMeta(profile.server);
-        await serverManager.waitReady(profile.server, context.timeout("serverReady"));
+        results.serverReady = await serverManager.waitReady(profile.server, context.timeout("serverReady"));
+
+        if (options.serverOnlyOk) {
+          results.ready = true;
+          results.clientsSkipped = true;
+          return results;
+        }
 
         // 4. Launch clients (reuse running clients via reconnect)
         const serverAddress = `localhost:${serverMeta.port}`;
@@ -119,8 +127,14 @@ export function createUpCommand() {
         results.clients = clientResults;
 
         // 5. Wait for clients (WS connected + in-world)
-        for (const clientName of profile.clients) {
-          await clientManager.waitReady(clientName, context.timeout("clientReady"));
+        if (options.skipClientReady) {
+          results.clientReadySkipped = true;
+        } else {
+          const readyClients: unknown[] = [];
+          for (const clientName of profile.clients) {
+            readyClients.push(await clientManager.waitReady(clientName, context.timeout("clientReady")));
+          }
+          results.clientReady = readyClients;
         }
 
         results.ready = true;

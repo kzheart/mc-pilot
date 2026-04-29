@@ -168,6 +168,13 @@ mct --client p1 combat kill --type zombie --nearest
 mct --client p2 status health
 ```
 
+`mct up` waits for every profile client to join a world by default. For multi-client plugin tests where one client may be intentionally stuck on menus while the server and other clients are usable, use:
+
+```bash
+mct up --skip-client-ready       # deploy/start server and launch clients, but do not block on in-world checks
+mct up --server-only-ok          # deploy/start/wait server only; skip client launch and client ready checks
+```
+
 ## Examples
 
 ### Shop Plugin Test
@@ -192,10 +199,30 @@ mct inventory get                     # verify item in inventory
 mct block interact 12 80 34
 
 # Craft sticks from planks (auto-places materials, auto-takes result)
+mct craft --recipe '[["oak_planks",null,null],["oak_planks",null,null],[null,null,null]]'
+
+# Legacy 9-slot object form is also accepted and normalized by the CLI:
 mct craft --recipe '{"slots":["oak_planks",null,null,"oak_planks",null,null,null,null,null]}'
 
 # Result is now in inventory
 mct inventory get
+```
+
+### Log and Screenshot Diagnostics
+
+```bash
+# Append a marker, then inspect only newer matching lines.
+MARKER=$(mct server logs-mark --human | tail -1)
+mct server logs --after-marker "$MARKER" --grep "ERROR|Exception"
+
+# Ignore stale lines from previous server launches.
+mct server logs --since-start --grep "Enabled|ERROR"
+
+# Wait for a fresh matching log line without hand-written polling.
+mct wait-log --grep "Done .* For help" --timeout 60
+
+# Screenshot requests use a longer timeout and one retry by default; tune if the client is slow.
+mct screenshot --timeout 45 --retries 2 --output ./screenshots/check.png
 ```
 
 ### Enchanting Workflow

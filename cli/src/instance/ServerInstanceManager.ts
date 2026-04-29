@@ -64,6 +64,8 @@ export interface CreateServerOptions {
   version: string;
   port?: number;
   jvmArgs?: string[];
+  javaCommand?: string;
+  javaVersion?: number;
   eula?: boolean;
   cachedJarPath?: string;
 }
@@ -105,6 +107,8 @@ export class ServerInstanceManager {
       mcVersion: options.version,
       port,
       jvmArgs: options.jvmArgs ?? [],
+      javaCommand: options.javaCommand,
+      javaVersion: options.javaVersion,
       createdAt: new Date().toISOString()
     };
 
@@ -147,9 +151,11 @@ export class ServerInstanceManager {
     mkdirSync(stateDir, { recursive: true });
 
     const logPath = path.join(logsDir, `server-${this.project}-${serverName}.log`);
+    const logStartOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
     const stdout = openSync(logPath, "a");
 
     const jvmArgs = options.jvmArgs ?? meta.jvmArgs;
+    const javaCommand = meta.javaCommand ?? "java";
 
     // Create a named pipe (FIFO) for stdin so external tools (GUI) can send commands
     const stdinPipe = path.join(stateDir, `stdin-${this.project}-${serverName}.fifo`);
@@ -161,7 +167,7 @@ export class ServerInstanceManager {
     // then exec java with stdin reading from the FIFO
     const child = spawn("bash", [
       "-c",
-      'exec 3<>"$MCT_STDIN_PIPE"; exec java "$@" 0<&3',
+      'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
       "mct-server",
       ...jvmArgs, "-jar", jarFile, "nogui"
     ], {
@@ -171,7 +177,8 @@ export class ServerInstanceManager {
       env: {
         ...process.env,
         MCT_SERVER_PORT: String(meta.port),
-        MCT_STDIN_PIPE: stdinPipe
+        MCT_STDIN_PIPE: stdinPipe,
+        MCT_SERVER_JAVA: javaCommand
       }
     });
 
@@ -185,6 +192,7 @@ export class ServerInstanceManager {
       startedAt: new Date().toISOString(),
       logPath,
       instanceDir,
+      logStartOffset,
       stdinPipe
     };
 
@@ -310,6 +318,11 @@ export class ServerInstanceManager {
           host: "127.0.0.1",
           port: entry.port,
           phase: snapshot.phase,
+          signals: {
+            processAlive: true,
+            portReachable: true,
+            readyLineSeen: snapshot.phase === "ready"
+          },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
           recentLines: snapshot.recentLines
@@ -328,6 +341,11 @@ export class ServerInstanceManager {
           host: "127.0.0.1",
           port: entry.port,
           phase: snapshot.phase,
+          signals: {
+            processAlive: isProcessRunning(entry.pid),
+            portReachable: false,
+            readyLineSeen: snapshot.phase === "ready"
+          },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
           recentLines: snapshot.recentLines
@@ -373,15 +391,19 @@ export class ServerInstanceManager {
 
   async readLogs(
     serverName: string,
-    options: { tail?: number; grep?: string; since?: number; rawColors?: boolean } = {}
+    options: { tail?: number; grep?: string; since?: number; sinceStart?: boolean; afterMarker?: string; rawColors?: boolean } = {}
   ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
     const entry = await this.requireRuntimeEntry(serverName);
     const logPath = entry.logPath;
 
-    const raw = await readFile(logPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+    let raw = await readFile(logPath, "utf8").catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return "";
       throw error;
     });
+
+    if (options.sinceStart && entry.logStartOffset && entry.logStartOffset > 0) {
+      raw = raw.slice(entry.logStartOffset);
+    }
 
     let lines = raw.split("\n");
     if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
@@ -395,6 +417,19 @@ export class ServerInstanceManager {
       lines = lines.slice(Math.max(0, options.since));
     }
 
+    if (options.afterMarker) {
+      let markerIndex = -1;
+      for (let index = lines.length - 1; index >= 0; index--) {
+        if (lines[index]!.includes(options.afterMarker)) {
+          markerIndex = index;
+          break;
+        }
+      }
+      if (markerIndex >= 0) {
+        lines = lines.slice(markerIndex + 1);
+      }
+    }
+
     if (options.grep) {
       const re = new RegExp(options.grep);
       lines = lines.filter((line) => re.test(line));
@@ -405,6 +440,13 @@ export class ServerInstanceManager {
     }
 
     return { logPath, totalLines: total, returnedLines: lines.length, lines };
+  }
+
+  async markLogs(serverName: string, label?: string): Promise<{ logPath: string; marker: string }> {
+    const entry = await this.requireRuntimeEntry(serverName);
+    const marker = `MCT_MARK ${new Date().toISOString()} ${label ?? ""}`.trim();
+    await writeFile(entry.logPath, `\n${marker}\n`, { flag: "a", encoding: "utf8" });
+    return { logPath: entry.logPath, marker };
   }
 
   async followLogs(
@@ -496,6 +538,24 @@ export class ServerInstanceManager {
       logPath,
       recentLines,
       lastLine
+    };
+  }
+
+  async readiness(serverName: string) {
+    const entry = await this.requireRuntimeEntry(serverName);
+    const processAlive = isProcessRunning(entry.pid);
+    const portReachable = await isTcpPortReachable("127.0.0.1", entry.port);
+    const snapshot = await this.describeStartup(entry.logPath);
+    return {
+      process: { alive: processAlive, pid: entry.pid },
+      port: { reachable: portReachable, host: "127.0.0.1", port: entry.port },
+      log: {
+        phase: snapshot.phase,
+        readyLineSeen: snapshot.phase === "ready",
+        lastLine: snapshot.lastLine,
+        recentLines: snapshot.recentLines,
+        path: snapshot.logPath
+      }
     };
   }
 
