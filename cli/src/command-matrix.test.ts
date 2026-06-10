@@ -86,6 +86,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "record start",
   "record stop",
   "record list",
+  "record view",
   "up",
   "use",
   "wait-log"

@@ -1,12 +1,14 @@
 import { Command } from "commander";
+import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { createRecorderBackend } from "../record/factory.js";
 import { HELPER_EVENT_LOG } from "../record/MacosSckBackend.js";
-import { RecordingStateStore, TIMELINE_FILE, type ActiveRecording } from "../record/recording-state.js";
+import { RecordingStateStore, TIMELINE_FILE, type ActiveRecording, type TimelineEntry } from "../record/recording-state.js";
 import type { RecordingArtifact } from "../record/RecorderBackend.js";
+import { renderViewerHtml, type ViewerEventEntry } from "../record/viewer-template.js";
 import { wrapCommand } from "../util/command.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
 import { MctError } from "../util/errors.js";
@@ -290,6 +292,73 @@ async function listRecordings(context: CommandContext) {
   return { recordings };
 }
 
+async function readJsonl<T>(filePath: string): Promise<T[]> {
+  try {
+    const raw = await readFile(filePath, "utf8");
+    return raw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as T;
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is T => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+async function viewRecording(context: CommandContext, recordingId: string, options: { open?: boolean }) {
+  const recordingsDir = requireRecordingsDir(context);
+  const dir = path.join(recordingsDir, recordingId);
+
+  const manifest = await readManifest(dir);
+  if (!manifest) {
+    const available = (await listRecordings(context)).recordings.map((entry) => entry.recordingId);
+    throw new MctError(
+      {
+        code: "NOT_FOUND",
+        message: `recording ${recordingId} not found`,
+        details: { available }
+      },
+      2
+    );
+  }
+
+  const timeline = await readJsonl<TimelineEntry>(path.join(dir, TIMELINE_FILE));
+  const events = await readJsonl<ViewerEventEntry>(path.join(dir, EVENTS_FILE));
+
+  const html = renderViewerHtml({
+    recordingId: manifest.recordingId,
+    clientName: manifest.clientName,
+    startedAt: manifest.artifact.startedAt,
+    stoppedAt: manifest.stoppedAt,
+    status: manifest.status,
+    videoPath: manifest.artifact.path,
+    timeline,
+    events
+  });
+
+  const viewerPath = path.join(dir, "viewer.html");
+  await writeFile(viewerPath, html, "utf8");
+
+  const shouldOpen = (options.open ?? true) && process.platform === "darwin";
+  if (shouldOpen) {
+    spawn("open", [viewerPath], { detached: true, stdio: "ignore" }).unref();
+  }
+
+  return {
+    recordingId,
+    viewer: viewerPath,
+    opened: shouldOpen,
+    timelineEntries: timeline.length,
+    events: events.length
+  };
+}
+
 export function createRecordCommand() {
   const record = new Command("record").description("Record the client screen during a test session");
 
@@ -314,6 +383,16 @@ export function createRecordCommand() {
     .command("list")
     .description("List recordings of the current project")
     .action(wrapCommand(async (context) => listRecordings(context)));
+
+  record
+    .command("view <id>")
+    .description("Generate viewer.html for a recording (opens in browser on macOS)")
+    .option("--no-open", "Do not open the viewer after generating it")
+    .action(
+      wrapCommand(async (context, { args, options }) =>
+        viewRecording(context, args[0]!, options as { open?: boolean })
+      )
+    );
 
   return record;
 }
