@@ -135,6 +135,7 @@ All commands output JSON by default. Use `--human` for human-readable output.
 | `mct input` | Raw mouse/keyboard input |
 | `mct wait` | Wait (seconds/ticks/conditions) |
 | `mct events` | Inspect or wait for client event-log entries |
+| `mct record` | Record the client screen during tests (start/stop/list/view, macOS only for now) |
 | `mct schema` | Output a machine-readable CLI/protocol schema |
 
 Use `mct <command> --help` for detailed usage of each command.
@@ -224,6 +225,42 @@ mct wait-log --grep "Done .* For help" --timeout 60
 # Screenshot requests use a longer timeout and one retry by default; tune if the client is slow.
 mct screenshot --timeout 45 --retries 2 --output ./screenshots/check.png
 ```
+
+### Test Session Recording (macOS)
+
+Record the client window as mp4 while commands run, then review everything on a
+synchronized replay page (video + command timeline + game events).
+
+Prerequisites:
+
+1. Build the recorder helper once: `cd recorder/macos && swift build -c release`
+   (requires Xcode Command Line Tools; set `MCT_RECORDER_BIN` to use a custom binary path).
+2. Grant **Screen Recording** permission to your terminal app in
+   System Settings > Privacy & Security > Screen Recording, **before** running tests.
+   Without it `mct record start` fails fast with an authorization hint.
+
+```bash
+# Start recording the client window (client must be running)
+mct record start --client bot1 [--fps 30]
+
+# Run the test as usual — every mct command is recorded into the timeline automatically
+mct chat command "gamemode creative"
+mct move to 100 64 100
+mct block break 100 63 100
+
+# Stop and finalize (writes recording.mp4, timeline.jsonl and a slice of events.jsonl)
+mct record stop --client bot1
+
+# List recordings of the current project
+mct record list
+
+# Generate viewer.html and open it in the browser
+mct record view <recording-id>
+```
+
+Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/`. The
+recording survives client crashes (the helper finalizes the mp4 automatically
+when the target process exits).
 
 ### Enchanting Workflow
 
