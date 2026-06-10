@@ -1,4 +1,5 @@
 import Foundation
+import ScreenCaptureKit
 
 // MARK: - CLI 参数
 
@@ -92,10 +93,25 @@ final class StopController {
         case targetExited
     }
 
-    private let semaphore = DispatchSemaphore(value: 0)
     private let lock = NSLock()
+    private let queue: DispatchQueue
     private var stopRequested = false
+    private var handler: (() -> Void)?
     private(set) var reason: Reason?
+
+    init(queue: DispatchQueue) {
+        self.queue = queue
+    }
+
+    func onStop(_ handler: @escaping () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        if stopRequested {
+            queue.async(execute: handler)
+        } else {
+            self.handler = handler
+        }
+    }
 
     func requestStop(_ reason: Reason) {
         lock.lock()
@@ -103,19 +119,18 @@ final class StopController {
         guard !stopRequested else { return }
         stopRequested = true
         self.reason = reason
-        semaphore.signal()
-    }
-
-    func wait() {
-        semaphore.wait()
+        if let handler {
+            self.handler = nil
+            queue.async(execute: handler)
+        }
     }
 }
 
 // MARK: - 主流程
 
 let options = parseOptions(CommandLine.arguments)
-let stopController = StopController()
 let controlQueue = DispatchQueue(label: "mct.recorder.control")
+let stopController = StopController(queue: controlQueue)
 
 guard kill(options.pid, 0) == 0 else {
     fail("target pid \(options.pid) is not running")
@@ -160,8 +175,33 @@ let processSource = DispatchSource.makeProcessSource(
 processSource.setEventHandler { stopController.requestStop(.targetExited) }
 processSource.resume()
 
-// 画面采集:S2 以 ScreenCaptureKit 实现替换此占位逻辑
-RecorderEvents.started(timestampMs: Int64(Date().timeIntervalSince1970 * 1000))
-stopController.wait()
-RecorderEvents.stopped(frames: 0)
-exit(0)
+// 窗口定位 + 录制
+let targetWindow: SCWindow
+do {
+    targetWindow = try WindowLocator.locate(pid: options.pid, titleHint: options.windowTitle)
+} catch {
+    fail(String(describing: error))
+}
+
+let recorder = WindowRecorder(window: targetWindow, outputURL: outputURL, fps: options.fps)
+recorder.start { result in
+    switch result {
+    case .success(let firstFrameMs):
+        RecorderEvents.started(timestampMs: firstFrameMs)
+    case .failure(let error):
+        fail(String(describing: error))
+    }
+}
+
+stopController.onStop {
+    recorder.stop { frames in
+        RecorderEvents.stopped(frames: frames)
+        exit(0)
+    }
+    // finishWriting 卡死兜底,避免 helper 永不退出
+    controlQueue.asyncAfter(deadline: .now() + 20) {
+        fail("finalize timed out after 20s")
+    }
+}
+
+dispatchMain()
