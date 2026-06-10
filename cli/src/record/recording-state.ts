@@ -1,7 +1,12 @@
+import { appendFile } from "node:fs/promises";
+import path from "node:path";
+
 import { resolveGlobalStateDir } from "../util/paths.js";
 import { StateStore } from "../util/state.js";
 
 const RECORDINGS_STATE_FILE = "recordings.json";
+
+export const TIMELINE_FILE = "timeline.jsonl";
 
 export interface ActiveRecording {
   recordingId: string;
@@ -54,5 +59,25 @@ export async function readActiveRecording(clientName: string): Promise<ActiveRec
     return state.active[clientName] ?? null;
   } catch {
     return null;
+  }
+}
+
+export interface TimelineEntry {
+  t: number;
+  action: string;
+  params: Record<string, unknown>;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+/** 录制期间把命令追加进 timeline.jsonl;无活动录制或写入失败均不影响命令本身 */
+export async function appendTimelineEntry(clientName: string, entry: TimelineEntry): Promise<void> {
+  try {
+    const active = await readActiveRecording(clientName);
+    if (!active) return;
+    await appendFile(path.join(active.dir, TIMELINE_FILE), `${JSON.stringify(entry)}\n`, "utf8");
+  } catch (error) {
+    process.stderr.write(`warning: failed to append recording timeline: ${(error as Error).message}\n`);
   }
 }

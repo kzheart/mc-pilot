@@ -5,7 +5,7 @@ import path from "node:path";
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { createRecorderBackend } from "../record/factory.js";
 import { HELPER_EVENT_LOG } from "../record/MacosSckBackend.js";
-import { RecordingStateStore, type ActiveRecording } from "../record/recording-state.js";
+import { RecordingStateStore, TIMELINE_FILE, type ActiveRecording } from "../record/recording-state.js";
 import type { RecordingArtifact } from "../record/RecorderBackend.js";
 import { wrapCommand } from "../util/command.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
@@ -31,7 +31,6 @@ export interface RecordingManifest {
 }
 
 const MANIFEST_FILE = "manifest.json";
-export const TIMELINE_FILE = "timeline.jsonl";
 const EVENTS_FILE = "events.jsonl";
 
 function requireRecordingsDir(context: CommandContext): string {
