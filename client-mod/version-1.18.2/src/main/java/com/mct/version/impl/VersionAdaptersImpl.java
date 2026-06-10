@@ -15,6 +15,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public final class VersionAdaptersImpl {
 
@@ -51,6 +53,7 @@ public final class VersionAdaptersImpl {
             createActionResultAdapter(),
             createNetworkAdapter(),
             createImageAdapter(),
+            createScreenshotAdapter(),
             createInteractionAdapter()
         );
     }
@@ -267,6 +270,10 @@ public final class VersionAdaptersImpl {
                 return image.getColor(x, y);
             }
         };
+    }
+
+    private static ScreenshotAdapter createScreenshotAdapter() {
+        return client -> CompletableFuture.completedFuture(ScreenshotRecorder.takeScreenshot(client.getFramebuffer()));
     }
 
     private static InteractionAdapter createInteractionAdapter() {

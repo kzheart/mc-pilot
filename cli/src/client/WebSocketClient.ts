@@ -25,6 +25,7 @@ export class WebSocketClient {
     try {
       const response = await new Promise<unknown>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          socket.terminate();
           reject(
             new MctError(
               {

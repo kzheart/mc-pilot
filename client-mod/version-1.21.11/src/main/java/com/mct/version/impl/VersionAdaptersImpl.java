@@ -56,6 +56,7 @@ public final class VersionAdaptersImpl {
             createActionResultAdapter(),
             createNetworkAdapter(),
             createImageAdapter(),
+            createScreenshotAdapter(),
             createInteractionAdapter()
         );
     }
@@ -258,6 +259,10 @@ public final class VersionAdaptersImpl {
                 return image.getColorArgb(x, y);
             }
         };
+    }
+
+    private static ScreenshotAdapter createScreenshotAdapter() {
+        return ScreenshotSupport::takeScreenshot;
     }
 
     private static InteractionAdapter createInteractionAdapter() {

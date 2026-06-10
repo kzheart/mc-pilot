@@ -13,13 +13,15 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
 import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
@@ -36,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 public final class GuiInventoryHandler extends ActionHandler {
 
     private static final double DEFAULT_WAIT_TIMEOUT_SECONDS = 10.0D;
+    private static final long SCREENSHOT_TIMEOUT_SECONDS = 10L;
 
     public GuiInventoryHandler(MinecraftClient client, ClientStateTracker stateTracker) {
         super(client, stateTracker);
@@ -246,35 +249,39 @@ public final class GuiInventoryHandler extends ActionHandler {
     }
 
     private Map<String, Object> captureScreenshot(String output, @Nullable String region, boolean guiOnly) {
-        return runOnClientThread(() -> {
-            try {
-                Path outputPath = Path.of(output).toAbsolutePath();
-                if (outputPath.getParent() != null) {
-                    Files.createDirectories(outputPath.getParent());
-                }
-                NativeImage image = ScreenshotRecorder.takeScreenshot(client.getFramebuffer());
-                try {
-                    NativeImage toWrite = image;
-                    if (region != null && !region.isBlank()) {
-                        toWrite = cropImage(image, region);
-                    }
-                    toWrite.writeTo(outputPath);
-                    if (toWrite != image) {
-                        toWrite.close();
-                    }
-                } finally {
-                    image.close();
-                }
-                return Map.of(
-                    "path", outputPath.toString(),
-                    "width", client.getWindow().getScaledWidth(),
-                    "height", client.getWindow().getScaledHeight(),
-                    "gui", guiOnly
-                );
-            } catch (IOException exception) {
-                throw new ActionException("IO_ERROR");
+        try {
+            Path outputPath = Path.of(output).toAbsolutePath();
+            if (outputPath.getParent() != null) {
+                Files.createDirectories(outputPath.getParent());
             }
-        });
+
+            CompletableFuture<NativeImage> imageFuture = runOnClientThread(() -> ClientVersionModulesHolder.get().screenshot().capture(client));
+            NativeImage image = imageFuture.get(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            try {
+                NativeImage toWrite = image;
+                if (region != null && !region.isBlank()) {
+                    toWrite = cropImage(image, region);
+                }
+                toWrite.writeTo(outputPath);
+                if (toWrite != image) {
+                    toWrite.close();
+                }
+            } finally {
+                image.close();
+            }
+            return Map.of(
+                "path", outputPath.toString(),
+                "width", client.getWindow().getScaledWidth(),
+                "height", client.getWindow().getScaledHeight(),
+                "gui", guiOnly
+            );
+        } catch (TimeoutException exception) {
+            throw new ActionException("TIMEOUT");
+        } catch (IOException exception) {
+            throw new ActionException("IO_ERROR");
+        } catch (Exception exception) {
+            throw new ActionException("INTERNAL_ERROR");
+        }
     }
 
     private NativeImage cropImage(NativeImage image, String region) {
