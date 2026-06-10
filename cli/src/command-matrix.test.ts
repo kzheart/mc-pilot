@@ -83,6 +83,9 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "image bbox",
   "image locate-template",
   "info",
+  "record start",
+  "record stop",
+  "record list",
   "up",
   "use",
   "wait-log"

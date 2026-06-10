@@ -19,6 +19,7 @@ import { createInventoryCommand } from "./commands/inventory.js";
 import { createLookCommand } from "./commands/look.js";
 import { createMoveCommand } from "./commands/move.js";
 import { createPositionCommand } from "./commands/position.js";
+import { createRecordCommand } from "./commands/record.js";
 import { createResourcepackCommand } from "./commands/resourcepack.js";
 import { createRotationCommand } from "./commands/rotation.js";
 import { createScreenCommand } from "./commands/screen.js";
@@ -103,6 +104,7 @@ export function buildProgram() {
   program.addCommand(createGuiCommand());
   program.addCommand(createImageCommand());
   program.addCommand(createScreenshotCommand());
+  program.addCommand(createRecordCommand());
   program.addCommand(createScreenCommand());
   program.addCommand(createHudCommand());
   program.addCommand(createStatusCommand());
