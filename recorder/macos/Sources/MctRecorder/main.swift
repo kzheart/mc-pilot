@@ -33,6 +33,11 @@ func parseOptions(_ arguments: [String]) -> CliOptions {
     while index < arguments.count {
         let argument = arguments[index]
         switch argument {
+        case "--preflight":
+            // 权限/环境预检模式:输出结果后直接退出,授权通过为 0
+            let granted = CGPreflightScreenCaptureAccess()
+            RecorderEvents.emit(["event": "preflight", "screenCapture": granted])
+            exit(granted ? 0 : 1)
         case "--pid":
             guard let value = Int32(nextValue(for: "--pid")), value > 0 else {
                 fail("--pid must be a positive integer", exitCode: 2)
