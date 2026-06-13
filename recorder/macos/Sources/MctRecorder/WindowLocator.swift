@@ -81,18 +81,20 @@ enum WindowLocator {
         return children + children.flatMap { descendantPids(of: $0, maxDepth: maxDepth - 1) }
     }
 
+    /// 用 sysctl(KERN_PROC_ALL) 取全进程表的 (pid, ppid),再过滤直接子进程。
+    /// 比 proc_listpids(PROC_PPID_ONLY) 可靠:后者在部分 macOS 版本下对包装进程返回空。
     private static func childPids(of parent: pid_t) -> [pid_t] {
-        // proc_info.h 中的 PROC_PPID_ONLY,Swift 未导出该常量
-        let procPpidOnly: UInt32 = 6
-        var pids = [pid_t](repeating: 0, count: 2048)
-        let byteCount = proc_listpids(
-            procPpidOnly,
-            UInt32(parent),
-            &pids,
-            Int32(pids.count * MemoryLayout<pid_t>.size)
-        )
-        guard byteCount > 0 else { return [] }
-        let count = Int(byteCount) / MemoryLayout<pid_t>.size
-        return Array(pids.prefix(count)).filter { $0 > 0 }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
+        var length = 0
+        guard sysctl(&mib, 4, nil, &length, nil, 0) == 0, length > 0 else { return [] }
+
+        let stride = MemoryLayout<kinfo_proc>.stride
+        var procs = [kinfo_proc](repeating: kinfo_proc(), count: length / stride)
+        guard sysctl(&mib, 4, &procs, &length, nil, 0) == 0 else { return [] }
+
+        let count = length / stride
+        return procs.prefix(count).compactMap { proc in
+            proc.kp_eproc.e_ppid == parent ? proc.kp_proc.p_pid : nil
+        }
     }
 }
