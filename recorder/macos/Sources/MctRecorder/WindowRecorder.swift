@@ -64,6 +64,9 @@ final class WindowRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
                     return
                 }
                 self.outputQueue.asyncAfter(deadline: .now() + Self.firstFrameTimeoutSeconds) {
+                    // 首帧已到则 startCompletion 已置 nil,定时器作废;否则才判超时失败,
+                    // 避免长录制(>首帧超时)时这个延迟闭包误触发 finishStart 把进程杀掉
+                    guard self.startCompletion != nil else { return }
                     self.finishStart(.failure(WindowRecorderError.firstFrameTimeout))
                 }
             }
