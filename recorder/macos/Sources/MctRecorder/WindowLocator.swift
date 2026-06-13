@@ -53,7 +53,9 @@ enum WindowLocator {
             WindowLocatorError.contentUnavailable("timed out")
         )
 
-        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
+        // onScreenWindowsOnly: false —— 客户端窗口常被遮挡或处于后台 Space,
+        // 仍需能定位;后续按目标 pid 过滤,不会误选其他应用的窗口
+        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
             if let content {
                 result = .success(content.windows)
             } else {
