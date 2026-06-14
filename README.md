@@ -231,13 +231,18 @@ mct screenshot --timeout 45 --retries 2 --output ./screenshots/check.png
 Record the client window as mp4 while commands run, then review everything on a
 synchronized replay page (video + command timeline + game events).
 
+The recorder helper (a universal `arm64 + x86_64` binary) ships inside the npm
+package, so recording works out of the box after `npm install` — no build step.
+
 Prerequisites:
 
-1. Build the recorder helper once: `cd recorder/macos && swift build -c release`
-   (requires Xcode Command Line Tools; set `MCT_RECORDER_BIN` to use a custom binary path).
-2. Grant **Screen Recording** permission to your terminal app in
+1. Grant **Screen Recording** permission to your terminal app in
    System Settings > Privacy & Security > Screen Recording, **before** running tests.
    Without it `mct record start` fails fast with an authorization hint.
+
+> Local development from source: build the helper once with
+> `cd recorder/macos && swift build -c release` (requires Xcode Command Line Tools).
+> Set `MCT_RECORDER_BIN` to override the bundled binary with a custom path.
 
 ```bash
 # Start recording the client window (client must be running)

@@ -40,14 +40,24 @@ function isPidRunning(pid: number) {
   }
 }
 
+const HELPER_BINARY_NAME = "mct-recorder";
+
 export function resolveHelperBinary(): string {
   if (process.env.MCT_RECORDER_BIN) {
     return process.env.MCT_RECORDER_BIN;
   }
 
-  // 仓库内构建产物:cli/dist/record/ → 仓库根
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(moduleDir, "../../..", "recorder/macos/.build/release/mct-recorder");
+  const packageRoot = path.resolve(moduleDir, "../..");
+
+  // 1) 随 npm 包分发的预编译二进制(发版时由 bundle:helper 写入 vendor/),即装即用
+  const bundled = path.join(packageRoot, "vendor", HELPER_BINARY_NAME);
+  if (existsSync(bundled)) {
+    return bundled;
+  }
+
+  // 2) 仓库内开发构建兜底:cli/ → 仓库根 recorder/macos/.build
+  return path.resolve(packageRoot, "..", `recorder/macos/.build/release/${HELPER_BINARY_NAME}`);
 }
 
 async function readHelperEvents(eventLogPath: string): Promise<HelperEvent[]> {
@@ -123,7 +133,7 @@ export class MacosSckBackend implements RecorderBackend {
         ok: false,
         reason:
           `recorder helper not found at ${binary}; ` +
-          `build it with: cd recorder/macos && swift build -c release ` +
+          `try reinstalling the package, or for local dev run: cd recorder/macos && swift build -c release ` +
           `(or set MCT_RECORDER_BIN)`
       };
     }

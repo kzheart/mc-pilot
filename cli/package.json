@@ -1,6 +1,6 @@
 {
   "name": "@kzheart_/mc-pilot",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Minecraft plugin/mod automated testing CLI – control a real Minecraft client to simulate player actions",
   "type": "module",
   "bin": {
@@ -11,6 +11,7 @@
     "dist/",
     "data/",
     "scripts/",
+    "vendor/",
     "!dist/**/*.test.js",
     "!dist/**/*.test.d.ts",
     "!dist/**/*.e2e.test.js",
@@ -37,6 +38,8 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json",
+    "bundle:helper": "node scripts/bundle-recorder.mjs",
+    "prepack": "npm run build && npm run bundle:helper",
     "test": "npm run clean && tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js",
     "test:e2e": "npm run clean && tsc -p tsconfig.json && node --test dist/*.e2e.test.js"
   },
