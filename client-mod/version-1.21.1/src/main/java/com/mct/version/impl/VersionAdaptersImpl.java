@@ -57,7 +57,8 @@ public final class VersionAdaptersImpl {
             createNetworkAdapter(),
             createImageAdapter(),
             createScreenshotAdapter(),
-            createInteractionAdapter()
+            createInteractionAdapter(),
+            createCompatibility()
         );
     }
 
@@ -286,5 +287,9 @@ public final class VersionAdaptersImpl {
                 player.networkHandler.sendChatMessage(message);
             }
         };
+    }
+
+    private static VersionCompatibility createCompatibility() {
+        return new VersionCompatibility() {};
     }
 }

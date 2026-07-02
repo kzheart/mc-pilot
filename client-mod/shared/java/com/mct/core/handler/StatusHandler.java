@@ -5,6 +5,7 @@ import static com.mct.core.util.ParamHelper.*;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
+import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -133,17 +134,18 @@ public final class StatusHandler extends ActionHandler {
     private Map<String, Object> gamemodeStatus() {
         ClientPlayerInteractionManager interactionManager = requireInteractionManager();
         GameMode gameMode = interactionManager.getCurrentGameMode();
-        return com.mct.core.util.MctMaps.mapOf("gameMode", gameMode != null ? gameMode.getName() : "unknown");
+        return com.mct.core.util.MctMaps.mapOf("gameMode", gameMode != null ? ClientVersionModulesHolder.get().compatibility().gameModeName(gameMode) : "unknown");
     }
 
     private Map<String, Object> worldStatus() {
         ClientPlayerEntity player = requirePlayer();
+        net.minecraft.client.world.ClientWorld world = clientWorld(player);
         return com.mct.core.util.MctMaps.mapOf(
-            "name", player.clientWorld.getRegistryKey().getValue().toString(),
-            "dimension", player.clientWorld.getRegistryKey().getValue().toString(),
-            "difficulty", player.clientWorld.getDifficulty().getName(),
-            "time", player.clientWorld.getTime(),
-            "weather", player.clientWorld.isThundering() ? "thunder" : player.clientWorld.isRaining() ? "rain" : "clear"
+            "name", world.getRegistryKey().getValue().toString(),
+            "dimension", world.getRegistryKey().getValue().toString(),
+            "difficulty", ClientVersionModulesHolder.get().compatibility().worldDifficultyName(world),
+            "time", ClientVersionModulesHolder.get().compatibility().worldTime(world),
+            "weather", world.isThundering() ? "thunder" : world.isRaining() ? "rain" : "clear"
         );
     }
 

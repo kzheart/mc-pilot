@@ -3,6 +3,7 @@ package com.mct.core.handler;
 import static com.mct.core.util.ParamHelper.*;
 
 import com.mct.core.util.ActionException;
+import com.mct.version.ClientVersionModulesHolder;
 import com.mct.version.McRegistries;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,7 +28,7 @@ public final class EntityHelper {
         boolean nearest = filter.containsKey("nearest") && Boolean.TRUE.equals(filter.get("nearest"));
 
         List<Entity> entities = new ArrayList<>();
-        for (Entity entity : player.clientWorld.getEntities()) {
+        for (Entity entity : ClientVersionModulesHolder.get().clientWorld().getClientWorld(player).getEntities()) {
             if (entity == player) {
                 continue;
             }
@@ -60,7 +61,7 @@ public final class EntityHelper {
         String type = filter.containsKey("type") ? normalizeEntityType(String.valueOf(filter.get("type"))) : null;
         Double maxDistance = filter.containsKey("maxDistance") ? asDouble(filter.get("maxDistance")) : null;
         int count = 0;
-        for (Entity entity : player.clientWorld.getEntities()) {
+        for (Entity entity : ClientVersionModulesHolder.get().clientWorld().getClientWorld(player).getEntities()) {
             if (entity == player) {
                 continue;
             }

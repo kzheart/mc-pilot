@@ -9,4 +9,7 @@ public interface KeyboardInvoker {
 
     @Invoker("onChar")
     void mct$onChar(long window, int codePoint, int modifiers);
+
+    @Invoker("onKey")
+    void mct$onKey(long window, int keyCode, int scancode, int action, int modifiers);
 }

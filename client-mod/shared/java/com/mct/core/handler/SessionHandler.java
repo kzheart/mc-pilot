@@ -45,7 +45,7 @@ public final class SessionHandler extends ActionHandler {
     }
 
     private Map<String, Object> scoreboardStatus() {
-        return ClientVersionModulesHolder.get().scoreboard().scoreboardStatus(requirePlayer().clientWorld.getScoreboard());
+        return ClientVersionModulesHolder.get().scoreboard().scoreboardStatus(clientWorld(requirePlayer()).getScoreboard());
     }
 
     private Map<String, Object> tabStatus() {
@@ -80,7 +80,7 @@ public final class SessionHandler extends ActionHandler {
     private Map<String, Object> nameTagStatus(String playerName) {
         ClientPlayNetworkHandler networkHandler = requirePlayer().networkHandler;
         Optional<PlayerListEntry> entry = networkHandler.getPlayerList().stream()
-            .filter(candidate -> candidate.getProfile().getName().equalsIgnoreCase(playerName))
+            .filter(candidate -> ClientVersionModulesHolder.get().compatibility().profileName(candidate).equalsIgnoreCase(playerName))
             .findFirst();
         if (entry.isEmpty()) {
             throw new ActionException("ENTITY_NOT_FOUND");

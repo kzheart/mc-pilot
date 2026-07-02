@@ -88,7 +88,7 @@ public final class GuiInventoryHandler extends ActionHandler {
             throw new ActionException("INVALID_PARAMS");
         }
         ClientPlayerEntity player = requirePlayer();
-        player.getInventory().selectedSlot = slot;
+        ClientVersionModulesHolder.get().compatibility().setSelectedSlot(player.getInventory(), slot);
         player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
         return com.mct.core.util.MctMaps.mapOf("selectedSlot", slot, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
     }

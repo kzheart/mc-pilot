@@ -1,6 +1,5 @@
 package com.mct.mixin;
 
-import com.mct.version.invoker.MouseInvoker;
 import net.minecraft.client.Mouse;
 import net.minecraft.client.input.MouseInput;
 import org.spongepowered.asm.mixin.Mixin;

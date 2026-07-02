@@ -97,7 +97,7 @@ public final class MovementHandler extends ActionHandler {
         while (Duration.between(startedAt, Instant.now()).toMillis() < (long) (timeoutSeconds * 1000.0D)) {
             Map<String, Object> status = runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
-                Vec3d position = player.getPos();
+                Vec3d position = ClientVersionModulesHolder.get().compatibility().getPlayerPos(player);
                 Vec3d delta = target.subtract(position);
                 double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
                 if (horizontal < 0.75D && Math.abs(delta.y) < 1.25D) {
@@ -150,7 +150,7 @@ public final class MovementHandler extends ActionHandler {
         return com.mct.core.util.MctMaps.mapOf(
             "arrived", false,
             "finalPos", runOnClientThread(() -> positionMap(requirePlayer())),
-            "distance", player.getPos().distanceTo(target)
+            "distance", ClientVersionModulesHolder.get().compatibility().getPlayerPos(player).distanceTo(target)
         );
     }
 
@@ -158,10 +158,10 @@ public final class MovementHandler extends ActionHandler {
         String direction = getString(params, "direction");
         double blocks = getDouble(params, "blocks");
         ClientPlayerEntity player = requirePlayer();
-        Vec3d start = player.getPos();
+        Vec3d start = ClientVersionModulesHolder.get().compatibility().getPlayerPos(player);
         long deadline = System.currentTimeMillis() + (long) (Math.max(1.5D, Math.abs(blocks) * 2.0D) * 1000.0D);
         while (System.currentTimeMillis() < deadline) {
-            double moved = runOnClientThread(() -> requirePlayer().getPos().distanceTo(start));
+            double moved = runOnClientThread(() -> ClientVersionModulesHolder.get().compatibility().getPlayerPos(requirePlayer()).distanceTo(start));
             if (moved >= Math.abs(blocks) - 0.15D) {
                 break;
             }

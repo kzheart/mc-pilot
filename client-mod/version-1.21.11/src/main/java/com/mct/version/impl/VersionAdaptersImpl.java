@@ -57,7 +57,8 @@ public final class VersionAdaptersImpl {
             createNetworkAdapter(),
             createImageAdapter(),
             createScreenshotAdapter(),
-            createInteractionAdapter()
+            createInteractionAdapter(),
+            createCompatibility()
         );
     }
 
@@ -285,6 +286,60 @@ public final class VersionAdaptersImpl {
             @Override
             public void sendChatMessage(ClientPlayerEntity player, String message) {
                 player.networkHandler.sendChatMessage(message);
+            }
+        };
+    }
+
+    private static VersionCompatibility createCompatibility() {
+        return new VersionCompatibility() {
+            @Override
+            public net.minecraft.client.world.ClientWorld getClientWorld(ClientPlayerEntity player) {
+                return (net.minecraft.client.world.ClientWorld) player.getEntityWorld();
+            }
+
+            @Override
+            public net.minecraft.util.math.Vec3d getPlayerPos(ClientPlayerEntity player) {
+                return player.getEntityPos();
+            }
+
+            @Override
+            public int getSelectedSlot(net.minecraft.entity.player.PlayerInventory inventory) {
+                return inventory.getSelectedSlot();
+            }
+
+            @Override
+            public void setSelectedSlot(net.minecraft.entity.player.PlayerInventory inventory, int slot) {
+                inventory.setSelectedSlot(slot);
+            }
+
+            @Override
+            public net.minecraft.util.math.Direction directionByName(String name) {
+                return net.minecraft.util.math.Direction.byId(name);
+            }
+
+            @Override
+            public String gameModeName(net.minecraft.world.GameMode gameMode) {
+                return gameMode.getId();
+            }
+
+            @Override
+            public String profileName(net.minecraft.client.network.PlayerListEntry entry) {
+                return entry.getProfile().name();
+            }
+
+            @Override
+            public String worldDifficultyName(net.minecraft.client.world.ClientWorld world) {
+                return world.getLevelProperties().getDifficulty().getName();
+            }
+
+            @Override
+            public long worldTime(net.minecraft.client.world.ClientWorld world) {
+                return world.getTimeOfDay();
+            }
+
+            @Override
+            public void dispatchKey(MinecraftClient client, int keyCode, int scancode, int action) {
+                ((com.mct.mixin.KeyboardInvoker) client.keyboard).mct$onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
             }
         };
     }

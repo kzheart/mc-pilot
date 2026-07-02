@@ -1,11 +1,9 @@
-package com.mct.version.invoker;
+package com.mct.mixin;
 
-import com.mct.mixin.KeyboardInvokerBridge;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
 
 public interface KeyboardInvoker {
-
     default void mct$onChar(long window, int codePoint, int modifiers) {
         ((KeyboardInvokerBridge) this).mct$onCharInput(window, new CharInput(codePoint, modifiers));
     }

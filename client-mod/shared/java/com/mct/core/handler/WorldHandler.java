@@ -171,7 +171,7 @@ public final class WorldHandler extends ActionHandler {
         Map<String, Object> result = runOnClientThread(() -> {
             ClientPlayerEntity player = requirePlayer();
             ItemStack stack = requireWritableBook(player.getMainHandStack());
-            player.networkHandler.sendPacket(new BookUpdateC2SPacket(player.getInventory().selectedSlot, pages, Optional.empty()));
+            player.networkHandler.sendPacket(new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.empty()));
             lastBookUpdateAt = System.currentTimeMillis();
             return com.mct.core.util.MctMaps.mapOf("written", true, "pages", pages, "item", ClientDataHelper.itemToMap(stack));
         });
@@ -186,7 +186,7 @@ public final class WorldHandler extends ActionHandler {
             ClientPlayerEntity player = requirePlayer();
             ItemStack stack = requireWritableBook(player.getMainHandStack());
             List<String> pages = ClientVersionModulesHolder.get().book().readPages(stack);
-            player.networkHandler.sendPacket(new BookUpdateC2SPacket(player.getInventory().selectedSlot, pages, Optional.of(title)));
+            player.networkHandler.sendPacket(new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.of(title)));
             lastBookUpdateAt = System.currentTimeMillis();
             return com.mct.core.util.MctMaps.mapOf("signed", true, "title", title, "author", getString(params, "author", player.getName().getString()));
         });
@@ -198,7 +198,7 @@ public final class WorldHandler extends ActionHandler {
 
     private Map<String, Object> getBlock(Map<String, Object> params) {
         BlockPos pos = blockPos(params);
-        ClientWorld world = requirePlayer().clientWorld;
+        ClientWorld world = clientWorld(requirePlayer());
         BlockState state = world.getBlockState(pos);
         LinkedHashMap<String, Object> properties = new LinkedHashMap<>();
         state.getEntries().forEach((property, value) -> properties.put(property.getName(), String.valueOf(value)));
@@ -223,7 +223,7 @@ public final class WorldHandler extends ActionHandler {
     private Map<String, Object> placeBlock(Map<String, Object> params) {
         ClientPlayerEntity player = requirePlayer();
         BlockPos target = blockPos(params);
-        Direction face = Direction.byName(getString(params, "face"));
+        Direction face = ClientVersionModulesHolder.get().compatibility().directionByName(getString(params, "face"));
         if (face == null) {
             throw new ActionException("INVALID_PARAMS");
         }
@@ -232,7 +232,7 @@ public final class WorldHandler extends ActionHandler {
         ActionResult result = ClientVersionModulesHolder.get().interaction().interactBlock(requireInteractionManager(), player, Hand.MAIN_HAND, hit);
         Instant startedAt = Instant.now();
         while (Duration.between(startedAt, Instant.now()).toMillis() < 2_000L) {
-            String placedType = String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(target).getBlock()));
+            String placedType = String.valueOf(McRegistries.blockId(clientWorld(requirePlayer()).getBlockState(target).getBlock()));
             if (!"minecraft:air".equals(placedType)) {
                 return com.mct.core.util.MctMaps.mapOf(
                     "success", result.isAccepted(),
@@ -243,7 +243,7 @@ public final class WorldHandler extends ActionHandler {
         }
         return com.mct.core.util.MctMaps.mapOf(
             "success", false,
-            "placedType", String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(target).getBlock()))
+            "placedType", String.valueOf(McRegistries.blockId(clientWorld(requirePlayer()).getBlockState(target).getBlock()))
         );
     }
 
@@ -253,7 +253,7 @@ public final class WorldHandler extends ActionHandler {
         Instant startedAt = Instant.now();
         runOnClientThread(() -> requireInteractionManager().attackBlock(pos, side));
         while (Duration.between(startedAt, Instant.now()).toMillis() < 15_000L) {
-            boolean done = runOnClientThread(() -> requirePlayer().clientWorld.getBlockState(pos).isAir());
+            boolean done = runOnClientThread(() -> clientWorld(requirePlayer()).getBlockState(pos).isAir());
             if (done) {
                 return runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf(
                     "success", true,
@@ -273,7 +273,7 @@ public final class WorldHandler extends ActionHandler {
         });
         return com.mct.core.util.MctMaps.mapOf(
             "success", false,
-            "blockType", runOnClientThread(() -> String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(pos).getBlock()))),
+            "blockType", runOnClientThread(() -> String.valueOf(McRegistries.blockId(clientWorld(requirePlayer()).getBlockState(pos).getBlock()))),
             "duration", Duration.between(startedAt, Instant.now()).toMillis()
         );
     }
@@ -284,7 +284,7 @@ public final class WorldHandler extends ActionHandler {
         ClientPlayerEntity player = requirePlayer();
         double radius = getDouble(params, "radius", 10.0D);
         ArrayList<Map<String, Object>> entities = new ArrayList<>();
-        for (Entity entity : player.clientWorld.getEntities()) {
+        for (Entity entity : clientWorld(player).getEntities()) {
             if (entity == player || player.distanceTo(entity) > radius) {
                 continue;
             }
@@ -295,7 +295,7 @@ public final class WorldHandler extends ActionHandler {
 
     private Map<String, Object> entityInfo(Map<String, Object> params) {
         int id = getInt(params, "id");
-        Entity entity = requirePlayer().clientWorld.getEntityById(id);
+        Entity entity = clientWorld(requirePlayer()).getEntityById(id);
         if (entity == null) {
             throw new ActionException("ENTITY_NOT_FOUND");
         }
@@ -442,7 +442,7 @@ public final class WorldHandler extends ActionHandler {
             double pickupWaitTimeout = Math.min(2.0D, Math.max(0.2D, timeoutSeconds - elapsedSeconds(startedAt)));
             pollUntil(
                 pickupWaitTimeout,
-                () -> requirePlayer().clientWorld.getEntityById(entityId) == null,
+                () -> clientWorld(requirePlayer()).getEntityById(entityId) == null,
                 Boolean::booleanValue
             );
         }
@@ -481,7 +481,7 @@ public final class WorldHandler extends ActionHandler {
 
             Boolean attacked = runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
-                Entity entity = player.clientWorld.getEntityById(asInt(target.get("entityId")));
+                Entity entity = clientWorld(player).getEntityById(asInt(target.get("entityId")));
                 if (entity == null || !entity.isAlive()) {
                     return false;
                 }
@@ -684,7 +684,7 @@ public final class WorldHandler extends ActionHandler {
     }
 
     private SignBlockEntity requireSign(Map<String, Object> params) {
-        BlockEntity blockEntity = requirePlayer().clientWorld.getBlockEntity(blockPos(params));
+        BlockEntity blockEntity = clientWorld(requirePlayer()).getBlockEntity(blockPos(params));
         if (!(blockEntity instanceof SignBlockEntity sign)) {
             throw new ActionException("BLOCK_NOT_FOUND");
         }
@@ -741,7 +741,7 @@ public final class WorldHandler extends ActionHandler {
     private Map<String, Object> nearestItemEntity(double radius) {
         ClientPlayerEntity player = requirePlayer();
         ItemEntity nearest = null;
-        for (Entity entity : player.clientWorld.getEntities()) {
+        for (Entity entity : clientWorld(player).getEntities()) {
             if (!(entity instanceof ItemEntity itemEntity)) {
                 continue;
             }
@@ -780,7 +780,7 @@ public final class WorldHandler extends ActionHandler {
         if (entityId == null) {
             return false;
         }
-        return !EntityHelper.isEntitySelectable(requirePlayer().clientWorld.getEntityById(entityId));
+        return !EntityHelper.isEntitySelectable(clientWorld(requirePlayer()).getEntityById(entityId));
     }
 
     private void quickMoveSlot(ScreenHandler handler, int sourceSlot, int targetSlot) {

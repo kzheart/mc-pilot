@@ -16,6 +16,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -86,10 +87,18 @@ public abstract class ActionHandler {
 
     protected ClientPlayerEntity requirePlayer() {
         ClientPlayerEntity player = client.player;
-        if (player == null || player.networkHandler == null || player.clientWorld == null) {
+        if (player == null || player.networkHandler == null || ClientVersionModulesHolder.get().clientWorld().getClientWorld(player) == null) {
             throw new ActionException("NOT_IN_WORLD");
         }
         return player;
+    }
+
+    protected ClientWorld clientWorld(ClientPlayerEntity player) {
+        return ClientVersionModulesHolder.get().clientWorld().getClientWorld(player);
+    }
+
+    protected ClientWorld requireClientWorld() {
+        return clientWorld(requirePlayer());
     }
 
     protected ClientPlayerInteractionManager requireInteractionManager() {

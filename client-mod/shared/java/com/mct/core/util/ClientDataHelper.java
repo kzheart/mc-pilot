@@ -205,10 +205,11 @@ public final class ClientDataHelper {
 
     public static Map<String, Object> playerListEntryToMap(PlayerListEntry entry, Text displayName, Team team) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("name", entry.getProfile().getName());
-        result.put("displayName", displayName != null ? displayName.getString() : entry.getProfile().getName());
+        String profileName = ClientVersionModulesHolder.get().compatibility().profileName(entry);
+        result.put("name", profileName);
+        result.put("displayName", displayName != null ? displayName.getString() : profileName);
         result.put("latency", entry.getLatency());
-        result.put("gameMode", entry.getGameMode().getName());
+        result.put("gameMode", ClientVersionModulesHolder.get().compatibility().gameModeName(entry.getGameMode()));
         if (team != null) {
             result.put("team", team.getName());
             result.put("prefix", team.getPrefix().getString());

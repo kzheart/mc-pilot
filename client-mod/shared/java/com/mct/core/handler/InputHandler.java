@@ -7,6 +7,7 @@ import com.mct.core.util.ActionException;
 import com.mct.mixin.KeyBindingAccessor;
 import com.mct.mixin.KeyboardInvoker;
 import com.mct.mixin.MouseInvoker;
+import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -319,7 +320,7 @@ public final class InputHandler extends ActionHandler {
         int keyCode = binding.keyCode;
         int scancode = GLFW.glfwGetKeyScancode(keyCode);
         runOnClientThread(() -> {
-            client.keyboard.onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
+            ClientVersionModulesHolder.get().compatibility().dispatchKey(client, keyCode, scancode, action);
             return true;
         });
         updateHeldInputKey(binding.name, action != GLFW.GLFW_RELEASE);
