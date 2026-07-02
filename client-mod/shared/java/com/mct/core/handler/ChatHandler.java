@@ -37,11 +37,29 @@ public final class ChatHandler extends ActionHandler {
                 "cleared", true,
                 "removed", stateTracker.clearChatHistory()
             ));
-            case "chat.history" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
-            case "chat.last" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("message", stateTracker.getLastChatMessage()));
+            case "chat.history" -> chatHistory(params);
+            case "chat.last" -> chatLast(params);
             case "chat.wait" -> waitForChat(params);
             default -> throw new ActionException("INVALID_ACTION");
         };
+    }
+
+    private Map<String, Object> chatHistory(Map<String, Object> params) {
+        String match = getOptionalString(params, "match");
+        return waitForCondition(
+            params,
+            () -> com.mct.core.util.MctMaps.mapOf("messages", stateTracker.getChatHistory(getInt(params, "last", 10))),
+            result -> match == null || messagesContain(result, match)
+        );
+    }
+
+    private Map<String, Object> chatLast(Map<String, Object> params) {
+        String match = getOptionalString(params, "match");
+        return waitForCondition(
+            params,
+            () -> com.mct.core.util.MctMaps.mapOf("message", stateTracker.getLastChatMessage()),
+            result -> match == null || messageContains(result.get("message"), match)
+        );
     }
 
     private Map<String, Object> waitForChat(Map<String, Object> params) {
@@ -67,5 +85,32 @@ public final class ChatHandler extends ActionHandler {
 
     private String stripLeadingSlash(String command) {
         return command.startsWith("/") ? command.substring(1) : command;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean messagesContain(Map<String, Object> result, String match) {
+        Object messages = result.get("messages");
+        if (!(messages instanceof Iterable<?> iterable)) {
+            return false;
+        }
+        for (Object message : iterable) {
+            if (messageContains(message, match)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean messageContains(Object message, String match) {
+        if (!(message instanceof Map<?, ?> map)) {
+            return false;
+        }
+        for (String key : new String[] { "plain", "content", "raw" }) {
+            Object value = map.get(key);
+            if (value != null && String.valueOf(value).contains(match)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

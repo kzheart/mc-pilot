@@ -28,6 +28,16 @@
       "description": "等待匹配的聊天消息"
     },
     {
+      "name": "chat.history",
+      "params": ["last", "match", "wait"],
+      "description": "读取聊天历史，可等待历史包含指定文本"
+    },
+    {
+      "name": "chat.last",
+      "params": ["match", "wait"],
+      "description": "读取最后一条聊天消息，可等待其包含指定文本"
+    },
+    {
       "name": "move.to",
       "params": ["x", "y", "z"],
       "description": "寻路移动到指定坐标"
@@ -111,6 +121,21 @@
       "name": "inventory.hotbar",
       "params": ["slot"],
       "description": "切换快捷栏"
+    },
+    {
+      "name": "inventory.get",
+      "params": ["type", "notType", "wait"],
+      "description": "读取背包，可等待物品条件满足"
+    },
+    {
+      "name": "inventory.slot",
+      "params": ["slot", "type", "notType", "wait"],
+      "description": "读取指定背包槽位，可等待物品条件满足"
+    },
+    {
+      "name": "inventory.held",
+      "params": ["type", "notType", "wait"],
+      "description": "读取主手物品，可等待物品条件满足"
     },
     {
       "name": "inventory.drop",

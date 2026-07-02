@@ -47,9 +47,9 @@ public final class GuiInventoryHandler extends ActionHandler {
     @Override
     public Map<String, Object> handle(String action, Map<String, Object> params) {
         return switch (action) {
-            case "inventory.get" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("slots", ClientDataHelper.slotsToList(requirePlayer().playerScreenHandler.slots)));
-            case "inventory.slot" -> runOnClientThread(() -> inventorySlot(params));
-            case "inventory.held" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("item", ClientDataHelper.itemToMap(requirePlayer().getMainHandStack())));
+            case "inventory.get" -> inventoryGet(params);
+            case "inventory.slot" -> waitForCondition(params, () -> inventorySlot(params), result -> itemConditionMatches(params, result.get("item")));
+            case "inventory.held" -> inventoryHeld(params);
             case "inventory.hotbar" -> runOnClientThread(() -> setHotbar(params));
             case "inventory.drop" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
@@ -82,6 +82,22 @@ public final class GuiInventoryHandler extends ActionHandler {
         return com.mct.core.util.MctMaps.mapOf("slot", slot, "item", ClientDataHelper.itemToMap(player.getInventory().getStack(slot)));
     }
 
+    private Map<String, Object> inventoryGet(Map<String, Object> params) {
+        return waitForCondition(
+            params,
+            () -> com.mct.core.util.MctMaps.mapOf("slots", ClientDataHelper.slotsToList(requirePlayer().playerScreenHandler.slots)),
+            result -> slotsConditionMatches(params, result.get("slots"))
+        );
+    }
+
+    private Map<String, Object> inventoryHeld(Map<String, Object> params) {
+        return waitForCondition(
+            params,
+            () -> com.mct.core.util.MctMaps.mapOf("item", ClientDataHelper.itemToMap(requirePlayer().getMainHandStack())),
+            result -> itemConditionMatches(params, result.get("item"))
+        );
+    }
+
     private Map<String, Object> setHotbar(Map<String, Object> params) {
         int slot = getInt(params, "slot");
         if (slot < 0 || slot > 8) {
@@ -101,6 +117,42 @@ public final class GuiInventoryHandler extends ActionHandler {
             "action", ClientVersionModulesHolder.get().actionResult().resultName(result),
             "item", ClientDataHelper.itemToMap(player.getMainHandStack())
         );
+    }
+
+    private boolean slotsConditionMatches(Map<String, Object> params, Object slots) {
+        if (!hasItemCondition(params)) {
+            return true;
+        }
+        if (!(slots instanceof Iterable<?> iterable)) {
+            return false;
+        }
+        for (Object slot : iterable) {
+            if (slot instanceof Map<?, ?> slotMap && itemConditionMatches(params, slotMap.get("item"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean itemConditionMatches(Map<String, Object> params, Object item) {
+        if (!hasItemCondition(params)) {
+            return true;
+        }
+        if (!(item instanceof Map<?, ?> itemMap)) {
+            return false;
+        }
+        Object rawType = itemMap.get("type");
+        String itemType = rawType == null ? "" : String.valueOf(rawType);
+        String expectedType = getOptionalString(params, "type");
+        if (expectedType != null && !expectedType.equals(itemType)) {
+            return false;
+        }
+        String excludedType = getOptionalString(params, "notType");
+        return excludedType == null || !excludedType.equals(itemType);
+    }
+
+    private boolean hasItemCondition(Map<String, Object> params) {
+        return getOptionalString(params, "type") != null || getOptionalString(params, "notType") != null;
     }
 
     private Map<String, Object> swapHands() {

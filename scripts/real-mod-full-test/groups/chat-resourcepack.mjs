@@ -16,7 +16,6 @@ export const chatResourcepackGroup = {
       summary,
       takeDesktopScreenshot,
       unwrapRequestSuccess,
-      waitForLogEntry,
       waitForTeleport
     } = context;
 
@@ -29,10 +28,9 @@ export const chatResourcepackGroup = {
     const chatSendToken = `MCT_REAL_CHAT_SEND_${Date.now()}`;
     await runClientLeaf("chat send", ["chat", "send", chatSendToken], async (data) => {
       expect(data.sent === true, "chat send did not report sent");
-      await waitForLogEntry(chatSendToken, 30);
     });
 
-    await runClientLeaf("chat history", ["chat", "history", "--last", "10"], (data) => {
+    await runClientLeaf("chat history", ["chat", "history", "--last", "10", "--match", chatSendToken, "--wait", "30"], (data) => {
       expect(Array.isArray(data.messages), "chat history messages missing");
       expect(data.messages.some((message) => String(message.content ?? "").includes(chatSendToken)), "chat history missing sent token");
     });
@@ -40,10 +38,9 @@ export const chatResourcepackGroup = {
     const chatLastToken = `MCT_REAL_CHAT_LAST_${Date.now()}`;
     await runSetup("setup chat last token", ["chat", "send", chatLastToken], async (data) => {
       expect(data.sent === true, "chat last setup send failed");
-      await waitForLogEntry(chatLastToken, 30);
     });
 
-    await runClientLeaf("chat last", ["chat", "last"], (data) => {
+    await runClientLeaf("chat last", ["chat", "last", "--match", chatLastToken, "--wait", "30"], (data) => {
       expect(String(data.message?.content ?? "").includes(chatLastToken), "chat last did not return latest token");
     });
 

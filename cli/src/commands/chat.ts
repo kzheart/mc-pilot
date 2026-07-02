@@ -126,7 +126,17 @@ export function createChatCommand() {
     .command("history")
     .description("Get chat history")
     .option("--last <count>", "Number of recent messages (default: 10)", Number)
-    .action(createRequestAction("chat.history", ({ options }) => ({ last: options.last ?? 10 })));
+    .option("--match <text>", "Wait until the returned history contains text")
+    .option("--wait <seconds>", "Maximum seconds to wait for --match", Number)
+    .action(createRequestAction(
+      "chat.history",
+      ({ options }) => ({
+        last: options.last ?? 10,
+        match: options.match,
+        wait: options.wait
+      }),
+      ({ options }, context) => withTransportTimeoutBuffer(options.wait ? Number(options.wait) : undefined, context.timeout("default"))
+    ));
 
   command
     .command("wait")
@@ -144,7 +154,13 @@ export function createChatCommand() {
   command
     .command("last")
     .description("Get the last chat message")
-    .action(createRequestAction("chat.last", () => ({})));
+    .option("--match <text>", "Wait until the latest message contains text")
+    .option("--wait <seconds>", "Maximum seconds to wait for --match", Number)
+    .action(createRequestAction(
+      "chat.last",
+      ({ options }) => ({ match: options.match, wait: options.wait }),
+      ({ options }, context) => withTransportTimeoutBuffer(options.wait ? Number(options.wait) : undefined, context.timeout("default"))
+    ));
 
   command
     .command("clear")

@@ -1,19 +1,62 @@
 import { Command } from "commander";
 
-import { createRequestAction } from "./request-helpers.js";
+import { createRequestAction, withTransportTimeoutBuffer } from "./request-helpers.js";
+import type { CommandContext } from "../util/context.js";
+
+interface InventoryWaitOptions {
+  wait?: number;
+  type?: string;
+  notType?: string;
+}
 
 export function createInventoryCommand() {
   const command = new Command("inventory").description("Inventory and item operations");
 
-  command.command("get").description("Get full inventory contents").action(createRequestAction("inventory.get", () => ({})));
+  const waitOptions = (subcommand: Command) =>
+    subcommand
+      .option("--wait <seconds>", "Maximum seconds to wait for the item condition", Number)
+      .option("--type <item>", "Wait until the item type is present")
+      .option("--not-type <item>", "Wait until the item type is absent");
 
-  command
+  const waitTimeout = ({ options }: { options: InventoryWaitOptions }, context: CommandContext) =>
+    withTransportTimeoutBuffer(options.wait ? Number(options.wait) : undefined, context.timeout("default"));
+
+  waitOptions(command.command("get").description("Get full inventory contents"))
+    .action(createRequestAction(
+      "inventory.get",
+      ({ options }) => ({
+        wait: options.wait,
+        type: options.type,
+        notType: options.notType
+      }),
+      waitTimeout
+    ));
+
+  waitOptions(command
     .command("slot")
     .description("Get a specific inventory slot")
-    .argument("<slot>", "Slot index (0-8: hotbar, 9-35: main inventory)")
-    .action(createRequestAction("inventory.slot", ({ args }) => ({ slot: Number(args[0]) })));
+    .argument("<slot>", "Slot index (0-8: hotbar, 9-35: main inventory)"))
+    .action(createRequestAction(
+      "inventory.slot",
+      ({ args, options }) => ({
+        slot: Number(args[0]),
+        wait: options.wait,
+        type: options.type,
+        notType: options.notType
+      }),
+      waitTimeout
+    ));
 
-  command.command("held").description("Get currently held item").action(createRequestAction("inventory.held", () => ({})));
+  waitOptions(command.command("held").description("Get currently held item"))
+    .action(createRequestAction(
+      "inventory.held",
+      ({ options }) => ({
+        wait: options.wait,
+        type: options.type,
+        notType: options.notType
+      }),
+      waitTimeout
+    ));
 
   command
     .command("hotbar")

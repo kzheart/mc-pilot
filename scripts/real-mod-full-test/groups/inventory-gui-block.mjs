@@ -23,16 +23,16 @@ export const inventoryGuiBlockGroup = {
 
     await resetFixture("setup reset before inventory");
 
-    await runClientLeaf("inventory get", ["inventory", "get"], (data) => {
+    await runClientLeaf("inventory get", ["inventory", "get", "--type", "minecraft:dirt", "--wait", "5"], (data) => {
       expect(Array.isArray(data.slots), "inventory get slots missing");
       expect(data.slots.length > 0, "inventory get returned no slots");
     });
 
-    await runClientLeaf("inventory slot", ["inventory", "slot", "0"], (data) => {
+    await runClientLeaf("inventory slot", ["inventory", "slot", "0", "--type", "minecraft:dirt", "--wait", "5"], (data) => {
       expect(data.item?.type === "minecraft:dirt", "inventory slot 0 was not dirt");
     });
 
-    await runClientLeaf("inventory held", ["inventory", "held"], (data) => {
+    await runClientLeaf("inventory held", ["inventory", "held", "--type", "minecraft:dirt", "--wait", "5"], (data) => {
       expect(data.item?.type === "minecraft:dirt", "inventory held was not dirt");
     });
 

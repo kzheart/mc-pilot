@@ -84,6 +84,14 @@ public abstract class ActionHandler {
         return latest;
     }
 
+    protected <T> T waitForCondition(Map<String, Object> params, java.util.function.Supplier<T> supplier, java.util.function.Predicate<T> done) {
+        double waitSeconds = ParamHelper.getDouble(params, "wait", 0.0D);
+        if (waitSeconds <= 0.0D) {
+            return runOnClientThread(supplier::get);
+        }
+        return pollOnClientThread(waitSeconds, supplier, done, "TIMEOUT");
+    }
+
     // --- Require helpers ---
 
     protected ClientPlayerEntity requirePlayer() {

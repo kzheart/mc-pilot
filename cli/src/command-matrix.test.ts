@@ -155,15 +155,15 @@ const REQUEST_CASES: RequestCase[] = [
   },
   {
     leaf: "chat history",
-    argv: ["chat", "history", "--last", "5"],
+    argv: ["chat", "history", "--last", "5", "--match", "Joined", "--wait", "2"],
     action: "chat.history",
-    params: { last: 5 }
+    params: { last: 5, match: "Joined", wait: 2 }
   },
   {
     leaf: "chat last",
-    argv: ["chat", "last"],
+    argv: ["chat", "last", "--match", "Ready", "--wait", "2"],
     action: "chat.last",
-    params: {}
+    params: { match: "Ready", wait: 2 }
   },
   {
     leaf: "chat send",
@@ -455,15 +455,15 @@ const REQUEST_CASES: RequestCase[] = [
   },
   {
     leaf: "inventory get",
-    argv: ["inventory", "get"],
+    argv: ["inventory", "get", "--type", "minecraft:dirt", "--wait", "2"],
     action: "inventory.get",
-    params: {}
+    params: { type: "minecraft:dirt", wait: 2 }
   },
   {
     leaf: "inventory held",
-    argv: ["inventory", "held"],
+    argv: ["inventory", "held", "--not-type", "minecraft:air", "--wait", "2"],
     action: "inventory.held",
-    params: {}
+    params: { notType: "minecraft:air", wait: 2 }
   },
   {
     leaf: "inventory hotbar",
@@ -473,9 +473,9 @@ const REQUEST_CASES: RequestCase[] = [
   },
   {
     leaf: "inventory slot",
-    argv: ["inventory", "slot", "7"],
+    argv: ["inventory", "slot", "7", "--type", "minecraft:writable_book", "--wait", "2"],
     action: "inventory.slot",
-    params: { slot: 7 }
+    params: { slot: 7, type: "minecraft:writable_book", wait: 2 }
   },
   {
     leaf: "inventory swap-hands",
