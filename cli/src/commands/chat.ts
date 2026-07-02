@@ -8,13 +8,16 @@ import {
   createRequestAction,
   resolvePreferredClientName,
   sendClientRequest,
-  withTransportTimeoutBuffer
+  withTransportTimeoutBuffer,
 } from "./request-helpers.js";
 
 function normalizeChatCommand(text: string | undefined): string {
   const command = text?.trim();
   if (!command) {
-    throw new MctError({ code: "INVALID_PARAMS", message: "Command is required" }, 4);
+    throw new MctError(
+      { code: "INVALID_PARAMS", message: "Command is required" },
+      4,
+    );
   }
   return command;
 }
@@ -22,13 +25,16 @@ function normalizeChatCommand(text: string | undefined): string {
 async function executeServerCommand(
   context: CommandContext,
   serverName: string,
-  command: string
+  command: string,
 ) {
-  const manager = new ServerInstanceManager(context.globalState, context.projectId!);
+  const manager = new ServerInstanceManager(
+    context.globalState,
+    context.projectId!,
+  );
   const result = await manager.exec(serverName, command);
   return {
     ...result,
-    warning: "Commands that require a player sender should use --via client."
+    warning: "Commands that require a player sender should use --via client.",
   };
 }
 
@@ -37,9 +43,14 @@ export function createChatCommand() {
 
   command
     .command("send")
-    .description("Send a chat message. Slash-prefixed text is routed as a player command unless --literal is set.")
+    .description(
+      "Send a chat message. Slash-prefixed text is routed as a player command unless --literal is set.",
+    )
     .argument("<message>", "Message text")
-    .option("--literal", "Send slash-prefixed text as plain chat instead of a command packet")
+    .option(
+      "--literal",
+      "Send slash-prefixed text as plain chat instead of a command packet",
+    )
     .action(
       wrapCommand(
         async (
@@ -47,79 +58,135 @@ export function createChatCommand() {
           {
             args,
             options,
-            globalOptions
+            globalOptions,
           }: {
             args: (string | undefined)[];
             options: { literal?: boolean };
             globalOptions: { client?: string };
-          }
+          },
         ) => {
           const message = args[0] ?? "";
-          const preferredClient = resolvePreferredClientName(context, globalOptions);
+          const preferredClient = resolvePreferredClientName(
+            context,
+            globalOptions,
+          );
           if (!options.literal && message.trim().startsWith("/")) {
-            return sendClientRequest(context, preferredClient, "chat.command", { command: message });
+            return sendClientRequest(context, preferredClient, "chat.command", {
+              command: message,
+            });
           }
-          return sendClientRequest(context, preferredClient, "chat.send", { message });
-        }
-      )
+          return sendClientRequest(context, preferredClient, "chat.send", {
+            message,
+          });
+        },
+      ),
     );
 
   command
     .command("command")
-    .description("Execute a command. Defaults to auto-routing: prefer player context when a client is available, otherwise use server stdin.")
-    .argument("<command>", "Command text, e.g. \"gamemode creative\" (leading slash optional)")
-    .option("--via <target>", "Delivery channel: auto (default), server (stdin FIFO), or client (client WS)", "auto")
-    .option("--server <name>", "Server instance name when --via server (default: active profile server)")
+    .description(
+      "Execute a command. Defaults to auto-routing: prefer player context when a client is available, otherwise use server stdin.",
+    )
+    .argument(
+      "<command>",
+      'Command text, e.g. "gamemode creative" (leading slash optional)',
+    )
+    .option(
+      "--via <target>",
+      "Delivery channel: auto (default), server (stdin FIFO), or client (client WS)",
+      "auto",
+    )
+    .option(
+      "--server <name>",
+      "Server instance name when --via server (default: active profile server)",
+    )
     .action(
       wrapCommand(
         async (
           context,
-          { args, options, globalOptions }: {
+          {
+            args,
+            options,
+            globalOptions,
+          }: {
             args: (string | undefined)[];
             options: { via?: string; server?: string };
             globalOptions: { client?: string };
-          }
+          },
         ) => {
           const via = options.via ?? "auto";
           const commandText = normalizeChatCommand(args[0]);
-          const preferredClient = resolvePreferredClientName(context, globalOptions);
+          const preferredClient = resolvePreferredClientName(
+            context,
+            globalOptions,
+          );
 
           if (via === "client") {
-            return sendClientRequest(context, preferredClient, "chat.command", { command: commandText });
+            return sendClientRequest(context, preferredClient, "chat.command", {
+              command: commandText,
+            });
           }
           if (via === "auto") {
             if (preferredClient) {
-              return sendClientRequest(context, preferredClient, "chat.command", { command: commandText });
+              return sendClientRequest(
+                context,
+                preferredClient,
+                "chat.command",
+                { command: commandText },
+              );
             }
             if (!context.projectId) {
-              return sendClientRequest(context, undefined, "chat.command", { command: commandText });
+              return sendClientRequest(context, undefined, "chat.command", {
+                command: commandText,
+              });
             }
             const serverName = options.server ?? context.activeProfile?.server;
             if (!serverName) {
               throw new MctError(
                 {
                   code: "INVALID_PARAMS",
-                  message: "No client context is available, and auto-routing could not resolve a server. Use --client, --server, or run inside a project profile."
+                  message:
+                    "No client context is available, and auto-routing could not resolve a server. Use --client, --server, or run inside a project profile.",
                 },
-                4
+                4,
               );
             }
             return executeServerCommand(context, serverName, commandText);
           }
           if (via !== "server") {
-            throw new MctError({ code: "INVALID_PARAMS", message: `--via must be \"auto\", \"server\" or \"client\", got: ${via}` }, 4);
+            throw new MctError(
+              {
+                code: "INVALID_PARAMS",
+                message: `--via must be "auto", "server" or "client", got: ${via}`,
+              },
+              4,
+            );
           }
 
           if (!context.projectId) {
-            throw new MctError({ code: "NO_PROJECT", message: "--via server requires a project context. Use --via client or run inside an mct project." }, 4);
+            throw new MctError(
+              {
+                code: "NO_PROJECT",
+                message:
+                  "--via server requires a project context. Use --via client or run inside an mct project.",
+              },
+              4,
+            );
           }
           const serverName = options.server ?? context.activeProfile?.server;
           if (!serverName) {
-            throw new MctError({ code: "INVALID_PARAMS", message: "--via server requires --server <name> or an active profile with a server." }, 4);
+            throw new MctError(
+              {
+                code: "INVALID_PARAMS",
+                message:
+                  "--via server requires --server <name> or an active profile with a server.",
+              },
+              4,
+            );
           }
           return executeServerCommand(context, serverName, commandText);
-        }
-      )
+        },
+      ),
     );
 
   command
@@ -128,27 +195,40 @@ export function createChatCommand() {
     .option("--last <count>", "Number of recent messages (default: 10)", Number)
     .option("--match <text>", "Wait until the returned history contains text")
     .option("--wait <seconds>", "Maximum seconds to wait for --match", Number)
-    .action(createRequestAction(
-      "chat.history",
-      ({ options }) => ({
-        last: options.last ?? 10,
-        match: options.match,
-        wait: options.wait
-      }),
-      ({ options }, context) => withTransportTimeoutBuffer(options.wait ? Number(options.wait) : undefined, context.timeout("default"))
-    ));
+    .action(
+      createRequestAction(
+        "chat.history",
+        ({ options }) => ({
+          last: options.last ?? 10,
+          match: options.match,
+          wait: options.wait,
+        }),
+        ({ options }, context) =>
+          withTransportTimeoutBuffer(
+            options.wait ? Number(options.wait) : undefined,
+            context.timeout("default"),
+          ),
+      ),
+    );
 
   command
     .command("wait")
     .description("Wait for a chat message matching a pattern")
-    .requiredOption("--match <pattern>", "Substring match by default; prefix with / for regex (e.g. /player\\d+/)")
+    .requiredOption(
+      "--match <pattern>",
+      "Substring match by default; prefix with / for regex (e.g. /player\\d+/)",
+    )
     .option("--timeout <seconds>", "Timeout in seconds", Number)
     .action(
       createRequestAction(
         "chat.wait",
         ({ options }) => ({ match: options.match, timeout: options.timeout }),
-        ({ options }, context) => withTransportTimeoutBuffer(options.timeout ? Number(options.timeout) : undefined, context.timeout("default"))
-      )
+        ({ options }, context) =>
+          withTransportTimeoutBuffer(
+            options.timeout ? Number(options.timeout) : undefined,
+            context.timeout("default"),
+          ),
+      ),
     );
 
   command
@@ -156,11 +236,17 @@ export function createChatCommand() {
     .description("Get the last chat message")
     .option("--match <text>", "Wait until the latest message contains text")
     .option("--wait <seconds>", "Maximum seconds to wait for --match", Number)
-    .action(createRequestAction(
-      "chat.last",
-      ({ options }) => ({ match: options.match, wait: options.wait }),
-      ({ options }, context) => withTransportTimeoutBuffer(options.wait ? Number(options.wait) : undefined, context.timeout("default"))
-    ));
+    .action(
+      createRequestAction(
+        "chat.last",
+        ({ options }) => ({ match: options.match, wait: options.wait }),
+        ({ options }, context) =>
+          withTransportTimeoutBuffer(
+            options.wait ? Number(options.wait) : undefined,
+            context.timeout("default"),
+          ),
+      ),
+    );
 
   command
     .command("clear")

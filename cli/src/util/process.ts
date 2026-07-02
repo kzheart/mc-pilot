@@ -10,7 +10,10 @@ export function isProcessRunning(pid: number) {
   }
 }
 
-export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM") {
+export function killProcessTree(
+  pid: number,
+  signal: NodeJS.Signals = "SIGTERM",
+) {
   try {
     process.kill(-pid, signal);
     return;
@@ -20,9 +23,13 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM")
 }
 
 export function getListeningPids(port: number) {
-  const result = spawnSync("lsof", ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"], {
-    encoding: "utf8"
-  });
+  const result = spawnSync(
+    "lsof",
+    ["-nP", "-t", `-iTCP:${port}`, "-sTCP:LISTEN"],
+    {
+      encoding: "utf8",
+    },
+  );
   if (result.status !== 0 || !result.stdout) {
     return [];
   }

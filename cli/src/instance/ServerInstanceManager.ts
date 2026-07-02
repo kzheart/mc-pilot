@@ -1,24 +1,47 @@
-import { access, copyFile, mkdir, open, readdir, readFile, stat, symlink, writeFile, unlink } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+  unlink,
+} from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
 import type { GlobalStateStore } from "../util/global-state.js";
-import type { ServerInstanceMeta, ServerRuntimeEntry, ServerType } from "../util/instance-types.js";
-import { resolveMctHome, resolveProjectDir, resolveServerInstanceDir } from "../util/paths.js";
+import type {
+  ServerInstanceMeta,
+  ServerRuntimeEntry,
+  ServerType,
+} from "../util/instance-types.js";
+import {
+  resolveMctHome,
+  resolveProjectDir,
+  resolveServerInstanceDir,
+} from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { isTcpPortReachable } from "../util/net.js";
 import { isProcessRunning, killProcessTree } from "../util/process.js";
-import { CacheManager } from "../download/CacheManager.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
 import { ServerCommandPipe } from "./ServerCommandPipe.js";
-import { ServerLogManager, stripAnsiCodes, type ServerLogReadOptions } from "./ServerLogManager.js";
+import {
+  ServerLogManager,
+  stripAnsiCodes,
+  type ServerLogReadOptions,
+} from "./ServerLogManager.js";
 
 const INSTANCE_FILE = "instance.json";
 const SERVER_READY_POLL_MS = 500;
 
 export { stripAnsiCodes };
 
-export async function ensureServerPortProperty(instanceDir: string, port: number): Promise<void> {
+export async function ensureServerPortProperty(
+  instanceDir: string,
+  port: number,
+): Promise<void> {
   const filePath = path.join(instanceDir, "server.properties");
   let lines: string[] = [];
 
@@ -72,7 +95,7 @@ export class ServerInstanceManager {
 
   constructor(
     private readonly globalState: GlobalStateStore,
-    private readonly project: string
+    private readonly project: string,
   ) {}
 
   async create(options: CreateServerOptions): Promise<ServerInstanceMeta> {
@@ -88,7 +111,11 @@ export class ServerInstanceManager {
     }
 
     if (options.eula) {
-      await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
+      await writeFile(
+        path.join(instanceDir, "eula.txt"),
+        "eula=true\n",
+        "utf8",
+      );
     }
 
     await mkdir(path.join(instanceDir, "plugins"), { recursive: true });
@@ -103,22 +130,33 @@ export class ServerInstanceManager {
       jvmArgs: options.jvmArgs ?? [],
       javaCommand: options.javaCommand,
       javaVersion: options.javaVersion,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+    await writeFile(
+      path.join(instanceDir, INSTANCE_FILE),
+      `${JSON.stringify(meta, null, 2)}\n`,
+      "utf8",
+    );
     return meta;
   }
 
-  async start(serverName: string, options: StartServerOptions = {}): Promise<ServerRuntimeEntry & { running: true }> {
+  async start(
+    serverName: string,
+    options: StartServerOptions = {},
+  ): Promise<ServerRuntimeEntry & { running: true }> {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
     const existing = state.servers[stateKey];
 
     if (existing && isProcessRunning(existing.pid)) {
       throw new MctError(
-        { code: "SERVER_ALREADY_RUNNING", message: `Server ${stateKey} is already running`, details: existing },
-        5
+        {
+          code: "SERVER_ALREADY_RUNNING",
+          message: `Server ${stateKey} is already running`,
+          details: existing,
+        },
+        5,
       );
     }
 
@@ -128,13 +166,20 @@ export class ServerInstanceManager {
 
     if (!jarFile) {
       throw new MctError(
-        { code: "INVALID_PARAMS", message: `No server jar found in ${instanceDir}` },
-        4
+        {
+          code: "INVALID_PARAMS",
+          message: `No server jar found in ${instanceDir}`,
+        },
+        4,
       );
     }
 
     if (options.eula) {
-      await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
+      await writeFile(
+        path.join(instanceDir, "eula.txt"),
+        "eula=true\n",
+        "utf8",
+      );
     }
     await ensureServerPortProperty(instanceDir, meta.port);
 
@@ -144,37 +189,57 @@ export class ServerInstanceManager {
     await mkdir(logsDir, { recursive: true });
     await mkdir(stateDir, { recursive: true });
 
-    const logPath = path.join(logsDir, `server-${this.project}-${serverName}.log`);
-    const logStartOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
+    const logPath = path.join(
+      logsDir,
+      `server-${this.project}-${serverName}.log`,
+    );
+    const logStartOffset = await stat(logPath)
+      .then((value) => value.size)
+      .catch(() => 0);
     const stdout = await open(logPath, "a");
 
     const jvmArgs = options.jvmArgs ?? meta.jvmArgs;
     const javaCommand = meta.javaCommand ?? "java";
 
-    const stdinPipe = await this.commandPipe.create(stateDir, this.project, serverName);
+    const stdinPipe = await this.commandPipe.create(
+      stateDir,
+      this.project,
+      serverName,
+    );
 
     // Use bash wrapper: hold FIFO open in read-write mode (fd 3 <>) to prevent EOF
     // without blocking (write-only > would block until a reader opens the other end),
     // then exec java with stdin reading from the FIFO
-    const child = spawn("bash", [
-      "-c",
-      'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
-      "mct-server",
-      ...jvmArgs, "-jar", jarFile, "nogui"
-    ], {
-      cwd: instanceDir,
-      detached: true,
-      stdio: ["ignore", stdout.fd, stdout.fd],
-      env: {
-        ...process.env,
-        MCT_SERVER_PORT: String(meta.port),
-        MCT_STDIN_PIPE: stdinPipe,
-        MCT_SERVER_JAVA: javaCommand
-      }
-    });
+    const child = spawn(
+      "bash",
+      [
+        "-c",
+        'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
+        "mct-server",
+        ...jvmArgs,
+        "-jar",
+        jarFile,
+        "nogui",
+      ],
+      {
+        cwd: instanceDir,
+        detached: true,
+        stdio: ["ignore", stdout.fd, stdout.fd],
+        env: {
+          ...process.env,
+          MCT_SERVER_PORT: String(meta.port),
+          MCT_STDIN_PIPE: stdinPipe,
+          MCT_SERVER_JAVA: javaCommand,
+        },
+      },
+    );
 
-    child.once("exit", () => { void stdout.close(); });
-    child.once("error", () => { void stdout.close(); });
+    child.once("exit", () => {
+      void stdout.close();
+    });
+    child.once("error", () => {
+      void stdout.close();
+    });
     child.unref();
 
     const entry: ServerRuntimeEntry = {
@@ -186,7 +251,7 @@ export class ServerInstanceManager {
       logPath,
       instanceDir,
       logStartOffset,
-      stdinPipe
+      stdinPipe,
     };
 
     state.servers[stateKey] = entry;
@@ -210,7 +275,11 @@ export class ServerInstanceManager {
 
     // Clean up FIFO
     if (entry.stdinPipe) {
-      try { await unlink(entry.stdinPipe); } catch { /* ignore */ }
+      try {
+        await unlink(entry.stdinPipe);
+      } catch {
+        /* ignore */
+      }
     }
 
     delete state.servers[stateKey];
@@ -276,8 +345,11 @@ export class ServerInstanceManager {
 
     if (!entry) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${stateKey} is not running` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${stateKey} is not running`,
+        },
+        5,
       );
     }
 
@@ -297,10 +369,10 @@ export class ServerInstanceManager {
               phase: snapshot.phase,
               logPath: snapshot.logPath,
               lastLine: snapshot.lastLine,
-              recentLines: snapshot.recentLines
-            }
+              recentLines: snapshot.recentLines,
+            },
           },
-          5
+          5,
         );
       }
 
@@ -314,11 +386,11 @@ export class ServerInstanceManager {
           signals: {
             processAlive: true,
             portReachable: true,
-            readyLineSeen: snapshot.phase === "ready"
+            readyLineSeen: snapshot.phase === "ready",
           },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
-          recentLines: snapshot.recentLines
+          recentLines: snapshot.recentLines,
         };
       }
 
@@ -337,29 +409,38 @@ export class ServerInstanceManager {
           signals: {
             processAlive: isProcessRunning(entry.pid),
             portReachable: false,
-            readyLineSeen: snapshot.phase === "ready"
+            readyLineSeen: snapshot.phase === "ready",
           },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
-          recentLines: snapshot.recentLines
-        }
+          recentLines: snapshot.recentLines,
+        },
       },
-      2
+      2,
     );
   }
 
-  async exec(serverName: string, command: string): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
+  async exec(
+    serverName: string,
+    command: string,
+  ): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
     const entry = await this.requireRunning(serverName);
     if (!entry.stdinPipe) {
       throw new MctError(
-        { code: "SERVER_STDIN_UNAVAILABLE", message: `Server ${this.project}/${serverName} has no stdin FIFO (detached mode?)` },
-        5
+        {
+          code: "SERVER_STDIN_UNAVAILABLE",
+          message: `Server ${this.project}/${serverName} has no stdin FIFO (detached mode?)`,
+        },
+        5,
       );
     }
 
     const trimmed = command.trim();
     if (!trimmed) {
-      throw new MctError({ code: "INVALID_PARAMS", message: "Command is required" }, 4);
+      throw new MctError(
+        { code: "INVALID_PARAMS", message: "Command is required" },
+        4,
+      );
     }
 
     await this.commandPipe.send(entry.stdinPipe, trimmed.replace(/^\//, ""));
@@ -369,33 +450,56 @@ export class ServerInstanceManager {
 
   async readLogs(
     serverName: string,
-    options: ServerLogReadOptions = {}
-  ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
+    options: ServerLogReadOptions = {},
+  ): Promise<{
+    logPath: string;
+    totalLines: number;
+    returnedLines: number;
+    lines: string[];
+  }> {
     const entry = await this.requireRuntimeEntry(serverName);
     return this.logs.read(entry.logPath, options, entry.logStartOffset);
   }
 
-  async markLogs(serverName: string, label?: string): Promise<{ logPath: string; marker: string }> {
+  async markLogs(
+    serverName: string,
+    label?: string,
+  ): Promise<{ logPath: string; marker: string }> {
     const entry = await this.requireRuntimeEntry(serverName);
     return this.logs.mark(entry.logPath, label);
   }
 
   async followLogs(
     serverName: string,
-    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean; rawColors?: boolean }
-  ): Promise<{ logPath: string; matched: boolean; matches: string[]; timedOut: boolean }> {
+    options: {
+      grep?: string;
+      timeoutSeconds: number;
+      firstMatchOnly?: boolean;
+      rawColors?: boolean;
+    },
+  ): Promise<{
+    logPath: string;
+    matched: boolean;
+    matches: string[];
+    timedOut: boolean;
+  }> {
     const entry = await this.requireRuntimeEntry(serverName);
     return this.logs.follow(entry.logPath, options);
   }
 
-  private async requireRuntimeEntry(serverName: string): Promise<ServerRuntimeEntry> {
+  private async requireRuntimeEntry(
+    serverName: string,
+  ): Promise<ServerRuntimeEntry> {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
     const entry = state.servers[stateKey];
     if (!entry) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${stateKey} is not running` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${stateKey} is not running`,
+        },
+        5,
       );
     }
     return entry;
@@ -414,17 +518,22 @@ export class ServerInstanceManager {
         readyLineSeen: snapshot.phase === "ready",
         lastLine: snapshot.lastLine,
         recentLines: snapshot.recentLines,
-        path: snapshot.logPath
-      }
+        path: snapshot.logPath,
+      },
     };
   }
 
-  private async requireRunning(serverName: string): Promise<ServerRuntimeEntry> {
+  private async requireRunning(
+    serverName: string,
+  ): Promise<ServerRuntimeEntry> {
     const entry = await this.requireRuntimeEntry(serverName);
     if (!isProcessRunning(entry.pid)) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${this.project}/${serverName} PID ${entry.pid} is not alive` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${this.project}/${serverName} PID ${entry.pid} is not alive`,
+        },
+        5,
       );
     }
     return entry;
@@ -451,7 +560,9 @@ export class ServerInstanceManager {
     }
   }
 
-  static async listAll(globalState: GlobalStateStore): Promise<ServerInstanceMeta[]> {
+  static async listAll(
+    globalState: GlobalStateStore,
+  ): Promise<ServerInstanceMeta[]> {
     const { resolveProjectsDir } = await import("../util/paths.js");
     const projectsDir = resolveProjectsDir();
     const results: ServerInstanceMeta[] = [];
@@ -472,7 +583,11 @@ export class ServerInstanceManager {
     return results;
   }
 
-  async deploy(serverName: string, jarPaths: string[], cwd: string): Promise<string[]> {
+  async deploy(
+    serverName: string,
+    jarPaths: string[],
+    cwd: string,
+  ): Promise<string[]> {
     const instanceDir = resolveServerInstanceDir(this.project, serverName);
     const pluginsDir = path.join(instanceDir, "plugins");
     await mkdir(pluginsDir, { recursive: true });
@@ -497,8 +612,11 @@ export class ServerInstanceManager {
       return JSON.parse(raw) as ServerInstanceMeta;
     } catch {
       throw new MctError(
-        { code: "INSTANCE_NOT_FOUND", message: `Server instance ${this.project}/${serverName} not found` },
-        3
+        {
+          code: "INSTANCE_NOT_FOUND",
+          message: `Server instance ${this.project}/${serverName} not found`,
+        },
+        3,
       );
     }
   }

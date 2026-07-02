@@ -13,11 +13,15 @@ export interface WsRequest {
 export class WebSocketClient {
   constructor(private readonly url: string) {}
 
-  async send(action: string, params: Record<string, unknown> = {}, timeoutSeconds = 10) {
+  async send(
+    action: string,
+    params: Record<string, unknown> = {},
+    timeoutSeconds = 10,
+  ) {
     const request: WsRequest = {
       id: randomUUID(),
       action,
-      params
+      params,
     };
 
     const socket = await this.connect(timeoutSeconds);
@@ -30,10 +34,10 @@ export class WebSocketClient {
             new MctError(
               {
                 code: "TIMEOUT",
-                message: `Timed out waiting for response from ${this.url}`
+                message: `Timed out waiting for response from ${this.url}`,
               },
-              2
-            )
+              2,
+            ),
           );
         }, timeoutSeconds * 1000);
 
@@ -65,7 +69,7 @@ export class WebSocketClient {
     socket.close();
     return {
       connected: true,
-      url: this.url
+      url: this.url,
     };
   }
 
@@ -78,10 +82,10 @@ export class WebSocketClient {
           new MctError(
             {
               code: "TIMEOUT",
-              message: `Timed out connecting to ${this.url}`
+              message: `Timed out connecting to ${this.url}`,
             },
-            2
-          )
+            2,
+          ),
         );
       }, timeoutSeconds * 1000);
 
@@ -96,10 +100,10 @@ export class WebSocketClient {
           new MctError(
             {
               code: "CONNECTION_FAILED",
-              message: `Unable to connect to ${this.url}`
+              message: `Unable to connect to ${this.url}`,
             },
-            1
-          )
+            1,
+          ),
         );
       });
     });

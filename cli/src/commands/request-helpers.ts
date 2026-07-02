@@ -5,7 +5,7 @@ import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
 import { appendTimelineEntry } from "../record/recording-state.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
-import { MctError } from "../util/errors.js";
+import { ERROR_MESSAGES, invalidParams } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 
 export interface RequestPayload<TOptions> {
@@ -19,7 +19,7 @@ export async function sendClientRequest(
   clientName: string | undefined,
   action: string,
   params: Record<string, unknown>,
-  timeoutSeconds?: number
+  timeoutSeconds?: number,
 ) {
   const manager = new ClientInstanceManager(context.globalState);
   const client = await manager.getClient(clientName);
@@ -27,13 +27,17 @@ export async function sendClientRequest(
 
   const requestedAt = Date.now();
   try {
-    const result = await ws.send(action, params, timeoutSeconds ?? context.timeout("default"));
+    const result = await ws.send(
+      action,
+      params,
+      timeoutSeconds ?? context.timeout("default"),
+    );
     await appendTimelineEntry(client.name, {
       t: requestedAt,
       action,
       params,
       success: true,
-      durationMs: Date.now() - requestedAt
+      durationMs: Date.now() - requestedAt,
     });
     return result;
   } catch (error) {
@@ -43,17 +47,62 @@ export async function sendClientRequest(
       params,
       success: false,
       durationMs: Date.now() - requestedAt,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
 }
 
-export function resolvePreferredClientName(context: CommandContext, globalOptions: GlobalOptions): string | undefined {
+export function resolvePreferredClientName(
+  context: CommandContext,
+  globalOptions: GlobalOptions,
+): string | undefined {
   return globalOptions.client ?? context.activeProfile?.clients[0];
 }
 
-export function resolveProjectRelativePath(context: CommandContext, targetPath: string): string {
+type InstanceNameContext = {
+  activeProfile: {
+    server?: string;
+    clients?: string[];
+  } | null;
+};
+
+export function resolveInstanceName(
+  context: InstanceNameContext,
+  explicitName: string | undefined,
+  kind: "client" | "server",
+): string {
+  const profileName =
+    kind === "client"
+      ? context.activeProfile?.clients?.[0]
+      : context.activeProfile?.server;
+  const instanceName = explicitName ?? profileName;
+  if (!instanceName) {
+    throw invalidParams(
+      kind === "client"
+        ? ERROR_MESSAGES.CLIENT_NAME_REQUIRED
+        : ERROR_MESSAGES.SERVER_NAME_REQUIRED,
+    );
+  }
+  return instanceName;
+}
+
+export function resolveAllProfileClientNames(
+  context: InstanceNameContext,
+): string[] {
+  const clients = context.activeProfile?.clients ?? [];
+  if (clients.length === 0) {
+    throw invalidParams(
+      "--all-clients requires an active profile with clients",
+    );
+  }
+  return clients;
+}
+
+export function resolveProjectRelativePath(
+  context: CommandContext,
+  targetPath: string,
+): string {
   if (path.isAbsolute(targetPath)) {
     return targetPath;
   }
@@ -64,7 +113,7 @@ export function resolveProjectRelativePath(context: CommandContext, targetPath: 
 export function resolveScreenshotOutputPath(
   context: CommandContext,
   output: string | undefined,
-  prefix: "screenshot" | "gui"
+  prefix: "screenshot" | "gui",
 ): string {
   if (output) {
     return resolveProjectRelativePath(context, output);
@@ -72,10 +121,7 @@ export function resolveScreenshotOutputPath(
 
   const outputDir = context.projectFile?.screenshot?.outputDir;
   if (!outputDir) {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: "--output is required outside a project context." },
-      4
-    );
+    throw invalidParams(ERROR_MESSAGES.OUTPUT_REQUIRED);
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -85,7 +131,10 @@ export function resolveScreenshotOutputPath(
 export function createRequestAction<TOptions = Record<string, any>>(
   action: string,
   buildParams: (payload: RequestPayload<TOptions>) => Record<string, unknown>,
-  timeoutSelector?: (payload: RequestPayload<TOptions>, context: CommandContext) => number | undefined
+  timeoutSelector?: (
+    payload: RequestPayload<TOptions>,
+    context: CommandContext,
+  ) => number | undefined,
 ) {
   return wrapCommand<TOptions>(async (context, payload) => {
     const timeout = timeoutSelector?.(payload, context);
@@ -94,7 +143,7 @@ export function createRequestAction<TOptions = Record<string, any>>(
       resolvePreferredClientName(context, payload.globalOptions),
       action,
       buildParams(payload),
-      timeout
+      timeout,
     );
   });
 }
@@ -103,13 +152,7 @@ export function parseJson(text: string, fieldName: string) {
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new MctError(
-      {
-        code: "INVALID_PARAMS",
-        message: `${fieldName} must be valid JSON`
-      },
-      4
-    );
+    throw invalidParams(`${fieldName} must be valid JSON`);
   }
 }
 
@@ -121,7 +164,10 @@ export function parseNumberList(text: string) {
     .map((value) => Number(value));
 }
 
-export function withTransportTimeoutBuffer(requestedTimeout: number | undefined, fallbackTimeout: number) {
+export function withTransportTimeoutBuffer(
+  requestedTimeout: number | undefined,
+  fallbackTimeout: number,
+) {
   const effectiveTimeout = requestedTimeout ?? fallbackTimeout;
   return Math.max(effectiveTimeout + 10, fallbackTimeout);
 }
@@ -138,17 +184,17 @@ export function buildEntityFilter(options: {
     name: options.name,
     nearest: options.nearest,
     id: options.id,
-    maxDistance: options.maxDistance
+    maxDistance: options.maxDistance,
   };
 
-  if (!filter.type && !filter.name && !filter.nearest && !filter.id && !filter.maxDistance) {
-    throw new MctError(
-      {
-        code: "INVALID_PARAMS",
-        message: "At least one entity filter option is required"
-      },
-      4
-    );
+  if (
+    !filter.type &&
+    !filter.name &&
+    !filter.nearest &&
+    !filter.id &&
+    !filter.maxDistance
+  ) {
+    throw invalidParams("At least one entity filter option is required");
   }
 
   return filter;

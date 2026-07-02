@@ -16,18 +16,34 @@ const execFileAsync = promisify(execFile);
 async function writeProjectConfig(
   mctHome: string,
   projectDir: string,
-  overrides: Record<string, unknown>
+  overrides: Record<string, unknown>,
 ) {
-  const base = createDefaultProjectFile(projectDir, String(overrides.project ?? "test"));
+  const base = createDefaultProjectFile(
+    projectDir,
+    String(overrides.project ?? "test"),
+  );
   const projectFile = {
     ...base,
     ...overrides,
-    screenshot: overrides.screenshot ? { ...base.screenshot, ...(overrides.screenshot as object) } : base.screenshot,
-    timeout: overrides.timeout ? { ...base.timeout, ...(overrides.timeout as object) } : base.timeout
+    screenshot: overrides.screenshot
+      ? { ...base.screenshot, ...(overrides.screenshot as object) }
+      : base.screenshot,
+    timeout: overrides.timeout
+      ? { ...base.timeout, ...(overrides.timeout as object) }
+      : base.timeout,
   };
-  const projectFilePath = path.join(mctHome, "projects", base.projectId, "project.json");
+  const projectFilePath = path.join(
+    mctHome,
+    "projects",
+    base.projectId,
+    "project.json",
+  );
   await mkdir(path.dirname(projectFilePath), { recursive: true });
-  await writeFile(projectFilePath, JSON.stringify(projectFile, null, 2), "utf8");
+  await writeFile(
+    projectFilePath,
+    JSON.stringify(projectFile, null, 2),
+    "utf8",
+  );
   return { projectId: base.projectId, projectFilePath };
 }
 
@@ -71,9 +87,9 @@ test("CLI parses chat command and sends request to default client", async () => 
           success: true,
           data: {
             echoedAction: request.action,
-            params: request.params
-          }
-        })
+            params: request.params,
+          },
+        }),
       );
     });
   });
@@ -94,29 +110,31 @@ test("CLI parses chat command and sends request to default client", async () => 
               pid: process.pid,
               startedAt: new Date().toISOString(),
               logPath: path.join(globalStateDir, "bot.log"),
-              instanceDir: path.join(mctHome, "clients", "bot")
-            }
-          }
+              instanceDir: path.join(mctHome, "clients", "bot"),
+            },
+          },
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
-    await writeProjectConfig(mctHome, projectDir, { project: "test", profiles: {} });
-
-    const { stdout } = await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "chat",
-      "send",
-      "hello"
-    ], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
+    await writeProjectConfig(mctHome, projectDir, {
+      project: "test",
+      profiles: {},
     });
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [path.join(process.cwd(), "dist/index.js"), "chat", "send", "hello"],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          MCT_HOME: mctHome,
+        },
+      },
+    );
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);
@@ -138,7 +156,9 @@ test("CLI parses chat command and sends request to default client", async () => 
 });
 
 test("CLI request commands prefer the active profile client over the global default client", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-profile-client-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-cli-profile-client-"),
+  );
   const mctHome = path.join(tempDir, "mct-home");
   const globalStateDir = path.join(mctHome, "state");
   const projectDir = path.join(tempDir, "project");
@@ -148,21 +168,37 @@ test("CLI request commands prefer the active profile client over the global defa
   const defaultServer = new WebSocketServer({ port: defaultPort });
   const profileServer = new WebSocketServer({ port: profilePort });
   await Promise.all([
-    new Promise<void>((resolve) => defaultServer.once("listening", () => resolve())),
-    new Promise<void>((resolve) => profileServer.once("listening", () => resolve()))
+    new Promise<void>((resolve) =>
+      defaultServer.once("listening", () => resolve()),
+    ),
+    new Promise<void>((resolve) =>
+      profileServer.once("listening", () => resolve()),
+    ),
   ]);
 
   defaultServer.on("connection", (socket) => {
     socket.on("message", (raw) => {
       const request = JSON.parse(raw.toString());
-      socket.send(JSON.stringify({ id: request.id, success: true, data: { source: "global", echoedAction: request.action } }));
+      socket.send(
+        JSON.stringify({
+          id: request.id,
+          success: true,
+          data: { source: "global", echoedAction: request.action },
+        }),
+      );
     });
   });
 
   profileServer.on("connection", (socket) => {
     socket.on("message", (raw) => {
       const request = JSON.parse(raw.toString());
-      socket.send(JSON.stringify({ id: request.id, success: true, data: { source: "profile", echoedAction: request.action } }));
+      socket.send(
+        JSON.stringify({
+          id: request.id,
+          success: true,
+          data: { source: "profile", echoedAction: request.action },
+        }),
+      );
     });
   });
 
@@ -182,7 +218,7 @@ test("CLI request commands prefer the active profile client over the global defa
               pid: process.pid,
               startedAt: new Date().toISOString(),
               logPath: path.join(globalStateDir, "global-bot.log"),
-              instanceDir: path.join(mctHome, "clients", "global-bot")
+              instanceDir: path.join(mctHome, "clients", "global-bot"),
             },
             "profile-bot": {
               name: "profile-bot",
@@ -190,13 +226,13 @@ test("CLI request commands prefer the active profile client over the global defa
               pid: process.pid,
               startedAt: new Date().toISOString(),
               logPath: path.join(globalStateDir, "profile-bot.log"),
-              instanceDir: path.join(mctHome, "clients", "profile-bot")
-            }
-          }
+              instanceDir: path.join(mctHome, "clients", "profile-bot"),
+            },
+          },
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     await writeProjectConfig(mctHome, projectDir, {
@@ -205,36 +241,40 @@ test("CLI request commands prefer the active profile client over the global defa
       profiles: {
         dev: {
           server: "paper",
-          clients: ["profile-bot"]
-        }
-      }
+          clients: ["profile-bot"],
+        },
+      },
     });
 
-    const info = JSON.parse((await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "info"
-    ], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
-    })).stdout);
+    const info = JSON.parse(
+      (
+        await execFileAsync(
+          process.execPath,
+          [path.join(process.cwd(), "dist/index.js"), "info"],
+          {
+            cwd: projectDir,
+            env: {
+              ...process.env,
+              MCT_HOME: mctHome,
+            },
+          },
+        )
+      ).stdout,
+    );
     assert.equal(info.success, true);
     assert.equal(info.data.activeProfile.clients[0], "profile-bot");
 
-    const { stdout } = await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "chat",
-      "send",
-      "hello"
-    ], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [path.join(process.cwd(), "dist/index.js"), "chat", "send", "hello"],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          MCT_HOME: mctHome,
+        },
+      },
+    );
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);
@@ -242,8 +282,12 @@ test("CLI request commands prefer the active profile client over the global defa
     assert.equal(parsed.data.data.echoedAction, "chat.send");
   } finally {
     await Promise.all([
-      new Promise<void>((resolve, reject) => defaultServer.close((error) => error ? reject(error) : resolve())),
-      new Promise<void>((resolve, reject) => profileServer.close((error) => error ? reject(error) : resolve()))
+      new Promise<void>((resolve, reject) =>
+        defaultServer.close((error) => (error ? reject(error) : resolve())),
+      ),
+      new Promise<void>((resolve, reject) =>
+        profileServer.close((error) => (error ? reject(error) : resolve())),
+      ),
     ]);
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -257,7 +301,9 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
   const wsPort = await getFreePort();
 
   const server = new WebSocketServer({ port: wsPort });
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  await new Promise<void>((resolve) =>
+    server.once("listening", () => resolve()),
+  );
 
   server.on("connection", (socket) => {
     socket.on("message", (raw) => {
@@ -268,9 +314,9 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
           success: true,
           data: {
             echoedAction: request.action,
-            params: request.params
-          }
-        })
+            params: request.params,
+          },
+        }),
       );
     });
   });
@@ -291,13 +337,13 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
               pid: process.pid,
               startedAt: new Date().toISOString(),
               logPath: path.join(globalStateDir, "bot.log"),
-              instanceDir: path.join(mctHome, "clients", "bot")
-            }
-          }
+              instanceDir: path.join(mctHome, "clients", "bot"),
+            },
+          },
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     await writeProjectConfig(mctHome, projectDir, {
@@ -306,40 +352,56 @@ test("CLI routes slash-prefixed chat send and default chat command through the c
       profiles: {
         dev: {
           server: "paper",
-          clients: ["bot"]
-        }
-      }
+          clients: ["bot"],
+        },
+      },
     });
 
-    const slashSend = JSON.parse((await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "chat",
-      "send",
-      "/baoshi add"
-    ], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
-    })).stdout);
+    const slashSend = JSON.parse(
+      (
+        await execFileAsync(
+          process.execPath,
+          [
+            path.join(process.cwd(), "dist/index.js"),
+            "chat",
+            "send",
+            "/baoshi add",
+          ],
+          {
+            cwd: projectDir,
+            env: {
+              ...process.env,
+              MCT_HOME: mctHome,
+            },
+          },
+        )
+      ).stdout,
+    );
 
     assert.equal(slashSend.success, true);
     assert.equal(slashSend.data.data.echoedAction, "chat.command");
     assert.deepEqual(slashSend.data.data.params, { command: "/baoshi add" });
 
-    const autoCommand = JSON.parse((await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "chat",
-      "command",
-      "/spawn"
-    ], {
-      cwd: projectDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
-    })).stdout);
+    const autoCommand = JSON.parse(
+      (
+        await execFileAsync(
+          process.execPath,
+          [
+            path.join(process.cwd(), "dist/index.js"),
+            "chat",
+            "command",
+            "/spawn",
+          ],
+          {
+            cwd: projectDir,
+            env: {
+              ...process.env,
+              MCT_HOME: mctHome,
+            },
+          },
+        )
+      ).stdout,
+    );
 
     assert.equal(autoCommand.success, true);
     assert.equal(autoCommand.data.data.echoedAction, "chat.command");
@@ -362,13 +424,14 @@ test("CLI schema command outputs machine-readable command and protocol metadata 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-schema-"));
 
   try {
-    const { stdout } = await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "schema"
-    ], {
-      cwd: tempDir,
-      env: process.env
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [path.join(process.cwd(), "dist/index.js"), "schema"],
+      {
+        cwd: tempDir,
+        env: process.env,
+      },
+    );
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);
@@ -376,16 +439,32 @@ test("CLI schema command outputs machine-readable command and protocol metadata 
     assert.equal(parsed.data.cli.name, "mct");
     assert.match(parsed.data.cli.description, /mct init --name my-plugin/);
     assert.ok(Array.isArray(parsed.data.cli.globalOptions));
-    assert.ok(parsed.data.cli.globalOptions.some((option: { flags: string }) => option.flags === "--client <name>"));
+    assert.ok(
+      parsed.data.cli.globalOptions.some(
+        (option: { flags: string }) => option.flags === "--client <name>",
+      ),
+    );
     assert.ok(parsed.data.cli.leafCommands.includes("schema"));
     assert.ok(parsed.data.cli.leafCommands.includes("server create"));
     assert.ok(parsed.data.cli.leafCommands.includes("chat send"));
     assert.ok(Array.isArray(parsed.data.protocol.actions));
     assert.ok(Array.isArray(parsed.data.protocol.queries));
     assert.ok(Array.isArray(parsed.data.protocol.errors));
-    assert.ok(parsed.data.protocol.actions.some((entry: { name?: string }) => entry.name === "chat.send"));
-    assert.ok(parsed.data.protocol.queries.some((entry: { name?: string }) => entry.name === "status.all"));
-    assert.ok(parsed.data.protocol.errors.some((entry: { code?: string }) => entry.code === "TIMEOUT"));
+    assert.ok(
+      parsed.data.protocol.actions.some(
+        (entry: { name?: string }) => entry.name === "chat.send",
+      ),
+    );
+    assert.ok(
+      parsed.data.protocol.queries.some(
+        (entry: { name?: string }) => entry.name === "status.all",
+      ),
+    );
+    assert.ok(
+      parsed.data.protocol.errors.some(
+        (entry: { code?: string }) => entry.code === "TIMEOUT",
+      ),
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -403,30 +482,34 @@ test("CLI events wait returns the first matching event from the log file", async
           t: Date.now(),
           iso: new Date().toISOString(),
           type: "chat.received",
-          payload: { content: "purchase ok" }
+          payload: { content: "purchase ok" },
         })}\n`,
-        "utf8"
+        "utf8",
       );
     }, 150);
 
-    const { stdout } = await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "events",
-      "wait",
-      "--file",
-      eventsFile,
-      "--type",
-      "chat.received",
-      "--match",
-      "purchase",
-      "--since",
-      "5s",
-      "--timeout",
-      "2"
-    ], {
-      cwd: tempDir,
-      env: process.env
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        path.join(process.cwd(), "dist/index.js"),
+        "events",
+        "wait",
+        "--file",
+        eventsFile,
+        "--type",
+        "chat.received",
+        "--match",
+        "purchase",
+        "--since",
+        "5s",
+        "--timeout",
+        "2",
+      ],
+      {
+        cwd: tempDir,
+        env: process.env,
+      },
+    );
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);
@@ -439,33 +522,39 @@ test("CLI events wait returns the first matching event from the log file", async
 });
 
 test("CLI events wait exits with TIMEOUT when no matching event arrives", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-events-timeout-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-cli-events-timeout-"),
+  );
   const eventsFile = path.join(tempDir, "events.jsonl");
 
   try {
     await writeFile(eventsFile, "", "utf8");
 
     await assert.rejects(
-      execFileAsync(process.execPath, [
-        path.join(process.cwd(), "dist/index.js"),
-        "events",
-        "wait",
-        "--file",
-        eventsFile,
-        "--type",
-        "player.died",
-        "--timeout",
-        "1"
-      ], {
-        cwd: tempDir,
-        env: process.env
-      }),
+      execFileAsync(
+        process.execPath,
+        [
+          path.join(process.cwd(), "dist/index.js"),
+          "events",
+          "wait",
+          "--file",
+          eventsFile,
+          "--type",
+          "player.died",
+          "--timeout",
+          "1",
+        ],
+        {
+          cwd: tempDir,
+          env: process.env,
+        },
+      ),
       (error: NodeJS.ErrnoException & { stderr?: string }) => {
         const parsed = JSON.parse(String(error.stderr ?? "{}"));
         assert.equal(parsed.success, false);
         assert.equal(parsed.error.code, "TIMEOUT");
         return true;
-      }
+      },
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -473,7 +562,9 @@ test("CLI events wait exits with TIMEOUT when no matching event arrives", async 
 });
 
 test("CLI server status without project context shows all running servers", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-cli-server-status-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-cli-server-status-"),
+  );
   const mctHome = path.join(tempDir, "mct-home");
   const globalStateDir = path.join(mctHome, "state");
 
@@ -491,26 +582,26 @@ test("CLI server status without project context shows all running servers", asyn
               port: 25569,
               startedAt: new Date().toISOString(),
               logPath: path.join(mctHome, "logs", "server-demo-paper.log"),
-              instanceDir: path.join(mctHome, "projects", "demo", "paper")
-            }
-          }
+              instanceDir: path.join(mctHome, "projects", "demo", "paper"),
+            },
+          },
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
-    const { stdout } = await execFileAsync(process.execPath, [
-      path.join(process.cwd(), "dist/index.js"),
-      "server",
-      "status"
-    ], {
-      cwd: tempDir,
-      env: {
-        ...process.env,
-        MCT_HOME: mctHome
-      }
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [path.join(process.cwd(), "dist/index.js"), "server", "status"],
+      {
+        cwd: tempDir,
+        env: {
+          ...process.env,
+          MCT_HOME: mctHome,
+        },
+      },
+    );
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);

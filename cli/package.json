@@ -39,6 +39,8 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json",
     "bundle:helper": "node scripts/bundle-recorder.mjs",
+    "format": "biome format --write .",
+    "lint": "biome ci .",
     "prepack": "npm run build && npm run bundle:helper",
     "test": "npm run clean && tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js",
     "test:e2e": "npm run clean && tsc -p tsconfig.json && node --test dist/*.e2e.test.js"
@@ -52,6 +54,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
     "@types/node": "^24.5.2",
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",

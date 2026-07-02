@@ -2,7 +2,10 @@ import { realpathSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { resolveProjectConfigPath, resolveProjectScreenshotsDir } from "./paths.js";
+import {
+  resolveProjectConfigPath,
+  resolveProjectScreenshotsDir,
+} from "./paths.js";
 
 export interface MctProfile {
   server: string;
@@ -50,7 +53,9 @@ export function resolveProjectFilePath(projectId: string): string {
   return resolveProjectConfigPath(projectId);
 }
 
-export async function loadProjectFileById(projectId: string): Promise<MctProjectFile | null> {
+export async function loadProjectFileById(
+  projectId: string,
+): Promise<MctProjectFile | null> {
   const filePath = resolveProjectFilePath(projectId);
 
   try {
@@ -63,7 +68,9 @@ export async function loadProjectFileById(projectId: string): Promise<MctProject
   return JSON.parse(raw) as MctProjectFile;
 }
 
-export async function loadProjectFileForCwd(cwd: string): Promise<ResolvedProjectConfig | null> {
+export async function loadProjectFileForCwd(
+  cwd: string,
+): Promise<ResolvedProjectConfig | null> {
   let current = normalizeProjectRoot(cwd);
 
   while (true) {
@@ -73,7 +80,7 @@ export async function loadProjectFileForCwd(cwd: string): Promise<ResolvedProjec
       return {
         projectId,
         filePath: resolveProjectFilePath(projectId),
-        projectFile
+        projectFile,
       };
     }
 
@@ -85,7 +92,9 @@ export async function loadProjectFileForCwd(cwd: string): Promise<ResolvedProjec
   }
 }
 
-export async function loadProjectFileForId(projectId: string): Promise<ResolvedProjectConfig | null> {
+export async function loadProjectFileForId(
+  projectId: string,
+): Promise<ResolvedProjectConfig | null> {
   const projectFile = await loadProjectFileById(projectId);
   if (!projectFile) {
     return null;
@@ -94,17 +103,23 @@ export async function loadProjectFileForId(projectId: string): Promise<ResolvedP
   return {
     projectId,
     filePath: resolveProjectFilePath(projectId),
-    projectFile
+    projectFile,
   };
 }
 
-export async function writeProjectFile(projectId: string, project: MctProjectFile): Promise<void> {
+export async function writeProjectFile(
+  projectId: string,
+  project: MctProjectFile,
+): Promise<void> {
   const filePath = resolveProjectFilePath(projectId);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(project, null, 2)}\n`, "utf8");
 }
 
-export function createDefaultProjectFile(cwd: string, projectName: string): MctProjectFile {
+export function createDefaultProjectFile(
+  cwd: string,
+  projectName: string,
+): MctProjectFile {
   const rootDir = normalizeProjectRoot(cwd);
   const projectId = slugifyProjectId(rootDir);
   return {
@@ -113,19 +128,19 @@ export function createDefaultProjectFile(cwd: string, projectName: string): MctP
     rootDir,
     profiles: {},
     screenshot: {
-      outputDir: resolveProjectScreenshotsDir(projectId)
+      outputDir: resolveProjectScreenshotsDir(projectId),
     },
     timeout: {
       serverReady: 120,
       clientReady: 60,
-      default: 10
-    }
+      default: 10,
+    },
   };
 }
 
 export function resolveProfile(
   projectFile: MctProjectFile,
-  profileName?: string
+  profileName?: string,
 ): MctProfile | null {
   const name = profileName ?? projectFile.defaultProfile;
   if (!name) {

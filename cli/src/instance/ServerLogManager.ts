@@ -36,26 +36,34 @@ export class ServerLogManager {
       phase: detectServerStartupPhase(recentLines),
       logPath,
       recentLines,
-      lastLine
+      lastLine,
     };
   }
 
   async read(
     logPath: string,
     options: ServerLogReadOptions = {},
-    logStartOffset?: number
-  ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
-    let raw = await readFile(logPath, "utf8").catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return "";
-      throw error;
-    });
+    logStartOffset?: number,
+  ): Promise<{
+    logPath: string;
+    totalLines: number;
+    returnedLines: number;
+    lines: string[];
+  }> {
+    let raw = await readFile(logPath, "utf8").catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      },
+    );
 
     if (options.sinceStart && logStartOffset && logStartOffset > 0) {
       raw = raw.slice(logStartOffset);
     }
 
     let lines = raw.split("\n");
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
+    if (lines.length > 0 && lines[lines.length - 1] === "")
+      lines = lines.slice(0, -1);
     const total = lines.length;
 
     if (!options.rawColors) {
@@ -84,14 +92,21 @@ export class ServerLogManager {
       lines = lines.filter((line) => re.test(line));
     }
 
-    if (options.tail !== undefined && options.tail > 0 && lines.length > options.tail) {
+    if (
+      options.tail !== undefined &&
+      options.tail > 0 &&
+      lines.length > options.tail
+    ) {
       lines = lines.slice(lines.length - options.tail);
     }
 
     return { logPath, totalLines: total, returnedLines: lines.length, lines };
   }
 
-  async mark(logPath: string, label?: string): Promise<{ logPath: string; marker: string }> {
+  async mark(
+    logPath: string,
+    label?: string,
+  ): Promise<{ logPath: string; marker: string }> {
     const marker = `MCT_MARK ${new Date().toISOString()} ${label ?? ""}`.trim();
     await writeFile(logPath, `\n${marker}\n`, { flag: "a", encoding: "utf8" });
     return { logPath, marker };
@@ -99,12 +114,26 @@ export class ServerLogManager {
 
   async follow(
     logPath: string,
-    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean; rawColors?: boolean }
-  ): Promise<{ logPath: string; matched: boolean; matches: string[]; timedOut: boolean }> {
+    options: {
+      grep?: string;
+      timeoutSeconds: number;
+      firstMatchOnly?: boolean;
+      rawColors?: boolean;
+    },
+  ): Promise<{
+    logPath: string;
+    matched: boolean;
+    matches: string[];
+    timedOut: boolean;
+  }> {
     const re = options.grep ? new RegExp(options.grep) : null;
 
     let offset = 0;
-    try { offset = (await stat(logPath)).size; } catch { /* file may not exist yet */ }
+    try {
+      offset = (await stat(logPath)).size;
+    } catch {
+      /* file may not exist yet */
+    }
 
     const matches: string[] = [];
     let buffer = "";
@@ -125,8 +154,15 @@ export class ServerLogManager {
       const drain = async () => {
         if (done) return;
         let currentSize: number;
-        try { currentSize = (await stat(logPath)).size; } catch { return; }
-        if (currentSize < offset) { offset = 0; buffer = ""; }
+        try {
+          currentSize = (await stat(logPath)).size;
+        } catch {
+          return;
+        }
+        if (currentSize < offset) {
+          offset = 0;
+          buffer = "";
+        }
         if (currentSize === offset) return;
 
         const fh = await open(logPath, "r");
@@ -152,7 +188,9 @@ export class ServerLogManager {
       };
 
       timer = setTimeout(() => finish(true), options.timeoutSeconds * 1000);
-      poll = setInterval(() => { void drain(); }, 300);
+      poll = setInterval(() => {
+        void drain();
+      }, 300);
     });
   }
 }
@@ -168,7 +206,11 @@ function detectServerStartupPhase(lines: string[]) {
   if (/Starting Minecraft server on/.test(joined)) {
     return "binding-port";
   }
-  if (/Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version/.test(joined)) {
+  if (
+    /Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version/.test(
+      joined,
+    )
+  ) {
     return "bootstrapping";
   }
   if (/Downloading |Applying patches/.test(joined)) {

@@ -3,7 +3,7 @@ import { MacosSckBackend } from "./MacosSckBackend.js";
 import type { RecorderBackend } from "./RecorderBackend.js";
 
 const BACKENDS: Record<string, () => RecorderBackend> = {
-  "macos-sck": () => new MacosSckBackend()
+  "macos-sck": () => new MacosSckBackend(),
 };
 
 function defaultBackendName(): string | undefined {
@@ -19,9 +19,9 @@ export function createRecorderBackend(name?: string): RecorderBackend {
     throw new MctError(
       {
         code: "UNSUPPORTED_PLATFORM",
-        message: `no recorder backend available for platform ${process.platform}`
+        message: `no recorder backend available for platform ${process.platform}`,
       },
-      3
+      3,
     );
   }
 
@@ -30,9 +30,9 @@ export function createRecorderBackend(name?: string): RecorderBackend {
     throw new MctError(
       {
         code: "INVALID_PARAMS",
-        message: `unknown recorder backend: ${backendName} (available: ${Object.keys(BACKENDS).join(", ")})`
+        message: `unknown recorder backend: ${backendName} (available: ${Object.keys(BACKENDS).join(", ")})`,
       },
-      4
+      4,
     );
   }
 

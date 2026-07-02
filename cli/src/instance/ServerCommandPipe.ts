@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { open, unlink } from "node:fs/promises";
+import { open, unlink, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -8,8 +8,15 @@ import { MctError } from "../util/errors.js";
 const execFileAsync = promisify(execFile);
 
 export class ServerCommandPipe {
-  async create(stateDir: string, project: string, serverName: string): Promise<string> {
-    const stdinPipe = path.join(stateDir, `stdin-${project}-${serverName}.fifo`);
+  async create(
+    stateDir: string,
+    project: string,
+    serverName: string,
+  ): Promise<string> {
+    const stdinPipe = path.join(
+      stateDir,
+      `stdin-${project}-${serverName}.fifo`,
+    );
     try {
       await unlink(stdinPipe);
     } catch {
@@ -21,7 +28,7 @@ export class ServerCommandPipe {
 
   async send(stdinPipe: string, command: string): Promise<void> {
     const line = `${command}\n`;
-    let handle;
+    let handle: FileHandle;
     try {
       handle = await open(stdinPipe, "w");
     } catch (error) {
@@ -29,9 +36,9 @@ export class ServerCommandPipe {
         {
           code: "SERVER_STDIN_OPEN_FAILED",
           message: `Failed to open stdin FIFO: ${(error as Error).message}`,
-          details: { stdinPipe }
+          details: { stdinPipe },
         },
-        5
+        5,
       );
     }
 

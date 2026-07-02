@@ -3,7 +3,10 @@ import path from "node:path";
 
 import { MctError } from "../util/errors.js";
 
-export async function copyFileIfMissing(sourcePath: string, targetPath: string) {
+export async function copyFileIfMissing(
+  sourcePath: string,
+  targetPath: string,
+) {
   const content = await readFile(sourcePath);
   await mkdir(path.dirname(targetPath), { recursive: true });
   await writeFile(targetPath, content);
@@ -12,7 +15,7 @@ export async function copyFileIfMissing(sourcePath: string, targetPath: string) 
 export async function downloadFile(
   url: string,
   targetPath: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
 ) {
   const response = await fetchImpl(url);
   if (!response.ok) {
@@ -21,10 +24,10 @@ export async function downloadFile(
         code: "DOWNLOAD_FAILED",
         message: `Failed to download ${url}`,
         details: {
-          status: response.status
-        }
+          status: response.status,
+        },
       },
-      2
+      2,
     );
   }
 

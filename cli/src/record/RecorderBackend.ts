@@ -39,6 +39,10 @@ export interface RecordingArtifact {
 export interface RecorderBackend {
   readonly name: string;
   isSupported(): Promise<{ ok: boolean; reason?: string }>;
-  start(target: RecordTarget, outputDir: string, opts: RecordStartOptions): Promise<RecordingHandle>;
+  start(
+    target: RecordTarget,
+    outputDir: string,
+    opts: RecordStartOptions,
+  ): Promise<RecordingHandle>;
   stop(target: StopTarget): Promise<RecordingArtifact>;
 }

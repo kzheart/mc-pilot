@@ -15,8 +15,8 @@ export function createBlockCommand() {
       createRequestAction("block.break", ({ args }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
-        z: Number(args[2])
-      }))
+        z: Number(args[2]),
+      })),
     );
 
   command
@@ -25,14 +25,17 @@ export function createBlockCommand() {
     .argument("<x>", "X coordinate")
     .argument("<y>", "Y coordinate")
     .argument("<z>", "Z coordinate")
-    .requiredOption("--face <face>", "Block face to place against: up|down|north|south|east|west")
+    .requiredOption(
+      "--face <face>",
+      "Block face to place against: up|down|north|south|east|west",
+    )
     .action(
       createRequestAction("block.place", ({ args, options }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
         z: Number(args[2]),
-        face: options.face
-      }))
+        face: options.face,
+      })),
     );
 
   command
@@ -45,8 +48,8 @@ export function createBlockCommand() {
       createRequestAction("block.interact", ({ args }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
-        z: Number(args[2])
-      }))
+        z: Number(args[2]),
+      })),
     );
 
   command
@@ -59,8 +62,8 @@ export function createBlockCommand() {
       createRequestAction("block.get", ({ args }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
-        z: Number(args[2])
-      }))
+        z: Number(args[2]),
+      })),
     );
 
   return command;

@@ -4,10 +4,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { GlobalStateStore } from "../util/global-state.js";
-import type { ClientInstanceMeta, ClientRuntimeEntry, GlobalClientState, LoaderType } from "../util/instance-types.js";
-import { resolveMctHome, resolveClientInstanceDir, resolveClientsDir } from "../util/paths.js";
+import type {
+  ClientInstanceMeta,
+  ClientRuntimeEntry,
+  GlobalClientState,
+  LoaderType,
+} from "../util/instance-types.js";
+import {
+  resolveMctHome,
+  resolveClientInstanceDir,
+  resolveClientsDir,
+} from "../util/paths.js";
 import { MctError } from "../util/errors.js";
-import { getListeningPids, isProcessRunning, killProcessTree } from "../util/process.js";
+import {
+  getListeningPids,
+  isProcessRunning,
+  killProcessTree,
+} from "../util/process.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
 
 const INSTANCE_FILE = "instance.json";
@@ -19,7 +32,13 @@ const CLIENT_STOP_POLL_MS = 250;
 function getLaunchScriptPath() {
   const thisFile = fileURLToPath(import.meta.url);
   // dist/instance/ClientInstanceManager.js -> scripts/launch-fabric-client.mjs
-  return path.resolve(path.dirname(thisFile), "..", "..", "scripts", "launch-fabric-client.mjs");
+  return path.resolve(
+    path.dirname(thisFile),
+    "..",
+    "..",
+    "scripts",
+    "launch-fabric-client.mjs",
+  );
 }
 
 export interface CreateClientOptions {
@@ -72,15 +91,22 @@ export class ClientInstanceManager {
         env: options.env,
         javaCommand: options.javaCommand,
         javaVersion: options.javaVersion,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
 
-      await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+      await writeFile(
+        path.join(instanceDir, INSTANCE_FILE),
+        `${JSON.stringify(meta, null, 2)}\n`,
+        "utf8",
+      );
       return meta;
     });
   }
 
-  async launch(clientName: string, options: LaunchClientOptions = {}): Promise<ClientRuntimeEntry> {
+  async launch(
+    clientName: string,
+    options: LaunchClientOptions = {},
+  ): Promise<ClientRuntimeEntry> {
     return this.globalState.withClientLock(async () => {
       const state = await this.globalState.readClientState();
       const existing = state.clients[clientName];
@@ -93,9 +119,9 @@ export class ClientInstanceManager {
             {
               code: "CLIENT_ALREADY_RUNNING",
               message: `Client ${clientName} is already running. Pass --force to kill and relaunch.`,
-              details: existing
+              details: existing,
             },
-            3
+            3,
           );
         }
       }
@@ -107,14 +133,21 @@ export class ClientInstanceManager {
 
       if (!meta.launchArgs || meta.launchArgs.length === 0) {
         throw new MctError(
-          { code: "INVALID_PARAMS", message: `Client ${clientName} has no launchArgs configured` },
-          4
+          {
+            code: "INVALID_PARAMS",
+            message: `Client ${clientName} has no launchArgs configured`,
+          },
+          4,
         );
       }
 
       await this.releaseWsPort(wsPort);
 
-      const launchCommand = [process.execPath, getLaunchScriptPath(), ...meta.launchArgs];
+      const launchCommand = [
+        process.execPath,
+        getLaunchScriptPath(),
+        ...meta.launchArgs,
+      ];
       const minecraftDir = path.join(instanceDir, "minecraft");
 
       const logsDir = path.join(resolveMctHome(), "logs");
@@ -134,14 +167,20 @@ export class ClientInstanceManager {
           MCT_CLIENT_ACCOUNT: options.account ?? meta.account ?? "",
           MCT_CLIENT_SERVER: options.server ?? "",
           MCT_CLIENT_WS_PORT: String(wsPort),
-          MCT_CLIENT_HEADLESS: String(options.headless ?? meta.headless ?? false),
+          MCT_CLIENT_HEADLESS: String(
+            options.headless ?? meta.headless ?? false,
+          ),
           ...(meta.javaCommand ? { MCT_CLIENT_JAVA: meta.javaCommand } : {}),
-          ...(mute === undefined ? {} : { MCT_CLIENT_MUTE: String(mute) })
-        }
+          ...(mute === undefined ? {} : { MCT_CLIENT_MUTE: String(mute) }),
+        },
       });
 
-      child.once("exit", () => { void stdout.close(); });
-      child.once("error", () => { void stdout.close(); });
+      child.once("exit", () => {
+        void stdout.close();
+      });
+      child.once("error", () => {
+        void stdout.close();
+      });
       child.unref();
 
       const entry: ClientRuntimeEntry = {
@@ -150,7 +189,7 @@ export class ClientInstanceManager {
         wsPort,
         startedAt: new Date().toISOString(),
         logPath,
-        instanceDir
+        instanceDir,
       };
 
       state.defaultClient ??= clientName;
@@ -189,8 +228,11 @@ export class ClientInstanceManager {
 
     if (!entry) {
       throw new MctError(
-        { code: "CLIENT_NOT_FOUND", message: `Client ${clientName} is not running` },
-        3
+        {
+          code: "CLIENT_NOT_FOUND",
+          message: `Client ${clientName} is not running`,
+        },
+        3,
       );
     }
 
@@ -204,9 +246,10 @@ export class ClientInstanceManager {
       throw new MctError(
         {
           code: response.error.code || "INTERNAL_ERROR",
-          message: response.error.message || `Reconnect failed for ${clientName}`
+          message:
+            response.error.message || `Reconnect failed for ${clientName}`,
         },
-        3
+        3,
       );
     }
 
@@ -219,7 +262,9 @@ export class ClientInstanceManager {
 
     // List all installed instances
     const clientsDir = resolveClientsDir();
-    const instances: Array<ClientInstanceMeta & { running: boolean; pid?: number }> = [];
+    const instances: Array<
+      ClientInstanceMeta & { running: boolean; pid?: number }
+    > = [];
 
     try {
       const entries = await readdir(clientsDir, { withFileTypes: true });
@@ -241,18 +286,25 @@ export class ClientInstanceManager {
 
     return {
       defaultClient: state.defaultClient,
-      clients: instances
+      clients: instances,
     };
   }
 
-  async waitReady(clientName: string, timeoutSeconds: number, options: WaitReadyOptions = {}) {
+  async waitReady(
+    clientName: string,
+    timeoutSeconds: number,
+    options: WaitReadyOptions = {},
+  ) {
     const state = await this.globalState.readClientState();
     const entry = state.clients[clientName];
 
     if (!entry) {
       throw new MctError(
-        { code: "CLIENT_NOT_FOUND", message: `Client ${clientName} is not running` },
-        3
+        {
+          code: "CLIENT_NOT_FOUND",
+          message: `Client ${clientName} is not running`,
+        },
+        3,
       );
     }
 
@@ -279,15 +331,15 @@ export class ClientInstanceManager {
       const diag = this.buildDiagnostics(entry.pid, entry.wsPort, {
         wsConnected: false,
         inWorld: false,
-        lastError: lastConnectError
+        lastError: lastConnectError,
       });
       throw new MctError(
         {
           code: "TIMEOUT",
           message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} (${wsUrl}). ${this.formatDiagnostics(diag)}`,
-          details: diag
+          details: diag,
         },
-        2
+        2,
       );
     }
 
@@ -307,12 +359,21 @@ export class ClientInstanceManager {
           data?: unknown;
         };
         if (!response.error) {
-          return { connected: true, url: wsUrl, inWorld: true, position: response.data };
+          return {
+            connected: true,
+            url: wsUrl,
+            inWorld: true,
+            position: response.data,
+          };
         }
         lastErrorCode = this.errorCode(response.error, lastErrorCode);
         if (lastErrorCode === "NOT_IN_WORLD") {
           lastStatus = await this.readClientStatus(wsUrl);
-          if (!reconnectAttempted && options.reconnectAddress && Date.now() > deadline - Math.max(5_000, timeoutSeconds * 250)) {
+          if (
+            !reconnectAttempted &&
+            options.reconnectAddress &&
+            Date.now() > deadline - Math.max(5_000, timeoutSeconds * 250)
+          ) {
             reconnectAttempted = true;
             await this.requestReconnect(wsUrl, options.reconnectAddress);
           }
@@ -321,7 +382,8 @@ export class ClientInstanceManager {
           break;
         }
       } catch (err) {
-        lastErrorCode = err instanceof Error ? `WS_ERROR(${err.message})` : "WS_ERROR";
+        lastErrorCode =
+          err instanceof Error ? `WS_ERROR(${err.message})` : "WS_ERROR";
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
@@ -332,15 +394,15 @@ export class ClientInstanceManager {
       lastError: lastErrorCode,
       status: lastStatus,
       reconnectAttempted,
-      reconnectAddress: options.reconnectAddress
+      reconnectAddress: options.reconnectAddress,
     });
     throw new MctError(
       {
         code: "TIMEOUT",
         message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server).`,
-        details: diag
+        details: diag,
       },
-      2
+      2,
     );
   }
 
@@ -354,7 +416,7 @@ export class ClientInstanceManager {
       status?: unknown;
       reconnectAttempted?: boolean;
       reconnectAddress?: string;
-    }
+    },
   ) {
     const processAlive = isProcessRunning(pid);
     const portListening = getListeningPids(wsPort).length > 0;
@@ -368,7 +430,7 @@ export class ClientInstanceManager {
       lastError: extras.lastError,
       status: extras.status,
       reconnectAttempted: extras.reconnectAttempted ?? false,
-      reconnectAddress: extras.reconnectAddress
+      reconnectAddress: extras.reconnectAddress,
     };
   }
 
@@ -386,14 +448,26 @@ export class ClientInstanceManager {
       `processAlive=${diag.processAlive}`,
       `portListening=${diag.portListening}`,
       `wsConnected=${diag.wsConnected}`,
-      `inWorld=${diag.inWorld}`
+      `inWorld=${diag.inWorld}`,
     ];
     if (diag.lastError) {
       parts.push(`lastError=${diag.lastError}`);
     }
-    const status = diag.status as { screenCategory?: string; disconnectReason?: string; screen?: { type?: string; title?: string; category?: string; disconnectReason?: string } } | undefined;
+    const status = diag.status as
+      | {
+          screenCategory?: string;
+          disconnectReason?: string;
+          screen?: {
+            type?: string;
+            title?: string;
+            category?: string;
+            disconnectReason?: string;
+          };
+        }
+      | undefined;
     const screenCategory = status?.screenCategory ?? status?.screen?.category;
-    const disconnectReason = status?.disconnectReason ?? status?.screen?.disconnectReason;
+    const disconnectReason =
+      status?.disconnectReason ?? status?.screen?.disconnectReason;
     const screenType = status?.screen?.type;
     const screenTitle = status?.screen?.title;
     if (screenCategory) {
@@ -419,11 +493,17 @@ export class ClientInstanceManager {
 
   private async readClientStatus(wsUrl: string) {
     try {
-      const response = (await new WebSocketClient(wsUrl).send("status.all", {}, 1)) as {
+      const response = (await new WebSocketClient(wsUrl).send(
+        "status.all",
+        {},
+        1,
+      )) as {
         error?: string | { code?: string; message?: string };
         data?: unknown;
       };
-      return response.error ? { error: this.errorCode(response.error, "UNKNOWN") } : response.data;
+      return response.error
+        ? { error: this.errorCode(response.error, "UNKNOWN") }
+        : response.data;
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
@@ -437,11 +517,14 @@ export class ClientInstanceManager {
     }
   }
 
-  private errorCode(error: string | { code?: string } | undefined, fallback: string) {
+  private errorCode(
+    error: string | { code?: string } | undefined,
+    fallback: string,
+  ) {
     if (!error) {
       return fallback;
     }
-    return typeof error === "string" ? error : error.code ?? fallback;
+    return typeof error === "string" ? error : (error.code ?? fallback);
   }
 
   async getClient(name?: string): Promise<ClientRuntimeEntry> {
@@ -450,23 +533,35 @@ export class ClientInstanceManager {
 
     if (!resolvedName) {
       throw new MctError(
-        { code: "CLIENT_NOT_FOUND", message: "No client is configured or running" },
-        3
+        {
+          code: "CLIENT_NOT_FOUND",
+          message: "No client is configured or running",
+        },
+        3,
       );
     }
 
     const entry = state.clients[resolvedName];
     if (!entry) {
       throw new MctError(
-        { code: "CLIENT_NOT_FOUND", message: `Client ${resolvedName} was not found` },
-        3
+        {
+          code: "CLIENT_NOT_FOUND",
+          message: `Client ${resolvedName} was not found`,
+        },
+        3,
       );
     }
 
-    if (!isProcessRunning(entry.pid) && !(await this.isWsReachable(entry.wsPort, 1))) {
+    if (
+      !isProcessRunning(entry.pid) &&
+      !(await this.isWsReachable(entry.wsPort, 1))
+    ) {
       throw new MctError(
-        { code: "CLIENT_NOT_RUNNING", message: `Client ${resolvedName} is not running` },
-        3
+        {
+          code: "CLIENT_NOT_RUNNING",
+          message: `Client ${resolvedName} is not running`,
+        },
+        3,
       );
     }
 
@@ -482,21 +577,34 @@ export class ClientInstanceManager {
       return JSON.parse(raw) as ClientInstanceMeta;
     } catch {
       throw new MctError(
-        { code: "INSTANCE_NOT_FOUND", message: `Client instance ${clientName} not found` },
-        3
+        {
+          code: "INSTANCE_NOT_FOUND",
+          message: `Client instance ${clientName} not found`,
+        },
+        3,
       );
     }
   }
 
-  async updateMeta(clientName: string, updates: Partial<ClientInstanceMeta>): Promise<ClientInstanceMeta> {
+  async updateMeta(
+    clientName: string,
+    updates: Partial<ClientInstanceMeta>,
+  ): Promise<ClientInstanceMeta> {
     const meta = await this.loadMeta(clientName);
     const updated = { ...meta, ...updates };
     const instanceDir = resolveClientInstanceDir(clientName);
-    await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+    await writeFile(
+      path.join(instanceDir, INSTANCE_FILE),
+      `${JSON.stringify(updated, null, 2)}\n`,
+      "utf8",
+    );
     return updated;
   }
 
-  private async isWsReachable(wsPort: number, timeoutSeconds: number): Promise<boolean> {
+  private async isWsReachable(
+    wsPort: number,
+    timeoutSeconds: number,
+  ): Promise<boolean> {
     try {
       const ws = new WebSocketClient(`ws://127.0.0.1:${wsPort}`);
       await ws.ping(timeoutSeconds);
@@ -508,7 +616,9 @@ export class ClientInstanceManager {
 
   private async findAvailablePort(): Promise<number> {
     const state = await this.globalState.readClientState();
-    const usedPorts = new Set(Object.values(state.clients).map((c) => c.wsPort));
+    const usedPorts = new Set(
+      Object.values(state.clients).map((c) => c.wsPort),
+    );
 
     // Also check installed instances
     const clientsDir = resolveClientsDir();
@@ -532,7 +642,11 @@ export class ClientInstanceManager {
     return port;
   }
 
-  private async stopTrackedClient(state: GlobalClientState, clientName: string, entry: ClientRuntimeEntry) {
+  private async stopTrackedClient(
+    state: GlobalClientState,
+    clientName: string,
+    entry: ClientRuntimeEntry,
+  ) {
     if (isProcessRunning(entry.pid)) {
       killProcessTree(entry.pid);
     }
@@ -555,7 +669,10 @@ export class ClientInstanceManager {
   private async waitForTrackedClientExit(entry: ClientRuntimeEntry) {
     const deadline = Date.now() + CLIENT_STOP_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (!isProcessRunning(entry.pid) && getListeningPids(entry.wsPort).length === 0) {
+      if (
+        !isProcessRunning(entry.pid) &&
+        getListeningPids(entry.wsPort).length === 0
+      ) {
         return;
       }
       await sleep(CLIENT_STOP_POLL_MS);
@@ -567,7 +684,10 @@ export class ClientInstanceManager {
     for (const pid of getListeningPids(entry.wsPort)) {
       killProcessTree(pid, "SIGKILL");
     }
-    await this.waitForWsPortRelease(entry.wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
+    await this.waitForWsPortRelease(
+      entry.wsPort,
+      CLIENT_PORT_RELEASE_TIMEOUT_MS,
+    );
   }
 
   private async releaseWsPort(wsPort: number) {
@@ -605,10 +725,10 @@ export class ClientInstanceManager {
         message: `Timed out waiting for client WebSocket port ${wsPort} to become free`,
         details: {
           wsPort,
-          pids: getListeningPids(wsPort)
-        }
+          pids: getListeningPids(wsPort),
+        },
       },
-      3
+      3,
     );
   }
 }

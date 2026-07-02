@@ -4,13 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { downloadServerJarToCache, resolveServerDownloadSpec } from "./ServerDownloader.js";
+import {
+  downloadServerJarToCache,
+  resolveServerDownloadSpec,
+} from "./ServerDownloader.js";
 import { CacheManager } from "../CacheManager.js";
 
 test("resolveServerDownloadSpec resolves default Paper build", () => {
   const spec = resolveServerDownloadSpec({
     type: "paper",
-    version: "1.20.4"
+    version: "1.20.4",
   });
 
   assert.equal(spec.build, "496");
@@ -20,7 +23,7 @@ test("resolveServerDownloadSpec resolves default Paper build", () => {
 test("resolveServerDownloadSpec resolves vanilla without build metadata", () => {
   const spec = resolveServerDownloadSpec({
     type: "vanilla",
-    version: "1.20.3"
+    version: "1.20.3",
   });
 
   assert.equal(spec.build, "release");
@@ -36,15 +39,18 @@ test("downloadServerJarToCache downloads to cache", async () => {
     const result = await downloadServerJarToCache(
       {
         type: "paper",
-        version: "1.20.4"
+        version: "1.20.4",
       },
       {
         cacheManager: new CacheManager(cacheRoot),
         fetchImpl: async (url: string | URL | Request) => {
-          assert.match(String(url), /paper\/versions\/1.20.4\/builds\/496\/downloads/);
+          assert.match(
+            String(url),
+            /paper\/versions\/1.20.4\/builds\/496\/downloads/,
+          );
           return new Response(jarBytes, { status: 200 });
-        }
-      }
+        },
+      },
     );
 
     assert.equal(result.version, "1.20.4");
@@ -63,7 +69,7 @@ test("downloadServerJarToCache can resolve vanilla server metadata", async () =>
     const result = await downloadServerJarToCache(
       {
         type: "vanilla",
-        version: "1.20.3"
+        version: "1.20.3",
       },
       {
         cacheManager: new CacheManager(cacheRoot),
@@ -71,22 +77,24 @@ test("downloadServerJarToCache can resolve vanilla server metadata", async () =>
           const text = String(url);
           if (text.includes("version_manifest.json")) {
             return Response.json({
-              versions: [{ id: "1.20.3", url: "https://meta.example/1.20.3.json" }]
+              versions: [
+                { id: "1.20.3", url: "https://meta.example/1.20.3.json" },
+              ],
             });
           }
           if (text === "https://meta.example/1.20.3.json") {
             return Response.json({
               downloads: {
                 server: {
-                  url: "https://downloads.example/server-1.20.3.jar"
-                }
-              }
+                  url: "https://downloads.example/server-1.20.3.jar",
+                },
+              },
             });
           }
           assert.equal(text, "https://downloads.example/server-1.20.3.jar");
           return new Response(jarBytes, { status: 200 });
-        }
-      }
+        },
+      },
     );
 
     assert.equal(result.type, "vanilla");
@@ -104,7 +112,7 @@ test("downloadServerJarToCache can build spigot via BuildTools", async () => {
     const result = await downloadServerJarToCache(
       {
         type: "spigot",
-        version: "1.20.3"
+        version: "1.20.3",
       },
       {
         cacheManager: new CacheManager(cacheRoot),
@@ -112,16 +120,27 @@ test("downloadServerJarToCache can build spigot via BuildTools", async () => {
           assert.match(String(url), /BuildTools\.jar$/);
           return new Response(Buffer.from("buildtools"), { status: 200 });
         },
-        execFileImpl: async (_command: string, _args: string[], options: { cwd?: string }) => {
-          assert.equal(options?.cwd, path.join(cacheRoot, "server", "spigot", "build", "1.20.3"));
+        execFileImpl: async (
+          _command: string,
+          _args: string[],
+          options: { cwd?: string },
+        ) => {
+          assert.equal(
+            options?.cwd,
+            path.join(cacheRoot, "server", "spigot", "build", "1.20.3"),
+          );
           await mkdir(String(options?.cwd), { recursive: true });
-          await writeFile(path.join(String(options?.cwd), "spigot-1.20.3.jar"), "spigot-jar", "utf8");
+          await writeFile(
+            path.join(String(options?.cwd), "spigot-1.20.3.jar"),
+            "spigot-jar",
+            "utf8",
+          );
           return {
             stdout: "",
-            stderr: ""
+            stderr: "",
           };
-        }
-      }
+        },
+      },
     );
 
     assert.equal(result.type, "spigot");

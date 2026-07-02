@@ -33,7 +33,7 @@ function serializeOption(option: Option) {
     description: option.description,
     required: option.required,
     mandatory: option.mandatory,
-    defaultValue: option.defaultValue
+    defaultValue: option.defaultValue,
   };
 }
 
@@ -41,11 +41,14 @@ function serializeArgument(argument: Argument) {
   return {
     name: argument.name(),
     required: argument.required,
-    variadic: argument.variadic
+    variadic: argument.variadic,
   };
 }
 
-function serializeCommand(command: Command, parents: string[] = []): {
+function serializeCommand(
+  command: Command,
+  parents: string[] = [],
+): {
   name: string;
   path: string;
   description: string;
@@ -64,12 +67,16 @@ function serializeCommand(command: Command, parents: string[] = []): {
     aliases: command.aliases(),
     arguments: command.registeredArguments.map(serializeArgument),
     options: command.options.map(serializeOption),
-    subcommands: command.commands.map((subcommand) => serializeCommand(subcommand, pathSegments)),
-    leaf: command.commands.length === 0
+    subcommands: command.commands.map((subcommand) =>
+      serializeCommand(subcommand, pathSegments),
+    ),
+    leaf: command.commands.length === 0,
   };
 }
 
-function collectLeafCommands(commands: Array<ReturnType<typeof serializeCommand>>): string[] {
+function collectLeafCommands(
+  commands: Array<ReturnType<typeof serializeCommand>>,
+): string[] {
   const leaves: string[] = [];
 
   const visit = (command: ReturnType<typeof serializeCommand>) => {
@@ -91,9 +98,15 @@ function collectLeafCommands(commands: Array<ReturnType<typeof serializeCommand>
 }
 
 export function buildSchemaDocument(program: Command) {
-  const actions = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/actions.json");
-  const queries = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/queries.json");
-  const errors = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>("data/protocol/errors.json");
+  const actions = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>(
+    "data/protocol/actions.json",
+  );
+  const queries = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>(
+    "data/protocol/queries.json",
+  );
+  const errors = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>(
+    "data/protocol/errors.json",
+  );
   const commands = program.commands.map((command) => serializeCommand(command));
 
   return {
@@ -103,12 +116,12 @@ export function buildSchemaDocument(program: Command) {
       description: program.description(),
       globalOptions: program.options.map(serializeOption),
       commands,
-      leafCommands: collectLeafCommands(commands)
+      leafCommands: collectLeafCommands(commands),
     },
     protocol: {
       actions: actions.actions ?? [],
       queries: queries.queries ?? [],
-      errors: errors.errors ?? []
-    }
+      errors: errors.errors ?? [],
+    },
   };
 }
