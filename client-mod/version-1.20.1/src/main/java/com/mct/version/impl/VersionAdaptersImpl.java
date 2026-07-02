@@ -22,6 +22,8 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.network.packet.c2s.play.UpdateSignC2SPacket;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.scoreboard.ScoreboardPlayerScore;
@@ -219,6 +221,11 @@ public final class VersionAdaptersImpl {
                 AbstractSignEditScreenAccessor signAccessor = (AbstractSignEditScreenAccessor) accessor;
                 signAccessor.mct$setCurrentRow(row);
                 signAccessor.mct$setCurrentRowMessage(message);
+            }
+
+            @Override
+            public void sendSignUpdate(ClientPlayerEntity player, BlockPos pos, String[] lines) {
+                player.networkHandler.sendPacket(new UpdateSignC2SPacket(pos, true, lines[0], lines[1], lines[2], lines[3]));
             }
         };
     }

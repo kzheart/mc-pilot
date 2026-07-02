@@ -32,7 +32,7 @@ const DOWNLOAD_DISPATCHER = new Agent({
   },
   headersTimeout: 30_000,
   bodyTimeout: 30_000,
-  connections: 1,
+  connections: 8,
   pipelining: 0,
 }).compose(
   interceptors.retry({
@@ -137,11 +137,12 @@ async function isManagedRuntimeComplete(
 
   const assetIndex = version.assetIndex;
   if (assetIndex) {
+    const assetIndexId = assetIndex.id || assetIndex.sha1;
     const assetIndexPath = path.join(
       runtimeRootDir,
       "assets",
       "indexes",
-      `${assetIndex.sha1}.json`,
+      `${assetIndexId}.json`,
     );
     if (!(await fileExists(assetIndexPath, assetIndex.size))) {
       return false;
@@ -186,7 +187,7 @@ async function isManagedRuntimeComplete(
     `${expectedVersionId}-natives`,
   );
   if (!(await fileExists(nativesDir))) {
-    return false;
+    await mkdir(nativesDir, { recursive: true });
   }
 
   return true;
@@ -243,11 +244,14 @@ async function prepareManagedRuntime(
   await installDependencies(resolvedVersion, {
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER,
-    assetsDownloadConcurrency: 1,
-    librariesDownloadConcurrency: 1,
+    assetsDownloadConcurrency: 8,
+    librariesDownloadConcurrency: 4,
   });
 
   await applyArm64LwjglPatch(runtimeRootDir, installedVersionId, { fetchImpl });
+  await mkdir(minecraft.getNativesRoot(installedVersionId), {
+    recursive: true,
+  });
   await writeFile(readyMarker, new Date().toISOString(), "utf8");
 
   return {

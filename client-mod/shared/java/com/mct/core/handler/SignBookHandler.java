@@ -74,17 +74,18 @@ public final class SignBookHandler extends ActionHandler {
             return target;
         });
 
-        pollOnClientThread(3.0D, () -> ClientVersionModulesHolder.get().sign().isSignEditScreen(client.currentScreen), Boolean::booleanValue, "TIMEOUT");
+        pollUntil(3.0D, () -> ClientVersionModulesHolder.get().sign().isSignEditScreen(client.currentScreen), Boolean::booleanValue);
 
         runOnClientThread(() -> {
-            if (!ClientVersionModulesHolder.get().sign().isSignEditScreen(client.currentScreen)) {
-                throw new ActionException("INVALID_STATE");
+            ClientPlayerEntity player = requirePlayer();
+            if (ClientVersionModulesHolder.get().sign().isSignEditScreen(client.currentScreen)) {
+                Object accessor = client.currentScreen;
+                for (int index = 0; index < values.length; index++) {
+                    ClientVersionModulesHolder.get().sign().editSignLine(accessor, index, values[index]);
+                }
+                client.setScreen(null);
             }
-            Object accessor = client.currentScreen;
-            for (int index = 0; index < values.length; index++) {
-                ClientVersionModulesHolder.get().sign().editSignLine(accessor, index, values[index]);
-            }
-            client.setScreen(null);
+            ClientVersionModulesHolder.get().sign().sendSignUpdate(player, pos, values);
             return true;
         });
 

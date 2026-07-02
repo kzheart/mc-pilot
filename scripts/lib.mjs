@@ -36,6 +36,8 @@ export async function runCommand(command, args, options = {}) {
       cwd: options.cwd,
       env: options.env ?? process.env,
       maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
+      timeout: options.timeoutMs,
+      killSignal: "SIGTERM",
     });
 
     return {
@@ -57,7 +59,7 @@ export async function runCommand(command, args, options = {}) {
       args,
       startedAt,
       durationMs: Date.now() - started,
-      exitCode: Number(failure.code ?? 1),
+      exitCode: typeof failure.code === "number" ? failure.code : 1,
       stdout: String(failure.stdout ?? ""),
       stderr: String(failure.stderr ?? ""),
       json:

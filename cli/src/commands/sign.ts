@@ -37,7 +37,7 @@ export function createSignCommand() {
         y: Number(args[1]),
         z: Number(args[2]),
         lines: options.lines,
-      })),
+      }), () => 30),
     );
 
   return command;

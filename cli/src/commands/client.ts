@@ -161,6 +161,7 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this launch (default)")
     .option("--no-mute", "Keep in-game audio enabled for this launch")
+    .option("--no-server", "Launch without connecting to the active profile server")
     .option(
       "--force",
       "Kill any existing client with the same name before launching",
@@ -175,7 +176,7 @@ export function createClientCommand() {
           }: {
             args: (string | undefined)[];
             options: {
-              server?: string;
+              server?: string | false;
               account?: string;
               wsPort?: number;
               headless?: boolean;
@@ -186,10 +187,10 @@ export function createClientCommand() {
         ) => {
           const clientName = resolveInstanceName(context, args[0], "client");
           const manager = new ClientInstanceManager(context.globalState);
-          const serverAddress = await resolveProfileServerAddress(
-            context,
-            options.server,
-          );
+          const serverAddress =
+            options.server === false
+              ? undefined
+              : await resolveProfileServerAddress(context, options.server);
           return manager.launch(clientName, {
             ...options,
             server: serverAddress,
