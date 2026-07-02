@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -74,6 +74,74 @@ export interface PrepareFabricRuntimeOptions {
 
 type LoaderInstaller = (minecraft: MinecraftFolder, fetchImpl: typeof fetch) => Promise<string>;
 
+async function fileExists(filePath: string, expectedSize?: number) {
+  try {
+    const fileStat = await stat(filePath);
+    return expectedSize === undefined || expectedSize < 0 || fileStat.size === expectedSize;
+  } catch {
+    return false;
+  }
+}
+
+async function isManagedRuntimeComplete(runtimeRootDir: string, expectedVersionId: string) {
+  const minecraft = new MinecraftFolder(runtimeRootDir);
+  let version: Awaited<ReturnType<typeof Version.parse>>;
+  try {
+    version = await Version.parse(minecraft, expectedVersionId);
+  } catch {
+    return false;
+  }
+
+  if (version.downloads?.client) {
+    const versionJar = path.join(runtimeRootDir, "versions", version.id, `${version.id}.jar`);
+    if (!(await fileExists(versionJar, version.downloads.client.size))) {
+      return false;
+    }
+  }
+
+  for (const library of version.libraries) {
+    const libraryPath = path.join(runtimeRootDir, "libraries", library.download.path);
+    if (!(await fileExists(libraryPath, library.download.size))) {
+      return false;
+    }
+  }
+
+  const assetIndex = version.assetIndex;
+  if (assetIndex) {
+    const assetIndexPath = path.join(runtimeRootDir, "assets", "indexes", `${assetIndex.sha1}.json`);
+    if (!(await fileExists(assetIndexPath, assetIndex.size))) {
+      return false;
+    }
+    const { objects } = JSON.parse(await readFile(assetIndexPath, "utf8")) as {
+      objects?: Record<string, { hash: string; size?: number }>;
+    };
+    if (!objects) {
+      return false;
+    }
+    for (const asset of Object.values(objects)) {
+      const assetPath = path.join(runtimeRootDir, "assets", "objects", asset.hash.slice(0, 2), asset.hash);
+      if (!(await fileExists(assetPath, asset.size))) {
+        return false;
+      }
+    }
+  }
+
+  const logConfig = version.logging?.client?.file;
+  if (logConfig) {
+    const logConfigPath = path.join(runtimeRootDir, "assets", "log_configs", logConfig.id);
+    if (!(await fileExists(logConfigPath, logConfig.size))) {
+      return false;
+    }
+  }
+
+  const nativesDir = path.join(runtimeRootDir, "versions", expectedVersionId, `${expectedVersionId}-natives`);
+  if (!(await fileExists(nativesDir))) {
+    return false;
+  }
+
+  return true;
+}
+
 async function prepareManagedRuntime(
   variant: ModVariant,
   runtimeOptions: PrepareFabricRuntimeOptions,
@@ -94,6 +162,11 @@ async function prepareManagedRuntime(
     return { runtimeRootDir, gameDir, versionId: expectedVersionId };
   } catch {
     // Not ready, proceed with download
+  }
+
+  if (await isManagedRuntimeComplete(runtimeRootDir, expectedVersionId)) {
+    await writeFile(readyMarker, new Date().toISOString(), "utf8");
+    return { runtimeRootDir, gameDir, versionId: expectedVersionId };
   }
 
   const minecraft = new MinecraftFolder(runtimeRootDir);

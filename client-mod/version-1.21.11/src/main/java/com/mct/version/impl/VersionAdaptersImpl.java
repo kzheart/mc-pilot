@@ -339,7 +339,7 @@ public final class VersionAdaptersImpl {
 
             @Override
             public void dispatchKey(MinecraftClient client, int keyCode, int scancode, int action) {
-                ((com.mct.mixin.KeyboardInvoker) client.keyboard).mct$onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
+                ((com.mct.core.input.KeyboardInputBridge) client.keyboard).mct$onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
             }
         };
     }

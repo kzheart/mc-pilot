@@ -1,6 +1,6 @@
 package com.mct.version;
 
-import com.mct.mixin.KeyboardInvoker;
+import com.mct.core.input.KeyboardInputBridge;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
@@ -88,7 +88,7 @@ public interface VersionCompatibility extends ClientWorldAccessor {
     }
 
     default void dispatchKey(MinecraftClient client, int keyCode, int scancode, int action) {
-        ((KeyboardInvoker) client.keyboard).mct$onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
+        ((KeyboardInputBridge) client.keyboard).mct$onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
     }
 
     static Object readField(Object target, String name) {

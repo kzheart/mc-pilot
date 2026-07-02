@@ -2,11 +2,11 @@ package com.mct.core.handler;
 
 import static com.mct.core.util.ParamHelper.*;
 
+import com.mct.core.input.KeyboardInputBridge;
+import com.mct.core.input.MouseInputBridge;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.mixin.KeyBindingAccessor;
-import com.mct.mixin.KeyboardInvoker;
-import com.mct.mixin.MouseInvoker;
 import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,7 +61,7 @@ public final class InputHandler extends ActionHandler {
             double rawX = scaledToRawX(scaledX);
             double rawY = scaledToRawY(scaledY);
             GLFW.glfwSetCursorPos(window, rawX, rawY);
-            ((MouseInvoker) client.mouse).mct$onCursorPos(window, rawX, rawY);
+            ((MouseInputBridge) client.mouse).mct$onCursorPos(window, rawX, rawY);
             return true;
         });
     }
@@ -179,7 +179,7 @@ public final class InputHandler extends ActionHandler {
         int delta = getInt(params, "delta");
         moveMouseTo(x, y);
         runOnClientThread(() -> {
-            ((MouseInvoker) client.mouse).mct$onMouseScroll(client.getWindow().getHandle(), 0.0D, delta);
+            ((MouseInputBridge) client.mouse).mct$onMouseScroll(client.getWindow().getHandle(), 0.0D, delta);
             return true;
         });
         return com.mct.core.util.MctMaps.mapOf(
@@ -249,7 +249,7 @@ public final class InputHandler extends ActionHandler {
                 throw new ActionException("INVALID_STATE");
             }
             long window = client.getWindow().getHandle();
-            KeyboardInvoker keyboard = (KeyboardInvoker) client.keyboard;
+            KeyboardInputBridge keyboard = (KeyboardInputBridge) client.keyboard;
             text.codePoints().forEach(codePoint -> keyboard.mct$onChar(window, codePoint, 0));
             return true;
         });
@@ -284,7 +284,7 @@ public final class InputHandler extends ActionHandler {
             default -> throw new ActionException("INVALID_PARAMS");
         };
         runOnClientThread(() -> {
-            ((MouseInvoker) client.mouse).mct$onMouseButton(client.getWindow().getHandle(), glfwButton, action, 0);
+            ((MouseInputBridge) client.mouse).mct$onMouseButton(client.getWindow().getHandle(), glfwButton, action, 0);
             return true;
         });
     }
