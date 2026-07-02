@@ -1,5 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { mkdirSync, openSync } from "node:fs";
+import { mkdir, open, readdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,14 +118,14 @@ export class ClientInstanceManager {
       const minecraftDir = path.join(instanceDir, "minecraft");
 
       const logsDir = path.join(resolveMctHome(), "logs");
-      mkdirSync(logsDir, { recursive: true });
+      await mkdir(logsDir, { recursive: true });
       const logPath = path.join(logsDir, `client-${clientName}.log`);
-      const stdout = openSync(logPath, "a");
+      const stdout = await open(logPath, "a");
 
       const child = spawn(launchCommand[0], launchCommand.slice(1), {
         cwd: minecraftDir,
         detached: true,
-        stdio: ["ignore", stdout, stdout],
+        stdio: ["ignore", stdout.fd, stdout.fd],
         env: {
           ...process.env,
           ...meta.env,
@@ -141,6 +140,8 @@ export class ClientInstanceManager {
         }
       });
 
+      child.once("exit", () => { void stdout.close(); });
+      child.once("error", () => { void stdout.close(); });
       child.unref();
 
       const entry: ClientRuntimeEntry = {

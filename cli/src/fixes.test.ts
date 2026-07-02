@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -10,6 +11,7 @@ import { WebSocketServer } from "ws";
 
 import { resolveProfileServerAddress } from "./commands/client.js";
 import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
+import { ServerCommandPipe } from "./instance/ServerCommandPipe.js";
 import { ensureServerPortProperty, ServerInstanceManager } from "./instance/ServerInstanceManager.js";
 import { GlobalStateStore } from "./util/global-state.js";
 import { MctError } from "./util/errors.js";
@@ -180,6 +182,80 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
     }
 
     assert.fail("fake java command was not invoked");
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerCommandPipe sends a command through a FIFO without sync fd calls", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-pipe-"));
+
+  try {
+    const pipe = new ServerCommandPipe();
+    const fifoPath = await pipe.create(tempDir, "demo", "paper");
+    const reader = spawn("bash", ["-c", 'IFS= read -r line < "$1"; printf "%s" "$line"', "reader", fifoPath], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let output = "";
+    reader.stdout.setEncoding("utf8");
+    reader.stdout.on("data", (chunk) => { output += chunk; });
+
+    await pipe.send(fifoPath, "say hello");
+    const [code] = await once(reader, "exit");
+
+    assert.equal(code, 0);
+    assert.equal(output, "say hello");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.exec writes slash-prefixed commands through the async pipe", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-exec-pipe-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const pipe = new ServerCommandPipe();
+    const fifoPath = await pipe.create(tempDir, "demo", "paper");
+    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    await mkdir(path.dirname(logPath), { recursive: true });
+
+    const store = new GlobalStateStore();
+    await store.writeServerState({
+      servers: {
+        "demo/paper": {
+          pid: process.pid,
+          project: "demo",
+          name: "paper",
+          port: 25569,
+          startedAt: new Date().toISOString(),
+          logPath,
+          instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper"),
+          stdinPipe: fifoPath
+        }
+      }
+    });
+
+    const reader = spawn("bash", ["-c", 'IFS= read -r line < "$1"; printf "%s" "$line"', "reader", fifoPath], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let output = "";
+    reader.stdout.setEncoding("utf8");
+    reader.stdout.on("data", (chunk) => { output += chunk; });
+
+    const manager = new ServerInstanceManager(store, "demo");
+    const result = await manager.exec("paper", "/say hello");
+    const [code] = await once(reader, "exit");
+
+    assert.equal(code, 0);
+    assert.deepEqual(result, { sent: true, command: "/say hello", stdinPipe: fifoPath });
+    assert.equal(output, "say hello");
   } finally {
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
