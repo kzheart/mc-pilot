@@ -118,7 +118,7 @@ public abstract class ActionHandler {
     // --- Data conversion helpers ---
 
     protected Map<String, Object> positionMap(ClientPlayerEntity player) {
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "x", player.getX(),
             "y", player.getY(),
             "z", player.getZ(),
@@ -129,11 +129,11 @@ public abstract class ActionHandler {
     }
 
     protected Map<String, Object> rotationMap(ClientPlayerEntity player) {
-        return Map.of("yaw", player.getYaw(), "pitch", player.getPitch());
+        return com.mct.core.util.MctMaps.mapOf("yaw", player.getYaw(), "pitch", player.getPitch());
     }
 
     protected Map<String, Object> blockPosMap(BlockPos pos) {
-        return Map.of("x", pos.getX(), "y", pos.getY(), "z", pos.getZ());
+        return com.mct.core.util.MctMaps.mapOf("x", pos.getX(), "y", pos.getY(), "z", pos.getZ());
     }
 
     protected BlockPos blockPos(Map<String, Object> params) {

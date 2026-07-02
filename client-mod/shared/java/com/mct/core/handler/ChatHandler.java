@@ -25,20 +25,20 @@ public final class ChatHandler extends ActionHandler {
             case "chat.send" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
                 ClientVersionModulesHolder.get().interaction().sendChatMessage(player, getString(params, "message"));
-                return Map.of("sent", true);
+                return com.mct.core.util.MctMaps.mapOf("sent", true);
             });
             case "chat.command" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
                 String command = stripLeadingSlash(getString(params, "command"));
                 ClientVersionModulesHolder.get().interaction().sendCommand(player, command);
-                return Map.of("sent", true);
+                return com.mct.core.util.MctMaps.mapOf("sent", true);
             });
-            case "chat.clear" -> runOnClientThread(() -> Map.of(
+            case "chat.clear" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf(
                 "cleared", true,
                 "removed", stateTracker.clearChatHistory()
             ));
-            case "chat.history" -> runOnClientThread(() -> Map.of("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
-            case "chat.last" -> runOnClientThread(() -> Map.of("message", stateTracker.getLastChatMessage()));
+            case "chat.history" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("messages", stateTracker.getChatHistory(getInt(params, "last", 10))));
+            case "chat.last" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("message", stateTracker.getLastChatMessage()));
             case "chat.wait" -> waitForChat(params);
             default -> throw new ActionException("INVALID_ACTION");
         };
@@ -54,7 +54,7 @@ public final class ChatHandler extends ActionHandler {
             result -> !result.isEmpty(),
             "TIMEOUT"
         );
-        return Map.of("matched", true, "message", matched);
+        return com.mct.core.util.MctMaps.mapOf("matched", true, "message", matched);
     }
 
     private Pattern compileFlexiblePattern(String value) {

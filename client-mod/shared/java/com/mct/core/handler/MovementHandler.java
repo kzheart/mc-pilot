@@ -43,19 +43,19 @@ public final class MovementHandler extends ActionHandler {
             case "move.jump" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
                 player.jump();
-                return Map.of("success", true, "position", positionMap(player));
+                return com.mct.core.util.MctMaps.mapOf("success", true, "position", positionMap(player));
             });
             case "move.sneak" -> runOnClientThread(() -> {
                 boolean enabled = getBoolean(params, "enabled", false);
                 client.options.sneakKey.setPressed(enabled);
-                return Map.of("sneaking", enabled);
+                return com.mct.core.util.MctMaps.mapOf("sneaking", enabled);
             });
             case "move.sprint" -> runOnClientThread(() -> {
                 boolean enabled = getBoolean(params, "enabled", false);
                 client.options.sprintKey.setPressed(enabled);
                 ClientPlayerEntity player = requirePlayer();
                 player.setSprinting(enabled);
-                return Map.of("sprinting", enabled);
+                return com.mct.core.util.MctMaps.mapOf("sprinting", enabled);
             });
             case "move.direction" -> moveDirection(params);
             case "move.to" -> moveTo(params);
@@ -80,7 +80,7 @@ public final class MovementHandler extends ActionHandler {
         player.setHeadYaw(yaw);
         player.setBodyYaw(yaw);
         ClientVersionModulesHolder.get().network().sendLookPacket(player, yaw, pitch);
-        return Map.of("yaw", yaw, "pitch", pitch);
+        return com.mct.core.util.MctMaps.mapOf("yaw", yaw, "pitch", pitch);
     }
 
     public Map<String, Object> moveTo(Map<String, Object> params) {
@@ -111,7 +111,7 @@ public final class MovementHandler extends ActionHandler {
                 if (delta.y > 0.6D && player.isOnGround()) {
                     player.jump();
                 }
-                return Map.of(
+                return com.mct.core.util.MctMaps.mapOf(
                     "arrived", false,
                     "distance", position.distanceTo(target),
                     "horizontal", horizontal,
@@ -131,7 +131,7 @@ public final class MovementHandler extends ActionHandler {
                 stalledSteps++;
             }
             if (stalledSteps >= 4 && currentHorizontal < 2.75D && currentVertical < 1.5D) {
-                return Map.of(
+                return com.mct.core.util.MctMaps.mapOf(
                     "arrived", true,
                     "finalPos", runOnClientThread(() -> positionMap(requirePlayer())),
                     "distance", currentDistance
@@ -147,7 +147,7 @@ public final class MovementHandler extends ActionHandler {
         }
 
         ClientPlayerEntity player = runOnClientThread(this::requirePlayer);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "arrived", false,
             "finalPos", runOnClientThread(() -> positionMap(requirePlayer())),
             "distance", player.getPos().distanceTo(target)
@@ -167,7 +167,7 @@ public final class MovementHandler extends ActionHandler {
             }
             inputHandler.pressMovementKey(directionKey(direction), (long) (MOVE_STEP_SECONDS * 1000.0D));
         }
-        return runOnClientThread(() -> Map.of("newPos", positionMap(requirePlayer())));
+        return runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("newPos", positionMap(requirePlayer())));
     }
 
     private net.minecraft.client.option.KeyBinding directionKey(String direction) {

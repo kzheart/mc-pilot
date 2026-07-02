@@ -47,14 +47,14 @@ public final class GuiInventoryHandler extends ActionHandler {
     @Override
     public Map<String, Object> handle(String action, Map<String, Object> params) {
         return switch (action) {
-            case "inventory.get" -> runOnClientThread(() -> Map.of("slots", ClientDataHelper.slotsToList(requirePlayer().playerScreenHandler.slots)));
+            case "inventory.get" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("slots", ClientDataHelper.slotsToList(requirePlayer().playerScreenHandler.slots)));
             case "inventory.slot" -> runOnClientThread(() -> inventorySlot(params));
-            case "inventory.held" -> runOnClientThread(() -> Map.of("item", ClientDataHelper.itemToMap(requirePlayer().getMainHandStack())));
+            case "inventory.held" -> runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("item", ClientDataHelper.itemToMap(requirePlayer().getMainHandStack())));
             case "inventory.hotbar" -> runOnClientThread(() -> setHotbar(params));
             case "inventory.drop" -> runOnClientThread(() -> {
                 ClientPlayerEntity player = requirePlayer();
                 boolean dropped = player.dropSelectedItem(getBoolean(params, "all", false));
-                return Map.of("dropped", dropped, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
+                return com.mct.core.util.MctMaps.mapOf("dropped", dropped, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
             });
             case "inventory.use" -> runOnClientThread(this::useHeldItem);
             case "inventory.swap-hands" -> swapHands();
@@ -79,7 +79,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         if (slot < 0 || slot >= player.getInventory().size()) {
             throw new ActionException("INVALID_PARAMS");
         }
-        return Map.of("slot", slot, "item", ClientDataHelper.itemToMap(player.getInventory().getStack(slot)));
+        return com.mct.core.util.MctMaps.mapOf("slot", slot, "item", ClientDataHelper.itemToMap(player.getInventory().getStack(slot)));
     }
 
     private Map<String, Object> setHotbar(Map<String, Object> params) {
@@ -90,13 +90,13 @@ public final class GuiInventoryHandler extends ActionHandler {
         ClientPlayerEntity player = requirePlayer();
         player.getInventory().selectedSlot = slot;
         player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
-        return Map.of("selectedSlot", slot, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
+        return com.mct.core.util.MctMaps.mapOf("selectedSlot", slot, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
     }
 
     private Map<String, Object> useHeldItem() {
         ClientPlayerEntity player = requirePlayer();
         ActionResult result = ClientVersionModulesHolder.get().interaction().interactItem(requireInteractionManager(), player, Hand.MAIN_HAND);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "success", result.isAccepted(),
             "action", ClientVersionModulesHolder.get().actionResult().resultName(result),
             "item", ClientDataHelper.itemToMap(player.getMainHandStack())
@@ -180,7 +180,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         ClickPlan plan = clickPlan(buttonName, getInt(params, "key", 0));
         requireInteractionManager().clickSlot(handler.syncId, slot, plan.button, plan.actionType, player);
         safeSleep(120L);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "success", true,
             "cursorItem", ClientDataHelper.itemToMap(handler.getCursorStack()),
             "slotItem", slot >= 0 ? ClientDataHelper.itemToMap(handler.getSlot(slot).getStack()) : ClientDataHelper.itemToMap(ItemStack.EMPTY)
@@ -202,7 +202,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         }
         interactionManager.clickSlot(handler.syncId, -999, ScreenHandler.packQuickCraftData(2, button), SlotActionType.QUICK_CRAFT, player);
         safeSleep(120L);
-        return Map.of("success", true, "cursorItem", ClientDataHelper.itemToMap(handler.getCursorStack()));
+        return com.mct.core.util.MctMaps.mapOf("success", true, "cursorItem", ClientDataHelper.itemToMap(handler.getCursorStack()));
     }
 
     private Map<String, Object> closeGui() {
@@ -211,7 +211,7 @@ public final class GuiInventoryHandler extends ActionHandler {
             client.setScreen(null);
             client.mouse.lockCursor();
         }
-        return Map.of("success", true);
+        return com.mct.core.util.MctMaps.mapOf("success", true);
     }
 
     private Map<String, Object> waitForGuiOpen(Map<String, Object> params) {
@@ -220,14 +220,14 @@ public final class GuiInventoryHandler extends ActionHandler {
             timeoutSeconds,
             () -> {
                 if (client.currentScreen == null) {
-                    return Map.of();
+                    return com.mct.core.util.MctMaps.mapOf();
                 }
                 return ClientDataHelper.screenToMap(client);
             },
             map -> !map.isEmpty(),
             "TIMEOUT"
         );
-        return Map.of("opened", true, "screen", result);
+        return com.mct.core.util.MctMaps.mapOf("opened", true, "screen", result);
     }
 
     private Map<String, Object> waitForGuiUpdate(Map<String, Object> params) {
@@ -237,15 +237,15 @@ public final class GuiInventoryHandler extends ActionHandler {
             timeoutSeconds,
             () -> {
                 if (client.currentScreen == null) {
-                    return Map.of();
+                    return com.mct.core.util.MctMaps.mapOf();
                 }
                 String current = screenFingerprint();
-                return !current.equals(initial) ? ClientDataHelper.screenToMap(client) : Map.of();
+                return !current.equals(initial) ? ClientDataHelper.screenToMap(client) : com.mct.core.util.MctMaps.mapOf();
             },
             map -> !map.isEmpty(),
             "TIMEOUT"
         );
-        return Map.of("updated", true, "screen", result);
+        return com.mct.core.util.MctMaps.mapOf("updated", true, "screen", result);
     }
 
     private Map<String, Object> captureScreenshot(String output, @Nullable String region, boolean guiOnly) {
@@ -259,7 +259,7 @@ public final class GuiInventoryHandler extends ActionHandler {
             NativeImage image = imageFuture.get(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             try {
                 NativeImage toWrite = image;
-                if (region != null && !region.isBlank()) {
+                if (region != null && !region.trim().isEmpty()) {
                     toWrite = cropImage(image, region);
                 }
                 toWrite.writeTo(outputPath);
@@ -269,7 +269,7 @@ public final class GuiInventoryHandler extends ActionHandler {
             } finally {
                 image.close();
             }
-            return Map.of(
+            return com.mct.core.util.MctMaps.mapOf(
                 "path", outputPath.toString(),
                 "width", client.getWindow().getScaledWidth(),
                 "height", client.getWindow().getScaledHeight(),

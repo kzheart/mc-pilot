@@ -15,8 +15,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.SignBlockEntity;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -137,7 +140,7 @@ public final class WorldHandler extends ActionHandler {
         return pollOnClientThread(
             3.0D,
             () -> {
-                SignBlockEntity sign = requireSign(Map.of("x", pos.getX(), "y", pos.getY(), "z", pos.getZ()));
+                SignBlockEntity sign = requireSign(com.mct.core.util.MctMaps.mapOf("x", pos.getX(), "y", pos.getY(), "z", pos.getZ()));
                 return ClientVersionModulesHolder.get().sign().readSign(sign);
             },
             data -> {
@@ -159,18 +162,18 @@ public final class WorldHandler extends ActionHandler {
     private Map<String, Object> readBook() {
         ItemStack stack = requireBookStack();
         List<String> pages = ClientVersionModulesHolder.get().book().readPages(stack);
-        return Map.of("pages", pages, "item", ClientDataHelper.itemToMap(stack));
+        return com.mct.core.util.MctMaps.mapOf("pages", pages, "item", ClientDataHelper.itemToMap(stack));
     }
 
     private Map<String, Object> writeBook(Map<String, Object> params) {
-        List<String> pages = getList(params, "pages").stream().map(String::valueOf).toList();
+        List<String> pages = getList(params, "pages").stream().map(String::valueOf).collect(Collectors.toList());
         waitForBookUpdateCooldown();
         Map<String, Object> result = runOnClientThread(() -> {
             ClientPlayerEntity player = requirePlayer();
             ItemStack stack = requireWritableBook(player.getMainHandStack());
             player.networkHandler.sendPacket(new BookUpdateC2SPacket(player.getInventory().selectedSlot, pages, Optional.empty()));
             lastBookUpdateAt = System.currentTimeMillis();
-            return Map.of("written", true, "pages", pages, "item", ClientDataHelper.itemToMap(stack));
+            return com.mct.core.util.MctMaps.mapOf("written", true, "pages", pages, "item", ClientDataHelper.itemToMap(stack));
         });
         safeSleep(BOOK_UPDATE_COOLDOWN_MILLIS);
         return result;
@@ -185,7 +188,7 @@ public final class WorldHandler extends ActionHandler {
             List<String> pages = ClientVersionModulesHolder.get().book().readPages(stack);
             player.networkHandler.sendPacket(new BookUpdateC2SPacket(player.getInventory().selectedSlot, pages, Optional.of(title)));
             lastBookUpdateAt = System.currentTimeMillis();
-            return Map.of("signed", true, "title", title, "author", getString(params, "author", player.getName().getString()));
+            return com.mct.core.util.MctMaps.mapOf("signed", true, "title", title, "author", getString(params, "author", player.getName().getString()));
         });
         safeSleep(BOOK_UPDATE_COOLDOWN_MILLIS);
         return result;
@@ -195,11 +198,11 @@ public final class WorldHandler extends ActionHandler {
 
     private Map<String, Object> getBlock(Map<String, Object> params) {
         BlockPos pos = blockPos(params);
-        var world = requirePlayer().clientWorld;
-        var state = world.getBlockState(pos);
+        ClientWorld world = requirePlayer().clientWorld;
+        BlockState state = world.getBlockState(pos);
         LinkedHashMap<String, Object> properties = new LinkedHashMap<>();
         state.getEntries().forEach((property, value) -> properties.put(property.getName(), String.valueOf(value)));
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "type", String.valueOf(McRegistries.blockId(state.getBlock())),
             "properties", properties,
             "lightLevel", world.getLightLevel(pos)
@@ -214,7 +217,7 @@ public final class WorldHandler extends ActionHandler {
             requireInteractionManager(), player, Hand.MAIN_HAND,
             new BlockHitResult(Vec3d.ofCenter(pos), face, pos, false)
         );
-        return Map.of("success", result.isAccepted(), "resultAction", ClientVersionModulesHolder.get().actionResult().resultName(result));
+        return com.mct.core.util.MctMaps.mapOf("success", result.isAccepted(), "resultAction", ClientVersionModulesHolder.get().actionResult().resultName(result));
     }
 
     private Map<String, Object> placeBlock(Map<String, Object> params) {
@@ -231,14 +234,14 @@ public final class WorldHandler extends ActionHandler {
         while (Duration.between(startedAt, Instant.now()).toMillis() < 2_000L) {
             String placedType = String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(target).getBlock()));
             if (!"minecraft:air".equals(placedType)) {
-                return Map.of(
+                return com.mct.core.util.MctMaps.mapOf(
                     "success", result.isAccepted(),
                     "placedType", placedType
                 );
             }
             safeSleep(50L);
         }
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "success", false,
             "placedType", String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(target).getBlock()))
         );
@@ -252,7 +255,7 @@ public final class WorldHandler extends ActionHandler {
         while (Duration.between(startedAt, Instant.now()).toMillis() < 15_000L) {
             boolean done = runOnClientThread(() -> requirePlayer().clientWorld.getBlockState(pos).isAir());
             if (done) {
-                return runOnClientThread(() -> Map.of(
+                return runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf(
                     "success", true,
                     "blockType", "minecraft:air",
                     "duration", Duration.between(startedAt, Instant.now()).toMillis()
@@ -268,7 +271,7 @@ public final class WorldHandler extends ActionHandler {
             requireInteractionManager().cancelBlockBreaking();
             return true;
         });
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "success", false,
             "blockType", runOnClientThread(() -> String.valueOf(McRegistries.blockId(requirePlayer().clientWorld.getBlockState(pos).getBlock()))),
             "duration", Duration.between(startedAt, Instant.now()).toMillis()
@@ -287,7 +290,7 @@ public final class WorldHandler extends ActionHandler {
             }
             entities.add(ClientDataHelper.entityToMap(entity, player));
         }
-        return Map.of("entities", entities);
+        return com.mct.core.util.MctMaps.mapOf("entities", entities);
     }
 
     private Map<String, Object> entityInfo(Map<String, Object> params) {
@@ -304,14 +307,14 @@ public final class WorldHandler extends ActionHandler {
         Entity entity = EntityHelper.findEntity(player, requireFilter(params));
         requireInteractionManager().attackEntity(player, entity);
         player.swingHand(Hand.MAIN_HAND);
-        return Map.of("success", true, "entityId", entity.getId(), "entityType", String.valueOf(McRegistries.entityTypeId(entity.getType())));
+        return com.mct.core.util.MctMaps.mapOf("success", true, "entityId", entity.getId(), "entityType", String.valueOf(McRegistries.entityTypeId(entity.getType())));
     }
 
     private Map<String, Object> interactEntity(Map<String, Object> params) {
         ClientPlayerEntity player = requirePlayer();
         Entity entity = EntityHelper.findEntity(player, requireFilter(params));
         ActionResult result = requireInteractionManager().interactEntity(player, entity, Hand.MAIN_HAND);
-        return Map.of("success", result.isAccepted(), "entityId", entity.getId(), "entityType", String.valueOf(McRegistries.entityTypeId(entity.getType())));
+        return com.mct.core.util.MctMaps.mapOf("success", result.isAccepted(), "entityId", entity.getId(), "entityType", String.valueOf(McRegistries.entityTypeId(entity.getType())));
     }
 
     private Map<String, Object> mountEntity(Map<String, Object> params) {
@@ -319,14 +322,14 @@ public final class WorldHandler extends ActionHandler {
             ClientPlayerEntity player = requirePlayer();
             Entity entity = EntityHelper.findEntity(player, requireFilter(params));
             ActionResult result = requireInteractionManager().interactEntity(player, entity, Hand.MAIN_HAND);
-            return Map.of(
+            return com.mct.core.util.MctMaps.mapOf(
                 "accepted", result.isAccepted(),
                 "vehicleId", entity.getId()
             );
         });
         boolean accepted = Boolean.TRUE.equals(interaction.get("accepted"));
         if (!accepted) {
-            return Map.of("success", false, "vehicleId", -1);
+            return com.mct.core.util.MctMaps.mapOf("success", false, "vehicleId", -1);
         }
         Map<String, Object> mounted = pollUntil(
             2.0D,
@@ -334,14 +337,14 @@ public final class WorldHandler extends ActionHandler {
                 ClientPlayerEntity player = requirePlayer();
                 Entity vehicle = player.getVehicle();
                 if (vehicle == null) {
-                    return Map.of();
+                    return com.mct.core.util.MctMaps.mapOf();
                 }
-                return Map.of("success", true, "vehicleId", vehicle.getId());
+                return com.mct.core.util.MctMaps.mapOf("success", true, "vehicleId", vehicle.getId());
             },
             result -> !result.isEmpty()
         );
         if (mounted.isEmpty()) {
-            return Map.of("success", false, "vehicleId", -1);
+            return com.mct.core.util.MctMaps.mapOf("success", false, "vehicleId", -1);
         }
         return mounted;
     }
@@ -356,10 +359,10 @@ public final class WorldHandler extends ActionHandler {
             return mounted;
         });
         if (!hadVehicle) {
-            return Map.of("success", false);
+            return com.mct.core.util.MctMaps.mapOf("success", false);
         }
         Boolean dismounted = pollUntil(2.0D, () -> !requirePlayer().hasVehicle(), Boolean::booleanValue);
-        return Map.of("success", Boolean.TRUE.equals(dismounted));
+        return com.mct.core.util.MctMaps.mapOf("success", Boolean.TRUE.equals(dismounted));
     }
 
     private Map<String, Object> steerEntity(Map<String, Object> params) {
@@ -373,7 +376,7 @@ public final class WorldHandler extends ActionHandler {
         boolean jump = getBoolean(params, "jump", false);
         boolean sneak = getBoolean(params, "sneak", false);
         inputHandler.pressMovementKeys(forward, back, left, right, jump, sneak, 300L);
-        return runOnClientThread(() -> Map.of("newPos", positionMap(requirePlayer())));
+        return runOnClientThread(() -> com.mct.core.util.MctMaps.mapOf("newPos", positionMap(requirePlayer())));
     }
 
     // --- Combat ---
@@ -398,7 +401,7 @@ public final class WorldHandler extends ActionHandler {
         int killed = 0;
 
         while (Duration.between(startedAt, Instant.now()).toMillis() < (long) (timeoutSeconds * 1000.0D)) {
-            Map<String, Object> filter = Map.of("type", type, "nearest", true, "maxDistance", radius);
+            Map<String, Object> filter = com.mct.core.util.MctMaps.mapOf("type", type, "nearest", true, "maxDistance", radius);
             try {
                 Map<String, Object> result = combatAttackLoop(filter, Math.max(2.0D, timeoutSeconds - elapsedSeconds(startedAt)), true);
                 if (Boolean.TRUE.equals(result.get("killed"))) {
@@ -413,8 +416,8 @@ public final class WorldHandler extends ActionHandler {
             break;
         }
 
-        int remaining = runOnClientThread(() -> EntityHelper.countEntities(requirePlayer(), Map.of("type", type, "maxDistance", radius)));
-        return Map.of(
+        int remaining = runOnClientThread(() -> EntityHelper.countEntities(requirePlayer(), com.mct.core.util.MctMaps.mapOf("type", type, "maxDistance", radius)));
+        return com.mct.core.util.MctMaps.mapOf(
             "killed", killed,
             "duration", elapsedSeconds(startedAt),
             "remaining", remaining
@@ -434,7 +437,7 @@ public final class WorldHandler extends ActionHandler {
             }
             picked.add((Map<String, Object>) next.get("item"));
             double remainingTimeout = Math.max(0.5D, timeoutSeconds - elapsedSeconds(startedAt));
-            movementHandler.moveTo(Map.of("x", next.get("x"), "y", next.get("y"), "z", next.get("z"), "timeout", remainingTimeout));
+            movementHandler.moveTo(com.mct.core.util.MctMaps.mapOf("x", next.get("x"), "y", next.get("y"), "z", next.get("z"), "timeout", remainingTimeout));
             int entityId = asInt(next.get("entityId"));
             double pickupWaitTimeout = Math.min(2.0D, Math.max(0.2D, timeoutSeconds - elapsedSeconds(startedAt)));
             pollUntil(
@@ -444,7 +447,7 @@ public final class WorldHandler extends ActionHandler {
             );
         }
 
-        return Map.of("picked", picked);
+        return com.mct.core.util.MctMaps.mapOf("picked", picked);
     }
 
     private Map<String, Object> combatAttackLoop(Map<String, Object> filter, double timeoutSeconds, boolean approachTarget) {
@@ -455,7 +458,7 @@ public final class WorldHandler extends ActionHandler {
         while (Duration.between(startedAt, Instant.now()).toMillis() < (long) (timeoutSeconds * 1000.0D)) {
             Map<String, Object> target = currentTargetState(filter);
             if (target.isEmpty()) {
-                return Map.of(
+                return com.mct.core.util.MctMaps.mapOf(
                     "killed", lastTargetId != null,
                     "hits", hits,
                     "duration", elapsedSeconds(startedAt),
@@ -494,7 +497,7 @@ public final class WorldHandler extends ActionHandler {
                 hits++;
                 double confirmTimeout = Math.min(1.5D, Math.max(0.4D, timeoutSeconds - elapsedSeconds(startedAt) + 0.5D));
                 if (waitForCombatTargetDefeat(lastTargetId, filter, confirmTimeout)) {
-                    return Map.of(
+                    return com.mct.core.util.MctMaps.mapOf(
                         "killed", true,
                         "hits", hits,
                         "duration", elapsedSeconds(startedAt),
@@ -506,7 +509,7 @@ public final class WorldHandler extends ActionHandler {
         }
 
         boolean defeated = hits > 0 && waitForCombatTargetDefeat(lastTargetId, filter, 2.5D);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "killed", defeated,
             "hits", hits,
             "duration", elapsedSeconds(startedAt),
@@ -550,7 +553,7 @@ public final class WorldHandler extends ActionHandler {
             throw new ActionException("INVALID_PARAMS");
         }
         requireInteractionManager().clickButton(handler.syncId, option);
-        return Map.of("selectedOption", option, "success", true);
+        return com.mct.core.util.MctMaps.mapOf("selectedOption", option, "success", true);
     }
 
     private Map<String, Object> trade(Map<String, Object> params) {
@@ -562,11 +565,11 @@ public final class WorldHandler extends ActionHandler {
         safeSleep(150L);
         ItemStack preview = handler.getSlot(2).getStack().copy();
         if (preview.isEmpty()) {
-            return Map.of("success", false, "index", index, "result", ClientDataHelper.itemToMap(ItemStack.EMPTY));
+            return com.mct.core.util.MctMaps.mapOf("success", false, "index", index, "result", ClientDataHelper.itemToMap(ItemStack.EMPTY));
         }
         requireInteractionManager().clickSlot(handler.syncId, 2, 0, SlotActionType.QUICK_MOVE, requirePlayer());
         safeSleep(120L);
-        return Map.of("success", true, "index", index, "result", ClientDataHelper.itemToMap(preview));
+        return com.mct.core.util.MctMaps.mapOf("success", true, "index", index, "result", ClientDataHelper.itemToMap(preview));
     }
 
     private Map<String, Object> anvil(Map<String, Object> params) {
@@ -593,7 +596,7 @@ public final class WorldHandler extends ActionHandler {
             return true;
         });
         safeSleep(120L);
-        return Map.of("success", true, "rename", rename, "result", ClientDataHelper.itemToMap(preview));
+        return com.mct.core.util.MctMaps.mapOf("success", true, "rename", rename, "result", ClientDataHelper.itemToMap(preview));
     }
 
     private Map<String, Object> craft(Map<String, Object> params) {
@@ -659,7 +662,7 @@ public final class WorldHandler extends ActionHandler {
             return true;
         });
         safeSleep(120L);
-        return Map.of("crafted", true, "result", ClientDataHelper.itemToMap(preview));
+        return com.mct.core.util.MctMaps.mapOf("crafted", true, "result", ClientDataHelper.itemToMap(preview));
     }
 
     // --- Helpers ---
@@ -718,9 +721,9 @@ public final class WorldHandler extends ActionHandler {
         try {
             Entity entity = EntityHelper.findEntity(requirePlayer(), filter);
             if (!EntityHelper.isEntitySelectable(entity)) {
-                return Map.of();
+                return com.mct.core.util.MctMaps.mapOf();
             }
-            return Map.of(
+            return com.mct.core.util.MctMaps.mapOf(
                 "entityId", entity.getId(),
                 "x", entity.getX(),
                 "y", entity.getY(),
@@ -729,7 +732,7 @@ public final class WorldHandler extends ActionHandler {
             );
         } catch (ActionException exception) {
             if ("ENTITY_NOT_FOUND".equals(exception.getCode())) {
-                return Map.of();
+                return com.mct.core.util.MctMaps.mapOf();
             }
             throw exception;
         }
@@ -750,9 +753,9 @@ public final class WorldHandler extends ActionHandler {
             }
         }
         if (nearest == null) {
-            return Map.of();
+            return com.mct.core.util.MctMaps.mapOf();
         }
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "entityId", nearest.getId(),
             "x", nearest.getX(),
             "y", nearest.getY(),

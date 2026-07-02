@@ -1,8 +1,10 @@
 package com.mct.core.util;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.jetbrains.annotations.Nullable;
 
 public final class ParamHelper {
@@ -71,13 +73,13 @@ public final class ParamHelper {
 
     public static List<String> getStringList(Map<String, Object> params, String key) {
         if (params == null || !params.containsKey(key) || params.get(key) == null) {
-            return List.of();
+            return Collections.emptyList();
         }
         return getList(params, key).stream()
             .map(String::valueOf)
             .map(value -> value.toLowerCase(Locale.ROOT).trim())
             .filter(value -> !value.isEmpty())
-            .toList();
+            .collect(Collectors.toList());
     }
 
     public static int asInt(Object value) {

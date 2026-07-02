@@ -66,7 +66,7 @@ public final class StatusHandler extends ActionHandler {
             pollOnClientThread(timeoutSeconds, () -> requirePlayer().isOnGround(), Boolean::booleanValue, "TIMEOUT");
         }
 
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "waitedSeconds", Duration.ofMillis(System.currentTimeMillis() - startedAt + waitMillis).toMillis() / 1000.0D,
             "guiOpen", runOnClientThread(() -> client.currentScreen != null),
             "onGround", runOnClientThread(() -> requirePlayer().isOnGround())
@@ -92,7 +92,7 @@ public final class StatusHandler extends ActionHandler {
     }
 
     private Map<String, Object> effectsStatus() {
-        return Map.of("effects", ClientDataHelper.effectsToList(requirePlayer().getStatusEffects()));
+        return com.mct.core.util.MctMaps.mapOf("effects", ClientDataHelper.effectsToList(requirePlayer().getStatusEffects()));
     }
 
     private Map<String, Object> experienceStatus() {
@@ -133,12 +133,12 @@ public final class StatusHandler extends ActionHandler {
     private Map<String, Object> gamemodeStatus() {
         ClientPlayerInteractionManager interactionManager = requireInteractionManager();
         GameMode gameMode = interactionManager.getCurrentGameMode();
-        return Map.of("gameMode", gameMode != null ? gameMode.getName() : "unknown");
+        return com.mct.core.util.MctMaps.mapOf("gameMode", gameMode != null ? gameMode.getName() : "unknown");
     }
 
     private Map<String, Object> worldStatus() {
         ClientPlayerEntity player = requirePlayer();
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "name", player.clientWorld.getRegistryKey().getValue().toString(),
             "dimension", player.clientWorld.getRegistryKey().getValue().toString(),
             "difficulty", player.clientWorld.getDifficulty().getName(),
@@ -159,7 +159,7 @@ public final class StatusHandler extends ActionHandler {
     }
 
     private Map<String, Object> screenSize() {
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "width", client.getWindow().getScaledWidth(),
             "height", client.getWindow().getScaledHeight(),
             "scaleFactor", client.getWindow().getScaleFactor()

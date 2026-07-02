@@ -4,11 +4,11 @@ import com.mct.version.ClientVersionModulesHolder;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import net.minecraft.text.Text;
 
@@ -24,7 +24,7 @@ public final class ClientStateTracker {
     private HudTitleState hudTitleState = HudTitleState.empty();
     private HudActionBarState hudActionBarState = HudActionBarState.empty();
     private TabListState tabListState = TabListState.empty();
-    private List<Map<String, Object>> bossBars = List.of();
+    private List<Map<String, Object>> bossBars = Collections.emptyList();
     private ResourcePackState resourcePackState = ResourcePackState.empty();
 
     private ClientStateTracker() {
@@ -62,7 +62,7 @@ public final class ClientStateTracker {
 
     public synchronized Map<String, Object> getLastChatMessage() {
         ChatMessageRecord record = chatMessages.peekLast();
-        return record != null ? record.toMap() : Map.of();
+        return record != null ? record.toMap() : com.mct.core.util.MctMaps.mapOf();
     }
 
     public synchronized int clearChatHistory() {
@@ -112,7 +112,7 @@ public final class ClientStateTracker {
     }
 
     public synchronized void recordBossBars(List<Map<String, Object>> values) {
-        bossBars = List.copyOf(values);
+        bossBars = Collections.unmodifiableList(new ArrayList<>(values));
     }
 
     public synchronized List<Map<String, Object>> getBossBars() {
@@ -121,7 +121,7 @@ public final class ClientStateTracker {
 
     public synchronized void recordResourcePackState(String acceptanceStatus, int packCount) {
         resourcePackState = new ResourcePackState(
-            Objects.requireNonNullElse(acceptanceStatus, "unknown"),
+            acceptanceStatus != null ? acceptanceStatus : "unknown",
             Math.max(0, packCount)
         );
     }
@@ -183,7 +183,7 @@ public final class ClientStateTracker {
                 latest = value;
             }
         }
-        return latest != null ? mapper.apply(latest) : Map.of();
+        return latest != null ? mapper.apply(latest) : com.mct.core.util.MctMaps.mapOf();
     }
 
     private static final class ChatMessageRecord {
@@ -232,7 +232,7 @@ public final class ClientStateTracker {
         }
 
         Map<String, Object> toMap() {
-            return Map.of(
+            return com.mct.core.util.MctMaps.mapOf(
                 "title", title,
                 "subtitle", subtitle,
                 "fadeIn", fadeIn,
@@ -256,7 +256,7 @@ public final class ClientStateTracker {
         }
 
         Map<String, Object> toMap() {
-            return Map.of("text", text, "raw", raw);
+            return com.mct.core.util.MctMaps.mapOf("text", text, "raw", raw);
         }
     }
 
@@ -274,7 +274,7 @@ public final class ClientStateTracker {
         }
 
         Map<String, Object> toMap() {
-            return Map.of("header", header, "footer", footer);
+            return com.mct.core.util.MctMaps.mapOf("header", header, "footer", footer);
         }
     }
 
@@ -292,7 +292,7 @@ public final class ClientStateTracker {
         }
 
         Map<String, Object> toMap() {
-            return Map.of(
+            return com.mct.core.util.MctMaps.mapOf(
                 "acceptanceStatus", acceptanceStatus,
                 "packCount", packCount
             );

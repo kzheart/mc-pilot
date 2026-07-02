@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -128,7 +129,7 @@ public final class InputHandler extends ActionHandler {
         clickMouseButton(button);
         safeSleep(100L);
         clickMouseButton(button);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "clicked", true,
             "button", button,
             "count", 2,
@@ -163,11 +164,11 @@ public final class InputHandler extends ActionHandler {
             safeSleep(25L);
         }
         dispatchMouseButton(button, GLFW.GLFW_RELEASE);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "dragged", true,
             "button", button,
-            "from", Map.of("x", fromX, "y", fromY),
-            "to", Map.of("x", toX, "y", toY)
+            "from", com.mct.core.util.MctMaps.mapOf("x", fromX, "y", fromY),
+            "to", com.mct.core.util.MctMaps.mapOf("x", toX, "y", toY)
         );
     }
 
@@ -180,7 +181,7 @@ public final class InputHandler extends ActionHandler {
             ((MouseInvoker) client.mouse).mct$onMouseScroll(client.getWindow().getHandle(), 0.0D, delta);
             return true;
         });
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "scrolled", true,
             "delta", delta,
             "mouse", runOnClientThread(this::currentMousePosition)
@@ -190,7 +191,7 @@ public final class InputHandler extends ActionHandler {
     private Map<String, Object> inputKeyPress(Map<String, Object> params) {
         String keyName = getString(params, "key");
         pressInputBinding(resolveInputBinding(keyName), 100L);
-        return Map.of("pressed", true, "key", normalizeInputName(keyName));
+        return com.mct.core.util.MctMaps.mapOf("pressed", true, "key", normalizeInputName(keyName));
     }
 
     private Map<String, Object> inputKeyHold(Map<String, Object> params) {
@@ -201,7 +202,7 @@ public final class InputHandler extends ActionHandler {
         dispatchInputBinding(binding, GLFW.GLFW_PRESS);
         safeSleep(duration);
         dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "held", true,
             "key", binding.name,
             "actualDuration", Duration.between(startedAt, Instant.now()).toMillis()
@@ -211,20 +212,20 @@ public final class InputHandler extends ActionHandler {
     private Map<String, Object> inputKeyDown(Map<String, Object> params) {
         InputBinding binding = resolveInputBinding(getString(params, "key"));
         dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-        return Map.of("down", true, "key", binding.name, "keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("down", true, "key", binding.name, "keys", snapshotHeldInputKeys());
     }
 
     private Map<String, Object> inputKeyUp(Map<String, Object> params) {
         InputBinding binding = resolveInputBinding(getString(params, "key"));
         dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
-        return Map.of("up", true, "key", binding.name, "keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("up", true, "key", binding.name, "keys", snapshotHeldInputKeys());
     }
 
     private Map<String, Object> inputKeyCombo(Map<String, Object> params) {
         List<InputBinding> keys = getList(params, "keys").stream()
             .map(String::valueOf)
             .map(this::resolveInputBinding)
-            .toList();
+            .collect(Collectors.toList());
         for (InputBinding binding : keys) {
             dispatchInputBinding(binding, GLFW.GLFW_PRESS);
             safeSleep(35L);
@@ -234,9 +235,9 @@ public final class InputHandler extends ActionHandler {
             dispatchInputBinding(keys.get(index), GLFW.GLFW_RELEASE);
             safeSleep(20L);
         }
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "pressed", true,
-            "keys", keys.stream().map(b -> b.name).toList()
+            "keys", keys.stream().map(b -> b.name).collect(Collectors.toList())
         );
     }
 
@@ -251,11 +252,11 @@ public final class InputHandler extends ActionHandler {
             text.codePoints().forEach(codePoint -> keyboard.mct$onChar(window, codePoint, 0));
             return true;
         });
-        return Map.of("typed", true, "text", text);
+        return com.mct.core.util.MctMaps.mapOf("typed", true, "text", text);
     }
 
     private Map<String, Object> inputKeysDown() {
-        return Map.of("keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("keys", snapshotHeldInputKeys());
     }
 
     // --- Internal helpers ---
@@ -334,7 +335,7 @@ public final class InputHandler extends ActionHandler {
 
     private List<String> snapshotHeldInputKeys() {
         synchronized (heldInputKeys) {
-            return heldInputKeys.stream().sorted().toList();
+            return heldInputKeys.stream().sorted().collect(Collectors.toList());
         }
     }
 

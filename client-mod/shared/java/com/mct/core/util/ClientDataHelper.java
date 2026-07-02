@@ -46,7 +46,7 @@ public final class ClientDataHelper {
         if (stack.isDamageable()) {
             result.put(
                 "durability",
-                Map.of(
+                com.mct.core.util.MctMaps.mapOf(
                     "current", Math.max(0, stack.getMaxDamage() - stack.getDamage()),
                     "max", stack.getMaxDamage(),
                     "damage", stack.getDamage()
@@ -109,7 +109,7 @@ public final class ClientDataHelper {
         result.put("name", entity.getName().getString());
         result.put(
             "pos",
-            Map.of(
+            com.mct.core.util.MctMaps.mapOf(
                 "x", entity.getX(),
                 "y", entity.getY(),
                 "z", entity.getZ()
@@ -131,7 +131,7 @@ public final class ClientDataHelper {
         ArrayList<Map<String, Object>> values = new ArrayList<>();
         for (StatusEffectInstance effect : effects) {
             values.add(
-                Map.of(
+                com.mct.core.util.MctMaps.mapOf(
                     "id", ClientVersionModulesHolder.get().itemData().statusEffectId(effect),
                     "amplifier", effect.getAmplifier(),
                     "duration", effect.getDuration(),
@@ -178,7 +178,7 @@ public final class ClientDataHelper {
                 result.put("playerInventoryTitleScreenY", accessor.mct$getY() + accessor.mct$getPlayerInventoryTitleY());
                 result.put(
                     "bounds",
-                    Map.of(
+                    com.mct.core.util.MctMaps.mapOf(
                         "x", accessor.mct$getX(),
                         "y", accessor.mct$getY(),
                         "width", accessor.mct$getBackgroundWidth(),
