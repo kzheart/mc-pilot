@@ -23,6 +23,11 @@
       "description": "执行聊天命令"
     },
     {
+      "name": "chat.clear",
+      "params": [],
+      "description": "清空聊天历史"
+    },
+    {
       "name": "chat.wait",
       "params": ["match", "timeout"],
       "description": "等待匹配的聊天消息"
@@ -78,6 +83,71 @@
       "description": "设置精确视角"
     },
     {
+      "name": "input.click",
+      "params": ["button"],
+      "description": "点击鼠标"
+    },
+    {
+      "name": "input.double-click",
+      "params": ["button"],
+      "description": "双击鼠标"
+    },
+    {
+      "name": "input.mouse-move",
+      "params": ["x", "y"],
+      "description": "移动鼠标"
+    },
+    {
+      "name": "input.drag",
+      "params": ["from", "to", "button"],
+      "description": "拖拽鼠标"
+    },
+    {
+      "name": "input.scroll",
+      "params": ["delta"],
+      "description": "滚动鼠标滚轮"
+    },
+    {
+      "name": "input.type",
+      "params": ["text"],
+      "description": "输入文本"
+    },
+    {
+      "name": "input.key-press",
+      "params": ["key"],
+      "description": "按下一次键盘按键"
+    },
+    {
+      "name": "input.key-hold",
+      "params": ["key", "duration"],
+      "description": "按住键盘按键"
+    },
+    {
+      "name": "input.key-down",
+      "params": ["key"],
+      "description": "按下键盘按键"
+    },
+    {
+      "name": "input.key-up",
+      "params": ["key"],
+      "description": "释放键盘按键"
+    },
+    {
+      "name": "input.key-combo",
+      "params": ["keys"],
+      "description": "按下组合键"
+    },
+    {
+      "name": "input.keys-down",
+      "params": [],
+      "description": "查询当前按下的按键"
+    },
+    {
+      "name": "input.mouse-pos",
+      "params": [],
+      "description": "查询当前鼠标位置"
+    },
+    {
       "name": "block.break",
       "params": ["x", "y", "z"],
       "description": "破坏方块"
@@ -116,6 +186,31 @@
       "name": "entity.steer",
       "params": ["forward", "sideways", "jump", "sneak"],
       "description": "控制载具"
+    },
+    {
+      "name": "combat.kill",
+      "params": ["filter"],
+      "description": "击杀匹配实体"
+    },
+    {
+      "name": "combat.clear",
+      "params": ["filter"],
+      "description": "清理匹配实体"
+    },
+    {
+      "name": "combat.engage",
+      "params": ["filter"],
+      "description": "接战匹配实体"
+    },
+    {
+      "name": "combat.chase",
+      "params": ["filter"],
+      "description": "追踪匹配实体"
+    },
+    {
+      "name": "combat.pickup",
+      "params": ["radius"],
+      "description": "拾取附近物品"
     },
     {
       "name": "inventory.hotbar",
@@ -251,6 +346,11 @@
       "name": "client.reconnect",
       "params": ["address"],
       "description": "让客户端重新连接到指定服务器地址"
+    },
+    {
+      "name": "client.respawn",
+      "params": [],
+      "description": "让客户端重生"
     }
   ]
 }

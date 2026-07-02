@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { appendFile, copyFile, mkdir, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { appendFile, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
-
-const execFileAsync = promisify(execFile);
+import {
+  findDistinctPorts,
+  parseCliOptions as parseSharedCliOptions,
+  parseJsonMaybe,
+  runCommand,
+  runCommandWithRetry,
+  sleep,
+  slugifyProjectId,
+} from "./lib.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,134 +38,16 @@ function parseCliOptions(argv) {
   const selectedGroups = [];
   const selectedVersions = [];
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--group") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --group");
-      }
-      selectedGroups.push(nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--version") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --version");
-      }
-      selectedVersions.push(nextValue);
-      index += 1;
-      continue;
-    }
-    throw new Error(`Unknown argument: ${arg}`);
-  }
+  parseSharedCliOptions(argv, {
+    "--group": {
+      apply: (value) => selectedGroups.push(value),
+    },
+    "--version": {
+      apply: (value) => selectedVersions.push(value),
+    },
+  });
 
   return { selectedGroups, selectedVersions };
-}
-
-async function runCommand(command, args, options = {}) {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: options.cwd ?? ROOT_DIR,
-      env: options.env ?? process.env,
-      maxBuffer: 32 * 1024 * 1024
-    });
-    return {
-      ok: true,
-      stdout,
-      stderr
-    };
-  } catch (error) {
-    if (options.allowFailure) {
-      return {
-        ok: false,
-        stdout: String(error.stdout ?? ""),
-        stderr: String(error.stderr ?? "")
-      };
-    }
-    throw error;
-  }
-}
-
-function parseJsonMaybe(text) {
-  try {
-    return text ? JSON.parse(text) : null;
-  } catch {
-    return null;
-  }
-}
-
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function findAvailablePort(host = "127.0.0.1") {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.once("error", reject);
-    server.listen(0, host, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Failed to resolve an ephemeral port")));
-        return;
-      }
-
-      const port = address.port;
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(port);
-      });
-    });
-  });
-}
-
-async function findDistinctPorts(count) {
-  const ports = new Set();
-  while (ports.size < count) {
-    ports.add(await findAvailablePort());
-  }
-  return [...ports];
-}
-
-async function runCommandWithRetry(command, args, options = {}, retryOptions = {}) {
-  const attempts = retryOptions.attempts ?? 3;
-  const delayMs = retryOptions.delayMs ?? 2_000;
-  let lastResult = null;
-
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const result = await runCommand(command, args, {
-      ...options,
-      allowFailure: true
-    });
-    lastResult = result;
-    if (result.ok) {
-      return result;
-    }
-    if (attempt < attempts) {
-      await sleep(delayMs * attempt);
-    }
-  }
-
-  return lastResult;
-}
-
-function slugify(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
-
-function slugifyProjectId(value) {
-  return String(value)
-    .replace(/[^A-Za-z0-9._-]/g, "-")
-    .replace(/-+/g, "-");
 }
 
 function resolveServerType(minecraftVersion) {
@@ -230,6 +116,7 @@ function getVersionPaths(variantId, minecraftVersion, serverType) {
 
 async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const paths = getVersionPaths(entry.variantId, entry.minecraftVersion, entry.serverType);
+  await rm(paths.rootDir, { recursive: true, force: true });
   await mkdir(paths.projectDir, { recursive: true });
   await mkdir(paths.mctHome, { recursive: true });
   await mkdir(paths.reportDir, { recursive: true });
@@ -252,6 +139,12 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   if (!buildResult.ok) {
     throw new Error(`Failed to build ${entry.variantId}: ${buildResult.stderr || buildResult.stdout}`);
   }
+
+  const artifactFileName = `mct-client-mod-${entry.loader || "fabric"}-${entry.minecraftVersion}.jar`;
+  const buildArtifactPath = path.join(CLIENT_MOD_DIR, gradleModule, "build", "libs", artifactFileName);
+  const cacheArtifactPath = path.join(GLOBAL_CACHE_DIR, "mod", artifactFileName);
+  await mkdir(path.dirname(cacheArtifactPath), { recursive: true });
+  await copyFile(buildArtifactPath, cacheArtifactPath);
 
   const initResult = await runCommandWithRetry(
     process.execPath,
@@ -322,8 +215,6 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
     throw new Error(`Failed to create client for ${entry.variantId}: ${clientCreate.stderr || clientCreate.stdout}`);
   }
 
-  const artifactFileName = `mct-client-mod-${entry.loader || "fabric"}-${entry.minecraftVersion}.jar`;
-  const buildArtifactPath = path.join(CLIENT_MOD_DIR, gradleModule, "build", "libs", artifactFileName);
   const installedModPath = path.join(paths.mctHome, "clients", clientName, "minecraft", "mods", artifactFileName);
   await copyFile(buildArtifactPath, installedModPath);
 
@@ -512,15 +403,27 @@ async function main() {
   };
   summary.finishedAt = new Date().toISOString();
 
-  await logLine(`suite pass groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);
+  const failedVersions = summary.versions.filter((version) => !version.ok);
+  const success = failedVersions.length === 0;
+  if (success) {
+    await logLine(`suite pass groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);
+  } else {
+    await logLine(`suite fail failedVariants=${failedVersions.map((version) => version.variantId).join(",")}`);
+  }
   const payload = {
-    success: true,
+    success,
     reportPath: SUITE_REPORT_PATH,
     logPath: SUITE_LOG_PATH,
     summary
   };
   await writeFile(SUITE_REPORT_PATH, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  const output = `${JSON.stringify(payload, null, 2)}\n`;
+  if (success) {
+    process.stdout.write(output);
+    return;
+  }
+  process.stderr.write(output);
+  process.exit(1);
 }
 
 main().catch(async (error) => {

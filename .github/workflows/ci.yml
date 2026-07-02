@@ -33,6 +33,9 @@ jobs:
       - name: Run CLI unit tests
         run: npm run test:cli
 
+      - name: Check protocol sync
+        run: npm run check:protocol
+
       - name: Run CLI system E2E
         run: npm run test:e2e
 
