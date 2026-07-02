@@ -5,6 +5,7 @@ import static com.mct.core.util.ParamHelper.*;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
+import com.mct.core.util.SessionReliability;
 import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -151,12 +152,24 @@ public final class StatusHandler extends ActionHandler {
 
     private Map<String, Object> allStatus() {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("health", healthStatus());
-        result.put("effects", effectsStatus());
-        result.put("experience", experienceStatus());
-        result.put("gamemode", gamemodeStatus());
-        result.put("world", worldStatus());
-        result.put("position", positionMap(requirePlayer()));
+        result.put("screen", ClientDataHelper.screenToMap(client));
+        result.put("screenCategory", SessionReliability.screenCategory(client));
+        result.put("disconnectReason", SessionReliability.disconnectReason(client));
+        try {
+            result.put("health", healthStatus());
+            result.put("effects", effectsStatus());
+            result.put("experience", experienceStatus());
+            result.put("gamemode", gamemodeStatus());
+            result.put("world", worldStatus());
+            result.put("position", positionMap(requirePlayer()));
+            result.put("inWorld", true);
+        } catch (ActionException exception) {
+            if (!"NOT_IN_WORLD".equals(exception.getCode())) {
+                throw exception;
+            }
+            SessionReliability.tryAutoReconnect(client, stateTracker);
+            result.put("inWorld", false);
+        }
         return result;
     }
 

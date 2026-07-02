@@ -13,6 +13,9 @@ import { WebSocketClient } from "../client/WebSocketClient.js";
 
 const INSTANCE_FILE = "instance.json";
 const DEFAULT_CLIENT_MUTE = true;
+const CLIENT_STOP_TIMEOUT_MS = 15_000;
+const CLIENT_PORT_RELEASE_TIMEOUT_MS = 10_000;
+const CLIENT_STOP_POLL_MS = 250;
 
 function getLaunchScriptPath() {
   const thisFile = fileURLToPath(import.meta.url);
@@ -45,6 +48,7 @@ export interface LaunchClientOptions {
 
 export interface WaitReadyOptions {
   requireWorld?: boolean;
+  reconnectAddress?: string;
 }
 
 export class ClientInstanceManager {
@@ -109,19 +113,7 @@ export class ClientInstanceManager {
         );
       }
 
-      const listeningPids = getListeningPids(wsPort);
-      for (const pid of listeningPids) {
-        killProcessTree(pid);
-      }
-      if (listeningPids.length > 0) {
-        const deadline = Date.now() + 10_000;
-        while (Date.now() < deadline) {
-          if (getListeningPids(wsPort).length === 0) {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
-      }
+      await this.releaseWsPort(wsPort);
 
       const launchCommand = [process.execPath, getLaunchScriptPath(), ...meta.launchArgs];
       const minecraftDir = path.join(instanceDir, "minecraft");
@@ -304,17 +296,26 @@ export class ClientInstanceManager {
 
     // 阶段 B：轮询 position.get 直到不再 NOT_IN_WORLD
     let lastErrorCode = "NOT_IN_WORLD";
+    let lastStatus: unknown;
+    let reconnectAttempted = false;
     while (Date.now() < deadline) {
       try {
         const ws = new WebSocketClient(wsUrl);
         const response = (await ws.send("position.get", {}, 1)) as {
-          error?: { code: string; message?: string };
+          error?: string | { code?: string; message?: string };
           data?: unknown;
         };
         if (!response.error) {
           return { connected: true, url: wsUrl, inWorld: true, position: response.data };
         }
-        lastErrorCode = response.error.code || lastErrorCode;
+        lastErrorCode = this.errorCode(response.error, lastErrorCode);
+        if (lastErrorCode === "NOT_IN_WORLD") {
+          lastStatus = await this.readClientStatus(wsUrl);
+          if (!reconnectAttempted && options.reconnectAddress && Date.now() > deadline - Math.max(5_000, timeoutSeconds * 250)) {
+            reconnectAttempted = true;
+            await this.requestReconnect(wsUrl, options.reconnectAddress);
+          }
+        }
         if (lastErrorCode !== "NOT_IN_WORLD") {
           break;
         }
@@ -327,7 +328,10 @@ export class ClientInstanceManager {
     const diag = this.buildDiagnostics(entry.pid, entry.wsPort, {
       wsConnected: true,
       inWorld: false,
-      lastError: lastErrorCode
+      lastError: lastErrorCode,
+      status: lastStatus,
+      reconnectAttempted,
+      reconnectAddress: options.reconnectAddress
     });
     throw new MctError(
       {
@@ -342,7 +346,14 @@ export class ClientInstanceManager {
   private buildDiagnostics(
     pid: number,
     wsPort: number,
-    extras: { wsConnected: boolean; inWorld: boolean; lastError?: string }
+    extras: {
+      wsConnected: boolean;
+      inWorld: boolean;
+      lastError?: string;
+      status?: unknown;
+      reconnectAttempted?: boolean;
+      reconnectAddress?: string;
+    }
   ) {
     const processAlive = isProcessRunning(pid);
     const portListening = getListeningPids(wsPort).length > 0;
@@ -353,7 +364,10 @@ export class ClientInstanceManager {
       portListening,
       wsConnected: extras.wsConnected,
       inWorld: extras.inWorld,
-      lastError: extras.lastError
+      lastError: extras.lastError,
+      status: extras.status,
+      reconnectAttempted: extras.reconnectAttempted ?? false,
+      reconnectAddress: extras.reconnectAddress
     };
   }
 
@@ -363,6 +377,9 @@ export class ClientInstanceManager {
     wsConnected: boolean;
     inWorld: boolean;
     lastError?: string;
+    status?: unknown;
+    reconnectAttempted?: boolean;
+    reconnectAddress?: string;
   }): string {
     const parts = [
       `processAlive=${diag.processAlive}`,
@@ -373,7 +390,57 @@ export class ClientInstanceManager {
     if (diag.lastError) {
       parts.push(`lastError=${diag.lastError}`);
     }
+    const status = diag.status as { screenCategory?: string; disconnectReason?: string; screen?: { type?: string; title?: string; category?: string; disconnectReason?: string } } | undefined;
+    const screenCategory = status?.screenCategory ?? status?.screen?.category;
+    const disconnectReason = status?.disconnectReason ?? status?.screen?.disconnectReason;
+    const screenType = status?.screen?.type;
+    const screenTitle = status?.screen?.title;
+    if (screenCategory) {
+      parts.push(`screenCategory=${screenCategory}`);
+    }
+    if (screenType) {
+      parts.push(`screenType=${screenType}`);
+    }
+    if (screenTitle) {
+      parts.push(`screenTitle=${screenTitle}`);
+    }
+    if (disconnectReason) {
+      parts.push(`disconnectReason=${disconnectReason}`);
+    }
+    if (diag.reconnectAttempted) {
+      parts.push(`reconnectAttempted=true`);
+    }
+    if (diag.reconnectAddress) {
+      parts.push(`reconnectAddress=${diag.reconnectAddress}`);
+    }
     return `Diagnostics: ${parts.join(", ")}.`;
+  }
+
+  private async readClientStatus(wsUrl: string) {
+    try {
+      const response = (await new WebSocketClient(wsUrl).send("status.all", {}, 1)) as {
+        error?: string | { code?: string; message?: string };
+        data?: unknown;
+      };
+      return response.error ? { error: this.errorCode(response.error, "UNKNOWN") } : response.data;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private async requestReconnect(wsUrl: string, address: string) {
+    try {
+      await new WebSocketClient(wsUrl).send("client.reconnect", { address }, 2);
+    } catch {
+      // wait-ready diagnostics still record that the active reconnect was attempted.
+    }
+  }
+
+  private errorCode(error: string | { code?: string } | undefined, fallback: string) {
+    if (!error) {
+      return fallback;
+    }
+    return typeof error === "string" ? error : error.code ?? fallback;
   }
 
   async getClient(name?: string): Promise<ClientRuntimeEntry> {
@@ -475,9 +542,76 @@ export class ClientInstanceManager {
       }
     }
 
+    await this.waitForTrackedClientExit(entry);
+    await this.releaseWsPort(entry.wsPort);
+
     delete state.clients[clientName];
     if (state.defaultClient === clientName) {
       state.defaultClient = Object.keys(state.clients)[0];
     }
   }
+
+  private async waitForTrackedClientExit(entry: ClientRuntimeEntry) {
+    const deadline = Date.now() + CLIENT_STOP_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (!isProcessRunning(entry.pid) && getListeningPids(entry.wsPort).length === 0) {
+        return;
+      }
+      await sleep(CLIENT_STOP_POLL_MS);
+    }
+
+    if (isProcessRunning(entry.pid)) {
+      killProcessTree(entry.pid, "SIGKILL");
+    }
+    for (const pid of getListeningPids(entry.wsPort)) {
+      killProcessTree(pid, "SIGKILL");
+    }
+    await this.waitForWsPortRelease(entry.wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
+  }
+
+  private async releaseWsPort(wsPort: number) {
+    const listeningPids = getListeningPids(wsPort);
+    for (const pid of listeningPids) {
+      killProcessTree(pid);
+    }
+    if (listeningPids.length === 0) {
+      return;
+    }
+
+    try {
+      await this.waitForWsPortRelease(wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
+      return;
+    } catch {}
+
+    for (const pid of getListeningPids(wsPort)) {
+      killProcessTree(pid, "SIGKILL");
+    }
+    await this.waitForWsPortRelease(wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
+  }
+
+  private async waitForWsPortRelease(wsPort: number, timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (getListeningPids(wsPort).length === 0) {
+        return;
+      }
+      await sleep(CLIENT_STOP_POLL_MS);
+    }
+
+    throw new MctError(
+      {
+        code: "CLIENT_PORT_BUSY",
+        message: `Timed out waiting for client WebSocket port ${wsPort} to become free`,
+        details: {
+          wsPort,
+          pids: getListeningPids(wsPort)
+        }
+      },
+      3
+    );
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

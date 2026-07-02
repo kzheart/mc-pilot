@@ -36,6 +36,7 @@ let CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", "client-real.log");
 let SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, SERVER_NAME);
 let SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
 let SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
+let SERVER_PORT = 25565;
 let REAL_CLIENT_WS_PORT = 25560;
 let LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
 
@@ -208,6 +209,13 @@ async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, scre
   SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
   SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
   CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
+
+  try {
+    const serverMeta = JSON.parse(await readFile(path.join(SERVER_DIR, "instance.json"), "utf8"));
+    SERVER_PORT = Number(serverMeta.port ?? 25565);
+  } catch {
+    SERVER_PORT = 25565;
+  }
 
   try {
     const clientMeta = JSON.parse(await readFile(path.join(MCT_HOME_DIR, "clients", CLIENT_NAME, "instance.json"), "utf8"));
@@ -648,6 +656,30 @@ async function waitForPortRelease(port, timeoutMs) {
   throw new Error(`Client WebSocket port ${port} did not become free within ${timeoutMs}ms`);
 }
 
+function findAvailablePort(host = "127.0.0.1") {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to resolve an ephemeral port")));
+        return;
+      }
+
+      const port = address.port;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
 async function collectClientResidue() {
   const listeningPids = await findPidsWithLsof(REAL_CLIENT_WS_PORT);
   const patternPidSet = new Set(listeningPids);
@@ -1030,12 +1062,16 @@ async function main() {
     await sleep(1200);
   }
 
-  async function waitForClientReadyWithConflictDetection(label, baselineBindConflicts) {
+  async function waitForClientReadyWithConflictDetection(label, baselineBindConflicts, options = {}) {
     const deadline = Date.now() + 180_000;
     let lastFailure = "unknown failure";
 
     while (Date.now() < deadline) {
-      const waitReady = await runCli(["client", "wait-ready", "real", "--timeout", "5"], { allowFailure: true });
+      const waitReadyArgs = ["client", "wait-ready", "real", "--timeout", "5"];
+      if (options.requireWorld === false) {
+        waitReadyArgs.push("--no-world-check");
+      }
+      const waitReady = await runCli(waitReadyArgs, { allowFailure: true });
       if (waitReady.ok && waitReady.json?.success === true) {
         const waitReadyData = unwrapCliSuccess(waitReady);
         expect(waitReadyData.connected === true, `${label} client did not become ready`);
@@ -1066,22 +1102,34 @@ async function main() {
     };
   }
 
-  async function launchRealClientAndWaitReady(label) {
+  async function launchRealClientAndWaitReady(label, options = {}) {
     let lastFailure = "unknown failure";
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       await cleanupClientResidue(recordStep, `${label} cleanup before launch`);
+      const launchArgs = ["client", "launch", "real"];
+      if (options.rotateWsPort) {
+        REAL_CLIENT_WS_PORT = await findAvailablePort();
+        launchArgs.push("--ws-port", String(REAL_CLIENT_WS_PORT));
+      }
       const baselineBindConflicts = await getBindConflictCount();
 
-      const launch = await runCli(["client", "launch", "real"], { allowFailure: true });
-      recordStep(`${label} client launch`, launch, { kind: "setup", attempt });
+      const launch = await runCli(launchArgs, { allowFailure: true });
+      recordStep(`${label} client launch`, launch, {
+        kind: "setup",
+        attempt,
+        wsPort: REAL_CLIENT_WS_PORT,
+        rotatedWsPort: options.rotateWsPort === true
+      });
       if (!launch.ok || launch.json?.success !== true) {
         lastFailure = launch.stderr || launch.stdout || JSON.stringify(launch.json);
       } else {
         const launchData = unwrapCliSuccess(launch);
         expect(launchData.name === "real", `${label} returned unexpected client name`);
 
-        const readyState = await waitForClientReadyWithConflictDetection(label, baselineBindConflicts);
+        const readyState = await waitForClientReadyWithConflictDetection(label, baselineBindConflicts, {
+          requireWorld: options.requireWorld !== false
+        });
         if (readyState.ready) {
           return;
         }
@@ -1111,7 +1159,7 @@ async function main() {
     const stopped = await runCli(["client", "stop", "real"], { allowFailure: true });
     recordStep(`${label} client stop`, stopped, { kind: "setup" });
     await cleanupClientResidue(recordStep);
-    await launchRealClientAndWaitReady(label);
+    await launchRealClientAndWaitReady(label, { rotateWsPort: true });
 
     await sleep(5000);
     const inWorld = await waitForInWorld(180);
@@ -1131,7 +1179,7 @@ async function main() {
       expect(data.reachable === true, "resource pack server was not reachable");
     });
 
-    const existingClient = await runCli(["client", "wait-ready", "real", "--timeout", "20"], { allowFailure: true });
+    const existingClient = await runCli(["client", "wait-ready", "real", "--timeout", "20", "--no-world-check"], { allowFailure: true });
     if (existingClient.ok && existingClient.json?.success === true) {
       const clientReadyData = unwrapCliSuccess(existingClient);
       expect(clientReadyData.connected === true, "resource pack client reuse did not stay ready");
@@ -1144,7 +1192,7 @@ async function main() {
       });
     } else {
       await cleanupClientResidue(recordStep, `${label} cleanup before fallback launch`);
-      await launchRealClientAndWaitReady(label);
+      await launchRealClientAndWaitReady(label, { rotateWsPort: true, requireWorld: false });
     }
 
     const pendingPack = await waitForResourcePackPending(60);
@@ -1205,6 +1253,8 @@ async function main() {
   const testContext = {
     FIXTURE,
     SCREENSHOT_DIR,
+    serverAddress: `127.0.0.1:${SERVER_PORT}`,
+    serverPort: SERVER_PORT,
     approx,
     applyHudSetup,
     chestSlotPoint,

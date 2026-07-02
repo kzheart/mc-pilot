@@ -1,15 +1,58 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import test from "node:test";
+import { WebSocketServer } from "ws";
 
 import { resolveProfileServerAddress } from "./commands/client.js";
 import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
 import { ensureServerPortProperty, ServerInstanceManager } from "./instance/ServerInstanceManager.js";
 import { GlobalStateStore } from "./util/global-state.js";
+import { MctError } from "./util/errors.js";
+
+async function getFreePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address && typeof address === "object") {
+        server.close(() => resolve(address.port));
+      } else {
+        server.close(() => reject(new Error("Unable to allocate port")));
+      }
+    });
+  });
+}
+
+async function waitForPortListening(port: number, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isPortListening(port)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Port ${port} did not start listening within ${timeoutMs}ms`);
+}
+
+async function isPortListening(port: number) {
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
 
 test("resolveProfileServerAddress prefers explicit server and falls back to active profile metadata", async () => {
   const context = {
@@ -392,6 +435,162 @@ test("ClientInstanceManager.create assigns unique ws ports across concurrent cal
 
     assert.equal(new Set(clients.map((entry) => entry.wsPort)).size, clients.length);
   } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ClientInstanceManager.waitReady actively reconnects and reports screen diagnostics", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-wait-ready-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const wsPort = await getFreePort();
+  const requests: Array<{ action: string; params?: Record<string, unknown> }> = [];
+  const server = new WebSocketServer({ port: wsPort });
+
+  server.on("connection", (socket) => {
+    socket.on("message", (raw) => {
+      const request = JSON.parse(raw.toString()) as { id: string; action: string; params?: Record<string, unknown> };
+      requests.push({ action: request.action, params: request.params });
+      if (request.action === "position.get") {
+        socket.send(JSON.stringify({ id: request.id, success: false, error: "NOT_IN_WORLD" }));
+        return;
+      }
+      if (request.action === "status.all") {
+        socket.send(JSON.stringify({
+          id: request.id,
+          success: true,
+          data: {
+            inWorld: false,
+            screenCategory: "disconnected",
+            disconnectReason: "Server closed",
+            screen: {
+              type: "DisconnectedScreen",
+              title: "Disconnected",
+              category: "disconnected",
+              disconnectReason: "Server closed"
+            }
+          }
+        }));
+        return;
+      }
+      if (request.action === "client.reconnect") {
+        socket.send(JSON.stringify({ id: request.id, success: true, data: { connecting: true, address: request.params?.address } }));
+        return;
+      }
+      socket.send(JSON.stringify({ id: request.id, success: true, data: {} }));
+    });
+  });
+
+  try {
+    const store = new GlobalStateStore();
+    await store.writeClientState({
+      defaultClient: "real",
+      clients: {
+        real: {
+          pid: process.pid,
+          name: "real",
+          wsPort,
+          startedAt: new Date().toISOString(),
+          logPath: path.join(process.env.MCT_HOME!, "logs", "real.log"),
+          instanceDir: path.join(process.env.MCT_HOME!, "clients", "real")
+        }
+      }
+    });
+
+    const manager = new ClientInstanceManager(store);
+    await assert.rejects(
+      () => manager.waitReady("real", 0.2, { reconnectAddress: "127.0.0.1:25565" }),
+      (error) => {
+        assert.ok(error instanceof MctError);
+        assert.equal(error.code, "TIMEOUT");
+        const details = error.details as {
+          reconnectAttempted?: boolean;
+          reconnectAddress?: string;
+          status?: { screenCategory?: string; disconnectReason?: string; screen?: { type?: string } };
+        };
+        assert.equal(details.reconnectAttempted, true);
+        assert.equal(details.reconnectAddress, "127.0.0.1:25565");
+        assert.equal(details.status?.screenCategory, "disconnected");
+        assert.equal(details.status?.disconnectReason, "Server closed");
+        assert.match(error.message, /disconnectReason=Server closed/);
+        return true;
+      }
+    );
+
+    assert.ok(requests.some((request) => request.action === "status.all"), "waitReady did not request status diagnostics");
+    assert.ok(
+      requests.some((request) => request.action === "client.reconnect" && request.params?.address === "127.0.0.1:25565"),
+      "waitReady did not actively reconnect"
+    );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ClientInstanceManager.stop waits until the WebSocket port is released", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-stop-wait-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const wsPort = await getFreePort();
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `
+        const net = require("node:net");
+        const server = net.createServer();
+        server.listen(Number(process.argv[1]), "127.0.0.1");
+        process.on("SIGTERM", () => setTimeout(() => server.close(() => process.exit(0)), 600));
+        setInterval(() => {}, 1000);
+      `,
+      String(wsPort)
+    ],
+    {
+      detached: true,
+      stdio: "ignore"
+    }
+  );
+  child.unref();
+
+  try {
+    await waitForPortListening(wsPort);
+    const store = new GlobalStateStore();
+    await store.writeClientState({
+      defaultClient: "real",
+      clients: {
+        real: {
+          pid: child.pid ?? 0,
+          name: "real",
+          wsPort,
+          startedAt: new Date().toISOString(),
+          logPath: path.join(tempDir, "client.log"),
+          instanceDir: tempDir
+        }
+      }
+    });
+
+    const manager = new ClientInstanceManager(store);
+    const startedAt = Date.now();
+    const stopped = await manager.stop("real");
+
+    assert.equal(stopped.stopped, true);
+    assert.equal(await isPortListening(wsPort), false);
+    assert.ok(Date.now() - startedAt >= 500);
+  } finally {
+    try {
+      process.kill(-(child.pid ?? 0), "SIGKILL");
+    } catch {}
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
     } else {

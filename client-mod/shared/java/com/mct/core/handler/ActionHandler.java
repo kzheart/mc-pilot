@@ -4,6 +4,7 @@ import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
 import com.mct.core.util.ParamHelper;
+import com.mct.core.util.SessionReliability;
 import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.time.Instant;
@@ -88,8 +89,10 @@ public abstract class ActionHandler {
     protected ClientPlayerEntity requirePlayer() {
         ClientPlayerEntity player = client.player;
         if (player == null || player.networkHandler == null || ClientVersionModulesHolder.get().clientWorld().getClientWorld(player) == null) {
+            SessionReliability.tryAutoReconnect(client, stateTracker);
             throw new ActionException("NOT_IN_WORLD");
         }
+        SessionReliability.markInWorld();
         return player;
     }
 

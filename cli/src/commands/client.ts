@@ -204,8 +204,10 @@ export function createClientCommand() {
             );
           }
           const manager = new ClientInstanceManager(context.globalState);
+          const reconnectAddress = await resolveProfileServerAddress(context, undefined);
           return manager.waitReady(clientName, options.timeout ?? context.timeout("clientReady"), {
-            requireWorld: options.worldCheck !== false
+            requireWorld: options.worldCheck !== false,
+            reconnectAddress
           });
         }
       )

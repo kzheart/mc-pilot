@@ -12,6 +12,7 @@ export const chatResourcepackGroup = {
       runClientLeaf,
       runSetup,
       scheduleClientCommand,
+      serverPort,
       summary,
       takeDesktopScreenshot,
       unwrapRequestSuccess,
@@ -70,11 +71,12 @@ export const chatResourcepackGroup = {
     await runClientLeaf("resourcepack accept", ["resourcepack", "accept"], (data) => {
       expect(data.acceptanceStatus === "allowed", "resourcepack accept did not allow the request");
     });
-    const reconnectCount = countOccurrences(await readClientLogText(), "Connecting to 127.0.0.1, 25565");
+    const reconnectLogEntry = `Connecting to 127.0.0.1, ${serverPort}`;
+    const reconnectCount = countOccurrences(await readClientLogText(), reconnectLogEntry);
     await runClientLeaf("client reconnect", ["client", "reconnect"], (data) => {
       expect(data.connecting === true, "client reconnect did not start");
     });
-    await context.waitForClientLogCountIncrease("Connecting to 127.0.0.1, 25565", reconnectCount, 30);
+    await context.waitForClientLogCountIncrease(reconnectLogEntry, reconnectCount, 30);
     const reconnectGui = await runCli(["--client", "real", "gui", "info"], { allowFailure: true });
     recordStep("client reconnect gui info", reconnectGui, {
       kind: "verification",

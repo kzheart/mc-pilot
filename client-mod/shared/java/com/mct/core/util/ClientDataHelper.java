@@ -156,6 +156,8 @@ public final class ClientDataHelper {
             result.put("type", screen.getClass().getSimpleName());
             Text title = screen.getTitle();
             result.put("title", title != null ? title.getString() : "");
+            result.put("category", SessionReliability.screenCategory(client));
+            result.put("disconnectReason", SessionReliability.disconnectReason(client));
             result.put("width", screen.width);
             result.put("height", screen.height);
 
