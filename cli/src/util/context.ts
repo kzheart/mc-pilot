@@ -7,7 +7,7 @@ import {
   loadProjectFileForId,
   resolveProfile,
   type MctProfile,
-  type MctProjectFile
+  type MctProjectFile,
 } from "./project.js";
 
 export interface GlobalOptions {
@@ -33,10 +33,12 @@ export interface CommandContext {
 const TIMEOUT_DEFAULTS = {
   serverReady: 120,
   clientReady: 60,
-  default: 10
+  default: 10,
 };
 
-export async function createCommandContext(options: GlobalOptions): Promise<CommandContext> {
+export async function createCommandContext(
+  options: GlobalOptions,
+): Promise<CommandContext> {
   const cwd = process.cwd();
   const globalState = new GlobalStateStore();
   const resolvedProject = options.project
@@ -62,6 +64,6 @@ export async function createCommandContext(options: GlobalOptions): Promise<Comm
     projectConfigPath: resolvedProject?.filePath ?? null,
     timeout(key) {
       return projectFile?.timeout?.[key] ?? TIMEOUT_DEFAULTS[key];
-    }
+    },
   };
 }

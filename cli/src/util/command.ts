@@ -14,18 +14,29 @@ export type CommandAction<TOptions = Record<string, unknown>> = (
     options: TOptions;
     command: Command;
     globalOptions: GlobalOptions;
-  }
+  },
 ) => Promise<unknown>;
 
 export function attachGlobalOptions(command: Command) {
   return command
     .option("--human", "Human-readable output (default: JSON)")
-    .option("--project <id>", "Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)")
-    .option("--profile <name>", "Profile name (default: from ~/.mct/projects/<id>/project.json)")
-    .option("--client <name>", "Target client name (required when multiple clients are running)");
+    .option(
+      "--project <id>",
+      "Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)",
+    )
+    .option(
+      "--profile <name>",
+      "Profile name (default: from ~/.mct/projects/<id>/project.json)",
+    )
+    .option(
+      "--client <name>",
+      "Target client name (required when multiple clients are running)",
+    );
 }
 
-export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandAction<TOptions>) {
+export function wrapCommand<TOptions = Record<string, unknown>>(
+  action: CommandAction<TOptions>,
+) {
   return async function wrappedCommand(this: Command, ...input: unknown[]) {
     const command = input.at(-1) as Command;
     const options = input.at(-2) as TOptions;
@@ -42,7 +53,7 @@ export function wrapCommand<TOptions = Record<string, unknown>>(action: CommandA
         args,
         options,
         command,
-        globalOptions
+        globalOptions,
       });
       printSuccess(result, context.outputMode);
     } catch (error) {

@@ -1,34 +1,89 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import test from "node:test";
+import { WebSocketServer } from "ws";
 
 import { resolveProfileServerAddress } from "./commands/client.js";
 import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
-import { ensureServerPortProperty, ServerInstanceManager } from "./instance/ServerInstanceManager.js";
+import { ServerCommandPipe } from "./instance/ServerCommandPipe.js";
+import {
+  ensureServerPortProperty,
+  ServerInstanceManager,
+} from "./instance/ServerInstanceManager.js";
 import { GlobalStateStore } from "./util/global-state.js";
+import { MctError } from "./util/errors.js";
+
+async function getFreePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address && typeof address === "object") {
+        server.close(() => resolve(address.port));
+      } else {
+        server.close(() => reject(new Error("Unable to allocate port")));
+      }
+    });
+  });
+}
+
+async function waitForPortListening(port: number, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isPortListening(port)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Port ${port} did not start listening within ${timeoutMs}ms`);
+}
+
+async function isPortListening(port: number) {
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
 
 test("resolveProfileServerAddress prefers explicit server and falls back to active profile metadata", async () => {
   const context = {
     projectId: "demo",
     activeProfile: {
       server: "paper",
-      clients: ["bot"]
+      clients: ["bot"],
     },
-    globalState: {} as GlobalStateStore
+    globalState: {} as GlobalStateStore,
   };
 
-  assert.equal(await resolveProfileServerAddress(context, "127.0.0.1:30000"), "127.0.0.1:30000");
   assert.equal(
-    await resolveProfileServerAddress(context, undefined, async (projectId, serverName) => {
-      assert.equal(projectId, "demo");
-      assert.equal(serverName, "paper");
-      return 25569;
-    }),
-    "127.0.0.1:25569"
+    await resolveProfileServerAddress(context, "127.0.0.1:30000"),
+    "127.0.0.1:30000",
+  );
+  assert.equal(
+    await resolveProfileServerAddress(
+      context,
+      undefined,
+      async (projectId, serverName) => {
+        assert.equal(projectId, "demo");
+        assert.equal(serverName, "paper");
+        return 25569;
+      },
+    ),
+    "127.0.0.1:25569",
   );
 });
 
@@ -45,12 +100,18 @@ test("ServerInstanceManager.create writes server.properties with the assigned po
       project: "demo",
       type: "paper",
       version: "1.20.4",
-      port: 25569
+      port: 25569,
     });
 
     assert.equal(meta.port, 25569);
 
-    const propertiesPath = path.join(process.env.MCT_HOME!, "projects", "demo", "paper", "server.properties");
+    const propertiesPath = path.join(
+      process.env.MCT_HOME!,
+      "projects",
+      "demo",
+      "paper",
+      "server.properties",
+    );
     const content = await readFile(propertiesPath, "utf8");
     assert.match(content, /^server-port=25569$/m);
   } finally {
@@ -67,10 +128,17 @@ test("ensureServerPortProperty repairs an existing server-port entry", async () 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-props-"));
 
   try {
-    await writeFile(path.join(tempDir, "server.properties"), "motd=Demo\nserver-port=25565\n", "utf8");
+    await writeFile(
+      path.join(tempDir, "server.properties"),
+      "motd=Demo\nserver-port=25565\n",
+      "utf8",
+    );
     await ensureServerPortProperty(tempDir, 25569);
 
-    const content = await readFile(path.join(tempDir, "server.properties"), "utf8");
+    const content = await readFile(
+      path.join(tempDir, "server.properties"),
+      "utf8",
+    );
     assert.match(content, /^motd=Demo$/m);
     assert.match(content, /^server-port=25569$/m);
     assert.equal((content.match(/^server-port=/gm) ?? []).length, 1);
@@ -90,12 +158,21 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
     await writeFile(
       fakeJavaPath,
       `#!/bin/sh\nprintf '%s\\n' "$0" "$@" > "${markerPath}"\n`,
-      { encoding: "utf8", mode: 0o755 }
+      { encoding: "utf8", mode: 0o755 },
     );
 
-    const instanceDir = path.join(process.env.MCT_HOME!, "projects", "demo", "paper");
+    const instanceDir = path.join(
+      process.env.MCT_HOME!,
+      "projects",
+      "demo",
+      "paper",
+    );
     await mkdir(instanceDir, { recursive: true });
-    await writeFile(path.join(instanceDir, "paper.jar"), "not-a-real-jar", "utf8");
+    await writeFile(
+      path.join(instanceDir, "paper.jar"),
+      "not-a-real-jar",
+      "utf8",
+    );
     await writeFile(
       path.join(instanceDir, "instance.json"),
       JSON.stringify(
@@ -108,12 +185,12 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
           javaCommand: fakeJavaPath,
           javaVersion: 21,
           jvmArgs: ["-Xmx1G"],
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
@@ -128,7 +205,7 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
           "-Xmx1G",
           "-jar",
           path.join(instanceDir, "paper.jar"),
-          "nogui"
+          "nogui",
         ]);
         return;
       } catch {
@@ -147,15 +224,134 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
   }
 });
 
+test("ServerCommandPipe sends a command through a FIFO without sync fd calls", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-pipe-"));
+
+  try {
+    const pipe = new ServerCommandPipe();
+    const fifoPath = await pipe.create(tempDir, "demo", "paper");
+    const reader = spawn(
+      "bash",
+      [
+        "-c",
+        'IFS= read -r line < "$1"; printf "%s" "$line"',
+        "reader",
+        fifoPath,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let output = "";
+    reader.stdout.setEncoding("utf8");
+    reader.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+
+    await pipe.send(fifoPath, "say hello");
+    const [code] = await once(reader, "exit");
+
+    assert.equal(code, 0);
+    assert.equal(output, "say hello");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.exec writes slash-prefixed commands through the async pipe", async () => {
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-exec-pipe-"),
+  );
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const pipe = new ServerCommandPipe();
+    const fifoPath = await pipe.create(tempDir, "demo", "paper");
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
+    await mkdir(path.dirname(logPath), { recursive: true });
+
+    const store = new GlobalStateStore();
+    await store.writeServerState({
+      servers: {
+        "demo/paper": {
+          pid: process.pid,
+          project: "demo",
+          name: "paper",
+          port: 25569,
+          startedAt: new Date().toISOString(),
+          logPath,
+          instanceDir: path.join(
+            process.env.MCT_HOME!,
+            "projects",
+            "demo",
+            "paper",
+          ),
+          stdinPipe: fifoPath,
+        },
+      },
+    });
+
+    const reader = spawn(
+      "bash",
+      [
+        "-c",
+        'IFS= read -r line < "$1"; printf "%s" "$line"',
+        "reader",
+        fifoPath,
+      ],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let output = "";
+    reader.stdout.setEncoding("utf8");
+    reader.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+
+    const manager = new ServerInstanceManager(store, "demo");
+    const result = await manager.exec("paper", "/say hello");
+    const [code] = await once(reader, "exit");
+
+    assert.equal(code, 0);
+    assert.deepEqual(result, {
+      sent: true,
+      command: "/say hello",
+      stdinPipe: fifoPath,
+    });
+    assert.equal(output, "say hello");
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("ServerInstanceManager.readLogs strips ANSI by default and preserves them with --raw-colors", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-logs-"));
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
   try {
-    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
     await mkdir(path.dirname(logPath), { recursive: true });
-    await writeFile(logPath, "\u001b[38;2;85;85;85m[INFO]\u001b[0m Ready\n", "utf8");
+    await writeFile(
+      logPath,
+      "\u001b[38;2;85;85;85m[INFO]\u001b[0m Ready\n",
+      "utf8",
+    );
 
     const stateDir = path.join(process.env.MCT_HOME!, "state");
     await mkdir(stateDir, { recursive: true });
@@ -171,14 +367,19 @@ test("ServerInstanceManager.readLogs strips ANSI by default and preserves them w
               port: 25569,
               startedAt: new Date().toISOString(),
               logPath,
-              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
-            }
-          }
+              instanceDir: path.join(
+                process.env.MCT_HOME!,
+                "projects",
+                "demo",
+                "paper",
+              ),
+            },
+          },
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
@@ -198,14 +399,24 @@ test("ServerInstanceManager.readLogs strips ANSI by default and preserves them w
 });
 
 test("ServerInstanceManager.waitReady reports startup phase and recent logs on timeout", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-timeout-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-wait-timeout-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
   try {
-    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
     await mkdir(path.dirname(logPath), { recursive: true });
-    await writeFile(logPath, "Downloading mojang_1.20.4.jar\nApplying patches\n", "utf8");
+    await writeFile(
+      logPath,
+      "Downloading mojang_1.20.4.jar\nApplying patches\n",
+      "utf8",
+    );
 
     const stateDir = path.join(process.env.MCT_HOME!, "state");
     await mkdir(stateDir, { recursive: true });
@@ -221,14 +432,19 @@ test("ServerInstanceManager.waitReady reports startup phase and recent logs on t
               port: 1,
               startedAt: new Date().toISOString(),
               logPath,
-              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
-            }
-          }
+              instanceDir: path.join(
+                process.env.MCT_HOME!,
+                "projects",
+                "demo",
+                "paper",
+              ),
+            },
+          },
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
@@ -237,11 +453,16 @@ test("ServerInstanceManager.waitReady reports startup phase and recent logs on t
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.equal((error as { code?: string }).code, "TIMEOUT");
-        const details = (error as { details?: { phase?: string; recentLines?: string[] } }).details;
+        const details = (
+          error as { details?: { phase?: string; recentLines?: string[] } }
+        ).details;
         assert.equal(details?.phase, "downloading");
-        assert.deepEqual(details?.recentLines, ["Downloading mojang_1.20.4.jar", "Applying patches"]);
+        assert.deepEqual(details?.recentLines, [
+          "Downloading mojang_1.20.4.jar",
+          "Applying patches",
+        ]);
         return true;
-      }
+      },
     );
   } finally {
     if (previousHome === undefined) {
@@ -254,7 +475,9 @@ test("ServerInstanceManager.waitReady reports startup phase and recent logs on t
 });
 
 test("ServerInstanceManager.waitReady returns recent startup logs when the port becomes reachable", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-ready-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-wait-ready-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
   const listener = net.createServer();
@@ -267,9 +490,17 @@ test("ServerInstanceManager.waitReady returns recent startup logs when the port 
     const address = listener.address();
     assert.ok(address && typeof address !== "string");
 
-    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
     await mkdir(path.dirname(logPath), { recursive: true });
-    await writeFile(logPath, "Preparing level \"world\"\nDone (3.531s)! For help, type \"help\"\n", "utf8");
+    await writeFile(
+      logPath,
+      'Preparing level "world"\nDone (3.531s)! For help, type "help"\n',
+      "utf8",
+    );
 
     const stateDir = path.join(process.env.MCT_HOME!, "state");
     await mkdir(stateDir, { recursive: true });
@@ -285,21 +516,29 @@ test("ServerInstanceManager.waitReady returns recent startup logs when the port 
               port: address.port,
               startedAt: new Date().toISOString(),
               logPath,
-              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
-            }
-          }
+              instanceDir: path.join(
+                process.env.MCT_HOME!,
+                "projects",
+                "demo",
+                "paper",
+              ),
+            },
+          },
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
     const result = await manager.waitReady("paper", 0.5);
     assert.equal(result.phase, "ready");
-    assert.equal(result.lastLine, "Done (3.531s)! For help, type \"help\"");
-    assert.deepEqual(result.recentLines, ["Preparing level \"world\"", "Done (3.531s)! For help, type \"help\""]);
+    assert.equal(result.lastLine, 'Done (3.531s)! For help, type "help"');
+    assert.deepEqual(result.recentLines, [
+      'Preparing level "world"',
+      'Done (3.531s)! For help, type "help"',
+    ]);
   } finally {
     listener.close();
     if (previousHome === undefined) {
@@ -312,7 +551,9 @@ test("ServerInstanceManager.waitReady returns recent startup logs when the port 
 });
 
 test("ServerInstanceManager.waitReady preserves the live startup phase when the port becomes reachable early", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-wait-phase-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-wait-phase-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
   const listener = net.createServer();
@@ -325,9 +566,17 @@ test("ServerInstanceManager.waitReady preserves the live startup phase when the 
     const address = listener.address();
     assert.ok(address && typeof address !== "string");
 
-    const logPath = path.join(process.env.MCT_HOME!, "logs", "server-demo-paper.log");
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
     await mkdir(path.dirname(logPath), { recursive: true });
-    await writeFile(logPath, "Preparing level \"world\"\nPreparing start region for dimension minecraft:overworld\n", "utf8");
+    await writeFile(
+      logPath,
+      'Preparing level "world"\nPreparing start region for dimension minecraft:overworld\n',
+      "utf8",
+    );
 
     const stateDir = path.join(process.env.MCT_HOME!, "state");
     await mkdir(stateDir, { recursive: true });
@@ -343,23 +592,31 @@ test("ServerInstanceManager.waitReady preserves the live startup phase when the 
               port: address.port,
               startedAt: new Date().toISOString(),
               logPath,
-              instanceDir: path.join(process.env.MCT_HOME!, "projects", "demo", "paper")
-            }
-          }
+              instanceDir: path.join(
+                process.env.MCT_HOME!,
+                "projects",
+                "demo",
+                "paper",
+              ),
+            },
+          },
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
     const result = await manager.waitReady("paper", 0.5);
     assert.equal(result.phase, "initializing-world");
-    assert.equal(result.lastLine, "Preparing start region for dimension minecraft:overworld");
+    assert.equal(
+      result.lastLine,
+      "Preparing start region for dimension minecraft:overworld",
+    );
     assert.deepEqual(result.recentLines, [
-      "Preparing level \"world\"",
-      "Preparing start region for dimension minecraft:overworld"
+      'Preparing level "world"',
+      "Preparing start region for dimension minecraft:overworld",
     ]);
   } finally {
     listener.close();
@@ -373,7 +630,9 @@ test("ServerInstanceManager.waitReady preserves the live startup phase when the 
 });
 
 test("ClientInstanceManager.create assigns unique ws ports across concurrent callers", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-create-race-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-client-create-race-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
@@ -382,15 +641,20 @@ test("ClientInstanceManager.create assigns unique ws ports across concurrent cal
       const manager = new ClientInstanceManager(new GlobalStateStore());
       return manager.create({
         name,
-        version: "1.20.4"
+        version: "1.20.4",
       });
     };
 
     const clients = await Promise.all(
-      Array.from({ length: 6 }, (_value, index) => createClient(`bot-${index}`))
+      Array.from({ length: 6 }, (_value, index) =>
+        createClient(`bot-${index}`),
+      ),
     );
 
-    assert.equal(new Set(clients.map((entry) => entry.wsPort)).size, clients.length);
+    assert.equal(
+      new Set(clients.map((entry) => entry.wsPort)).size,
+      clients.length,
+    );
   } finally {
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
@@ -401,8 +665,201 @@ test("ClientInstanceManager.create assigns unique ws ports across concurrent cal
   }
 });
 
+test("ClientInstanceManager.waitReady actively reconnects and reports screen diagnostics", async () => {
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-client-wait-ready-"),
+  );
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const wsPort = await getFreePort();
+  const requests: Array<{ action: string; params?: Record<string, unknown> }> =
+    [];
+  const server = new WebSocketServer({ port: wsPort });
+
+  server.on("connection", (socket) => {
+    socket.on("message", (raw) => {
+      const request = JSON.parse(raw.toString()) as {
+        id: string;
+        action: string;
+        params?: Record<string, unknown>;
+      };
+      requests.push({ action: request.action, params: request.params });
+      if (request.action === "position.get") {
+        socket.send(
+          JSON.stringify({
+            id: request.id,
+            success: false,
+            error: "NOT_IN_WORLD",
+          }),
+        );
+        return;
+      }
+      if (request.action === "status.all") {
+        socket.send(
+          JSON.stringify({
+            id: request.id,
+            success: true,
+            data: {
+              inWorld: false,
+              screenCategory: "disconnected",
+              disconnectReason: "Server closed",
+              screen: {
+                type: "DisconnectedScreen",
+                title: "Disconnected",
+                category: "disconnected",
+                disconnectReason: "Server closed",
+              },
+            },
+          }),
+        );
+        return;
+      }
+      if (request.action === "client.reconnect") {
+        socket.send(
+          JSON.stringify({
+            id: request.id,
+            success: true,
+            data: { connecting: true, address: request.params?.address },
+          }),
+        );
+        return;
+      }
+      socket.send(JSON.stringify({ id: request.id, success: true, data: {} }));
+    });
+  });
+
+  try {
+    const store = new GlobalStateStore();
+    await store.writeClientState({
+      defaultClient: "real",
+      clients: {
+        real: {
+          pid: process.pid,
+          name: "real",
+          wsPort,
+          startedAt: new Date().toISOString(),
+          logPath: path.join(process.env.MCT_HOME!, "logs", "real.log"),
+          instanceDir: path.join(process.env.MCT_HOME!, "clients", "real"),
+        },
+      },
+    });
+
+    const manager = new ClientInstanceManager(store);
+    await assert.rejects(
+      () =>
+        manager.waitReady("real", 0.2, { reconnectAddress: "127.0.0.1:25565" }),
+      (error) => {
+        assert.ok(error instanceof MctError);
+        assert.equal(error.code, "TIMEOUT");
+        const details = error.details as {
+          reconnectAttempted?: boolean;
+          reconnectAddress?: string;
+          status?: {
+            screenCategory?: string;
+            disconnectReason?: string;
+            screen?: { type?: string };
+          };
+        };
+        assert.equal(details.reconnectAttempted, true);
+        assert.equal(details.reconnectAddress, "127.0.0.1:25565");
+        assert.equal(details.status?.screenCategory, "disconnected");
+        assert.equal(details.status?.disconnectReason, "Server closed");
+        assert.match(error.message, /disconnectReason=Server closed/);
+        return true;
+      },
+    );
+
+    assert.ok(
+      requests.some((request) => request.action === "status.all"),
+      "waitReady did not request status diagnostics",
+    );
+    assert.ok(
+      requests.some(
+        (request) =>
+          request.action === "client.reconnect" &&
+          request.params?.address === "127.0.0.1:25565",
+      ),
+      "waitReady did not actively reconnect",
+    );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ClientInstanceManager.stop waits until the WebSocket port is released", async () => {
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-client-stop-wait-"),
+  );
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const wsPort = await getFreePort();
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      `
+        const net = require("node:net");
+        const server = net.createServer();
+        server.listen(Number(process.argv[1]), "127.0.0.1");
+        process.on("SIGTERM", () => setTimeout(() => server.close(() => process.exit(0)), 600));
+        setInterval(() => {}, 1000);
+      `,
+      String(wsPort),
+    ],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  );
+  child.unref();
+
+  try {
+    await waitForPortListening(wsPort);
+    const store = new GlobalStateStore();
+    await store.writeClientState({
+      defaultClient: "real",
+      clients: {
+        real: {
+          pid: child.pid ?? 0,
+          name: "real",
+          wsPort,
+          startedAt: new Date().toISOString(),
+          logPath: path.join(tempDir, "client.log"),
+          instanceDir: tempDir,
+        },
+      },
+    });
+
+    const manager = new ClientInstanceManager(store);
+    const startedAt = Date.now();
+    const stopped = await manager.stop("real");
+
+    assert.equal(stopped.stopped, true);
+    assert.equal(await isPortListening(wsPort), false);
+    assert.ok(Date.now() - startedAt >= 500);
+  } finally {
+    try {
+      process.kill(-(child.pid ?? 0), "SIGKILL");
+    } catch {}
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("GlobalStateStore.updateClientState serializes concurrent client state mutations", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-state-lock-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-client-state-lock-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
@@ -413,7 +870,7 @@ test("GlobalStateStore.updateClientState serializes concurrent client state muta
       wsPort: 25580,
       startedAt: new Date().toISOString(),
       logPath: path.join(process.env.MCT_HOME!, "logs", "alpha.log"),
-      instanceDir: path.join(process.env.MCT_HOME!, "clients", "alpha")
+      instanceDir: path.join(process.env.MCT_HOME!, "clients", "alpha"),
     };
     const bravoEntry = {
       pid: 102,
@@ -421,7 +878,7 @@ test("GlobalStateStore.updateClientState serializes concurrent client state muta
       wsPort: 25581,
       startedAt: new Date().toISOString(),
       logPath: path.join(process.env.MCT_HOME!, "logs", "bravo.log"),
-      instanceDir: path.join(process.env.MCT_HOME!, "clients", "bravo")
+      instanceDir: path.join(process.env.MCT_HOME!, "clients", "bravo"),
     };
 
     const slowStore = new GlobalStateStore();
@@ -435,12 +892,15 @@ test("GlobalStateStore.updateClientState serializes concurrent client state muta
       }),
       fastStore.updateClientState((state) => {
         state.clients.bravo = bravoEntry;
-      })
+      }),
     ]);
 
     const finalState = await new GlobalStateStore().readClientState();
     assert.equal(finalState.defaultClient, "alpha");
-    assert.deepEqual(Object.keys(finalState.clients).sort(), ["alpha", "bravo"]);
+    assert.deepEqual(Object.keys(finalState.clients).sort(), [
+      "alpha",
+      "bravo",
+    ]);
   } finally {
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;

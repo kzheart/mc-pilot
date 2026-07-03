@@ -23,19 +23,21 @@ export function parseJavaMajorVersion(output: string) {
   return Number.parseInt(first, 10);
 }
 
-export async function detectJava(command = "java"): Promise<JavaDetectionResult> {
+export async function detectJava(
+  command = "java",
+): Promise<JavaDetectionResult> {
   try {
     const result = await execFileAsync(command, ["-version"]);
     const output = `${result.stdout}\n${result.stderr}`;
     return {
       available: true,
       command,
-      majorVersion: parseJavaMajorVersion(output)
+      majorVersion: parseJavaMajorVersion(output),
     };
   } catch {
     return {
       available: false,
-      command
+      command,
     };
   }
 }

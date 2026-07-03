@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -37,7 +44,11 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     const fakeJavaPath = path.join(tempDir, "fake-java.sh");
 
     await mkdir(gameDir, { recursive: true });
-    await writeFile(fakeJavaPath, `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`, "utf8");
+    await writeFile(
+      fakeJavaPath,
+      `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`,
+      "utf8",
+    );
     await chmod(fakeJavaPath, 0o755);
     await writeFile(
       manifestPath,
@@ -51,19 +62,19 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
           classpathEntries: [],
           mainClass: "net.minecraft.client.main.Main",
           javaArgs: ["-Duser.language=en"],
-          gameArgs: []
+          gameArgs: [],
         },
         null,
-        2
+        2,
       ),
-      "utf8"
+      "utf8",
     );
 
     await manager.create({
       name: clientName,
       version: "1.20.4",
       wsPort: 25560,
-      launchArgs: ["--manifest", manifestPath, "--java", fakeJavaPath]
+      launchArgs: ["--manifest", manifestPath, "--java", fakeJavaPath],
     });
 
     await manager.launch(clientName);
@@ -95,7 +106,10 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     await manager.launch(clientName, { mute: false });
     await waitFor(async () => {
       const content = await readFile(optionsPath, "utf8");
-      return content.includes("soundCategory_master:1.0") && content.includes("soundCategory_voice:1.0");
+      return (
+        content.includes("soundCategory_master:1.0") &&
+        content.includes("soundCategory_voice:1.0")
+      );
     });
 
     const meta = await manager.loadMeta(clientName);

@@ -11,11 +11,21 @@ export function createStatusCommand() {
     experience: "Get XP level and progress",
     gamemode: "Get current game mode",
     world: "Get current world info",
-    all: "Get all status at once"
+    all: "Get all status at once",
   } as const;
 
-  for (const sub of ["health", "effects", "experience", "gamemode", "world", "all"] as const) {
-    command.command(sub).description(statusLabels[sub]).action(createRequestAction(`status.${sub}`, () => ({})));
+  for (const sub of [
+    "health",
+    "effects",
+    "experience",
+    "gamemode",
+    "world",
+    "all",
+  ] as const) {
+    command
+      .command(sub)
+      .description(statusLabels[sub])
+      .action(createRequestAction(`status.${sub}`, () => ({})));
   }
 
   return command;

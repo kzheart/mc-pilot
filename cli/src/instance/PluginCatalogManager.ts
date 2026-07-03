@@ -1,7 +1,11 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { resolvePluginsDir, resolvePluginJarsDir, resolveServerInstanceDir } from "../util/paths.js";
+import {
+  resolvePluginsDir,
+  resolvePluginJarsDir,
+  resolveServerInstanceDir,
+} from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import type { PluginCatalog, PluginEntry } from "../util/plugin-types.js";
 
@@ -18,7 +22,10 @@ export class PluginCatalogManager {
 
   async loadCatalog(): Promise<PluginCatalog> {
     try {
-      const content = await readFile(path.join(this.pluginsDir, CATALOG_FILE), "utf-8");
+      const content = await readFile(
+        path.join(this.pluginsDir, CATALOG_FILE),
+        "utf-8",
+      );
       return JSON.parse(content) as PluginCatalog;
     } catch {
       return { plugins: [] };
@@ -30,7 +37,7 @@ export class PluginCatalogManager {
     await writeFile(
       path.join(this.pluginsDir, CATALOG_FILE),
       JSON.stringify(catalog, null, 2),
-      "utf-8"
+      "utf-8",
     );
   }
 
@@ -44,7 +51,7 @@ export class PluginCatalogManager {
         p.id.toLowerCase().includes(q) ||
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.tags.some((t) => t.toLowerCase().includes(q))
+        p.tags.some((t) => t.toLowerCase().includes(q)),
     );
   }
 
@@ -53,8 +60,11 @@ export class PluginCatalogManager {
     const entry = catalog.plugins.find((p) => p.id === id);
     if (!entry) {
       throw new MctError(
-        { code: "PLUGIN_NOT_FOUND", message: `Plugin '${id}' not found in catalog` },
-        4
+        {
+          code: "PLUGIN_NOT_FOUND",
+          message: `Plugin '${id}' not found in catalog`,
+        },
+        4,
       );
     }
     return entry;
@@ -62,19 +72,23 @@ export class PluginCatalogManager {
 
   async add(
     jarPath: string,
-    overrides?: Partial<Omit<PluginEntry, "jarFile" | "addedAt">>
+    overrides?: Partial<Omit<PluginEntry, "jarFile" | "addedAt">>,
   ): Promise<PluginEntry> {
     const catalog = await this.loadCatalog();
     const resolvedJar = path.resolve(jarPath);
     const originalName = path.basename(resolvedJar, ".jar");
 
     // Derive id from filename if not provided
-    const id = overrides?.id || originalName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const id =
+      overrides?.id || originalName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
 
     if (catalog.plugins.some((p) => p.id === id)) {
       throw new MctError(
-        { code: "PLUGIN_EXISTS", message: `Plugin '${id}' already exists in catalog` },
-        4
+        {
+          code: "PLUGIN_EXISTS",
+          message: `Plugin '${id}' already exists in catalog`,
+        },
+        4,
       );
     }
 
@@ -93,7 +107,7 @@ export class PluginCatalogManager {
       jarFile: jarFileName,
       dependencies: overrides?.dependencies || [],
       tags: overrides?.tags || [],
-      addedAt: new Date().toISOString()
+      addedAt: new Date().toISOString(),
     };
 
     catalog.plugins.push(entry);
@@ -103,22 +117,27 @@ export class PluginCatalogManager {
 
   async update(
     id: string,
-    fields: Partial<Omit<PluginEntry, "id" | "jarFile" | "addedAt">>
+    fields: Partial<Omit<PluginEntry, "id" | "jarFile" | "addedAt">>,
   ): Promise<PluginEntry> {
     const catalog = await this.loadCatalog();
     const entry = catalog.plugins.find((p) => p.id === id);
     if (!entry) {
       throw new MctError(
-        { code: "PLUGIN_NOT_FOUND", message: `Plugin '${id}' not found in catalog` },
-        4
+        {
+          code: "PLUGIN_NOT_FOUND",
+          message: `Plugin '${id}' not found in catalog`,
+        },
+        4,
       );
     }
 
     if (fields.name !== undefined) entry.name = fields.name;
     if (fields.version !== undefined) entry.version = fields.version;
-    if (fields.description !== undefined) entry.description = fields.description;
+    if (fields.description !== undefined)
+      entry.description = fields.description;
     if (fields.author !== undefined) entry.author = fields.author;
-    if (fields.dependencies !== undefined) entry.dependencies = fields.dependencies;
+    if (fields.dependencies !== undefined)
+      entry.dependencies = fields.dependencies;
     if (fields.tags !== undefined) entry.tags = fields.tags;
 
     await this.saveCatalog(catalog);
@@ -130,8 +149,11 @@ export class PluginCatalogManager {
     const index = catalog.plugins.findIndex((p) => p.id === id);
     if (index === -1) {
       throw new MctError(
-        { code: "PLUGIN_NOT_FOUND", message: `Plugin '${id}' not found in catalog` },
-        4
+        {
+          code: "PLUGIN_NOT_FOUND",
+          message: `Plugin '${id}' not found in catalog`,
+        },
+        4,
       );
     }
 
@@ -159,16 +181,22 @@ export class PluginCatalogManager {
       if (visited.has(id)) return;
       if (visiting.has(id)) {
         throw new MctError(
-          { code: "CIRCULAR_DEPENDENCY", message: `Circular dependency detected involving '${id}'` },
-          4
+          {
+            code: "CIRCULAR_DEPENDENCY",
+            message: `Circular dependency detected involving '${id}'`,
+          },
+          4,
         );
       }
 
       const entry = byId.get(id);
       if (!entry) {
         throw new MctError(
-          { code: "MISSING_DEPENDENCY", message: `Missing dependency: '${id}'` },
-          4
+          {
+            code: "MISSING_DEPENDENCY",
+            message: `Missing dependency: '${id}'`,
+          },
+          4,
         );
       }
 
@@ -190,10 +218,13 @@ export class PluginCatalogManager {
   async install(
     id: string,
     project: string,
-    serverName: string
+    serverName: string,
   ): Promise<{ installed: string[]; serverPluginsDir: string }> {
     const toInstall = await this.resolve([id]);
-    const serverPluginsDir = path.join(resolveServerInstanceDir(project, serverName), "plugins");
+    const serverPluginsDir = path.join(
+      resolveServerInstanceDir(project, serverName),
+      "plugins",
+    );
     await mkdir(serverPluginsDir, { recursive: true });
 
     const installed: string[] = [];

@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 pluginManagement {
     repositories {
         gradlePluginPortal()
@@ -10,10 +12,32 @@ pluginManagement {
 rootProject.name = "client-mod"
 
 val javaVersionMajor = JavaVersion.current().majorVersion.toInt()
+val variantCatalog = JsonSlurper().parse(file("variants.json")) as Map<*, *>
+val buildableVariants = (variantCatalog["variants"] as List<*>)
+    .filterIsInstance<Map<*, *>>()
+    .filter { it["gradleModule"] != null }
+val includedVariants = buildableVariants
+    .filter { (it["javaVersion"] as Number).toInt() <= javaVersionMajor }
+val variantsByModule = includedVariants.associateBy { it["gradleModule"].toString() }
+val mappingsByMinecraftVersion = buildableVariants
+    .filter { it["yarnMappings"] != null }
+    .associate { it["minecraftVersion"].toString() to it["yarnMappings"].toString() }
 
-include("version-1.18.2", "version-1.20.1", "version-1.20.2", "version-1.20.4")
-include("version-1.20.1-forge", "version-1.20.2-forge", "version-1.20.4-forge")
+include(*includedVariants.map { it["gradleModule"].toString() }.toTypedArray())
 
-if (javaVersionMajor >= 21) {
-    include("version-1.21.1", "version-1.21.4", "version-1.21.11")
+gradle.beforeProject {
+    val variant = variantsByModule[name] ?: return@beforeProject
+    extensions.extraProperties["mcVersion"] = variant["minecraftVersion"].toString()
+    extensions.extraProperties["javaVersion"] = variant["javaVersion"].toString()
+
+    extensions.extraProperties["yarnMappings"] =
+        variant["yarnMappings"]?.toString()
+            ?: mappingsByMinecraftVersion.getValue(variant["minecraftVersion"].toString())
+    variant["fabricLoaderVersion"]?.let {
+        extensions.extraProperties["fabricLoader"] = it.toString()
+    }
+    variant["forgeVersion"]?.let {
+        extensions.extraProperties["forgeVersion"] = it.toString()
+        extensions.extraProperties["loom.platform"] = "forge"
+    }
 }

@@ -1,33 +1,47 @@
-import { access, copyFile, mkdir, open as fsOpen, readdir, readFile, stat, symlink, writeFile, unlink } from "node:fs/promises";
-import { openSync, writeSync, closeSync, mkdirSync } from "node:fs";
-import { spawn, execSync } from "node:child_process";
+import {
+  copyFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+  unlink,
+} from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
 
 import type { GlobalStateStore } from "../util/global-state.js";
-import type { ServerInstanceMeta, ServerRuntimeEntry, ServerType } from "../util/instance-types.js";
-import { resolveMctHome, resolveProjectDir, resolveServerInstanceDir } from "../util/paths.js";
+import type {
+  ServerInstanceMeta,
+  ServerRuntimeEntry,
+  ServerType,
+} from "../util/instance-types.js";
+import {
+  resolveMctHome,
+  resolveProjectDir,
+  resolveServerInstanceDir,
+} from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { isTcpPortReachable } from "../util/net.js";
 import { isProcessRunning, killProcessTree } from "../util/process.js";
-import { CacheManager } from "../download/CacheManager.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
+import { ServerCommandPipe } from "./ServerCommandPipe.js";
+import {
+  ServerLogManager,
+  stripAnsiCodes,
+  type ServerLogReadOptions,
+} from "./ServerLogManager.js";
 
 const INSTANCE_FILE = "instance.json";
-const ANSI_ESCAPE_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]/g;
 const SERVER_READY_POLL_MS = 500;
 
-export function stripAnsiCodes(text: string): string {
-  return text.replace(ANSI_ESCAPE_PATTERN, "");
-}
+export { stripAnsiCodes };
 
-interface ServerStartupSnapshot {
-  phase: string;
-  logPath: string;
-  recentLines: string[];
-  lastLine: string | null;
-}
-
-export async function ensureServerPortProperty(instanceDir: string, port: number): Promise<void> {
+export async function ensureServerPortProperty(
+  instanceDir: string,
+  port: number,
+): Promise<void> {
   const filePath = path.join(instanceDir, "server.properties");
   let lines: string[] = [];
 
@@ -76,9 +90,12 @@ export interface StartServerOptions {
 }
 
 export class ServerInstanceManager {
+  private readonly commandPipe = new ServerCommandPipe();
+  private readonly logs = new ServerLogManager();
+
   constructor(
     private readonly globalState: GlobalStateStore,
-    private readonly project: string
+    private readonly project: string,
   ) {}
 
   async create(options: CreateServerOptions): Promise<ServerInstanceMeta> {
@@ -94,7 +111,11 @@ export class ServerInstanceManager {
     }
 
     if (options.eula) {
-      await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
+      await writeFile(
+        path.join(instanceDir, "eula.txt"),
+        "eula=true\n",
+        "utf8",
+      );
     }
 
     await mkdir(path.join(instanceDir, "plugins"), { recursive: true });
@@ -109,22 +130,33 @@ export class ServerInstanceManager {
       jvmArgs: options.jvmArgs ?? [],
       javaCommand: options.javaCommand,
       javaVersion: options.javaVersion,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    await writeFile(path.join(instanceDir, INSTANCE_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+    await writeFile(
+      path.join(instanceDir, INSTANCE_FILE),
+      `${JSON.stringify(meta, null, 2)}\n`,
+      "utf8",
+    );
     return meta;
   }
 
-  async start(serverName: string, options: StartServerOptions = {}): Promise<ServerRuntimeEntry & { running: true }> {
+  async start(
+    serverName: string,
+    options: StartServerOptions = {},
+  ): Promise<ServerRuntimeEntry & { running: true }> {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
     const existing = state.servers[stateKey];
 
     if (existing && isProcessRunning(existing.pid)) {
       throw new MctError(
-        { code: "SERVER_ALREADY_RUNNING", message: `Server ${stateKey} is already running`, details: existing },
-        5
+        {
+          code: "SERVER_ALREADY_RUNNING",
+          message: `Server ${stateKey} is already running`,
+          details: existing,
+        },
+        5,
       );
     }
 
@@ -134,54 +166,80 @@ export class ServerInstanceManager {
 
     if (!jarFile) {
       throw new MctError(
-        { code: "INVALID_PARAMS", message: `No server jar found in ${instanceDir}` },
-        4
+        {
+          code: "INVALID_PARAMS",
+          message: `No server jar found in ${instanceDir}`,
+        },
+        4,
       );
     }
 
     if (options.eula) {
-      await writeFile(path.join(instanceDir, "eula.txt"), "eula=true\n", "utf8");
+      await writeFile(
+        path.join(instanceDir, "eula.txt"),
+        "eula=true\n",
+        "utf8",
+      );
     }
     await ensureServerPortProperty(instanceDir, meta.port);
 
     const mctHome = resolveMctHome();
     const logsDir = path.join(mctHome, "logs");
     const stateDir = path.join(mctHome, "state");
-    mkdirSync(logsDir, { recursive: true });
-    mkdirSync(stateDir, { recursive: true });
+    await mkdir(logsDir, { recursive: true });
+    await mkdir(stateDir, { recursive: true });
 
-    const logPath = path.join(logsDir, `server-${this.project}-${serverName}.log`);
-    const logStartOffset = await stat(logPath).then((value) => value.size).catch(() => 0);
-    const stdout = openSync(logPath, "a");
+    const logPath = path.join(
+      logsDir,
+      `server-${this.project}-${serverName}.log`,
+    );
+    const logStartOffset = await stat(logPath)
+      .then((value) => value.size)
+      .catch(() => 0);
+    const stdout = await open(logPath, "a");
 
     const jvmArgs = options.jvmArgs ?? meta.jvmArgs;
     const javaCommand = meta.javaCommand ?? "java";
 
-    // Create a named pipe (FIFO) for stdin so external tools (GUI) can send commands
-    const stdinPipe = path.join(stateDir, `stdin-${this.project}-${serverName}.fifo`);
-    try { await unlink(stdinPipe); } catch { /* ignore */ }
-    execSync(`mkfifo "${stdinPipe}"`);
+    const stdinPipe = await this.commandPipe.create(
+      stateDir,
+      this.project,
+      serverName,
+    );
 
     // Use bash wrapper: hold FIFO open in read-write mode (fd 3 <>) to prevent EOF
     // without blocking (write-only > would block until a reader opens the other end),
     // then exec java with stdin reading from the FIFO
-    const child = spawn("bash", [
-      "-c",
-      'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
-      "mct-server",
-      ...jvmArgs, "-jar", jarFile, "nogui"
-    ], {
-      cwd: instanceDir,
-      detached: true,
-      stdio: ["ignore", stdout, stdout],
-      env: {
-        ...process.env,
-        MCT_SERVER_PORT: String(meta.port),
-        MCT_STDIN_PIPE: stdinPipe,
-        MCT_SERVER_JAVA: javaCommand
-      }
-    });
+    const child = spawn(
+      "bash",
+      [
+        "-c",
+        'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
+        "mct-server",
+        ...jvmArgs,
+        "-jar",
+        jarFile,
+        "nogui",
+      ],
+      {
+        cwd: instanceDir,
+        detached: true,
+        stdio: ["ignore", stdout.fd, stdout.fd],
+        env: {
+          ...process.env,
+          MCT_SERVER_PORT: String(meta.port),
+          MCT_STDIN_PIPE: stdinPipe,
+          MCT_SERVER_JAVA: javaCommand,
+        },
+      },
+    );
 
+    child.once("exit", () => {
+      void stdout.close();
+    });
+    child.once("error", () => {
+      void stdout.close();
+    });
     child.unref();
 
     const entry: ServerRuntimeEntry = {
@@ -193,7 +251,7 @@ export class ServerInstanceManager {
       logPath,
       instanceDir,
       logStartOffset,
-      stdinPipe
+      stdinPipe,
     };
 
     state.servers[stateKey] = entry;
@@ -217,7 +275,11 @@ export class ServerInstanceManager {
 
     // Clean up FIFO
     if (entry.stdinPipe) {
-      try { await unlink(entry.stdinPipe); } catch { /* ignore */ }
+      try {
+        await unlink(entry.stdinPipe);
+      } catch {
+        /* ignore */
+      }
     }
 
     delete state.servers[stateKey];
@@ -283,13 +345,16 @@ export class ServerInstanceManager {
 
     if (!entry) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${stateKey} is not running` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${stateKey} is not running`,
+        },
+        5,
       );
     }
 
     const deadline = Date.now() + timeoutSeconds * 1000;
-    let snapshot = await this.describeStartup(entry.logPath);
+    let snapshot = await this.logs.describeStartup(entry.logPath);
 
     while (Date.now() < deadline) {
       if (!isProcessRunning(entry.pid)) {
@@ -304,15 +369,15 @@ export class ServerInstanceManager {
               phase: snapshot.phase,
               logPath: snapshot.logPath,
               lastLine: snapshot.lastLine,
-              recentLines: snapshot.recentLines
-            }
+              recentLines: snapshot.recentLines,
+            },
           },
-          5
+          5,
         );
       }
 
       if (await isTcpPortReachable("127.0.0.1", entry.port)) {
-        snapshot = await this.describeStartup(entry.logPath);
+        snapshot = await this.logs.describeStartup(entry.logPath);
         return {
           reachable: true,
           host: "127.0.0.1",
@@ -321,15 +386,15 @@ export class ServerInstanceManager {
           signals: {
             processAlive: true,
             portReachable: true,
-            readyLineSeen: snapshot.phase === "ready"
+            readyLineSeen: snapshot.phase === "ready",
           },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
-          recentLines: snapshot.recentLines
+          recentLines: snapshot.recentLines,
         };
       }
 
-      snapshot = await this.describeStartup(entry.logPath);
+      snapshot = await this.logs.describeStartup(entry.logPath);
       await new Promise((resolve) => setTimeout(resolve, SERVER_READY_POLL_MS));
     }
 
@@ -344,208 +409,107 @@ export class ServerInstanceManager {
           signals: {
             processAlive: isProcessRunning(entry.pid),
             portReachable: false,
-            readyLineSeen: snapshot.phase === "ready"
+            readyLineSeen: snapshot.phase === "ready",
           },
           logPath: snapshot.logPath,
           lastLine: snapshot.lastLine,
-          recentLines: snapshot.recentLines
-        }
+          recentLines: snapshot.recentLines,
+        },
       },
-      2
+      2,
     );
   }
 
-  async exec(serverName: string, command: string): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
+  async exec(
+    serverName: string,
+    command: string,
+  ): Promise<{ sent: boolean; command: string; stdinPipe: string }> {
     const entry = await this.requireRunning(serverName);
     if (!entry.stdinPipe) {
       throw new MctError(
-        { code: "SERVER_STDIN_UNAVAILABLE", message: `Server ${this.project}/${serverName} has no stdin FIFO (detached mode?)` },
-        5
+        {
+          code: "SERVER_STDIN_UNAVAILABLE",
+          message: `Server ${this.project}/${serverName} has no stdin FIFO (detached mode?)`,
+        },
+        5,
       );
     }
 
     const trimmed = command.trim();
     if (!trimmed) {
-      throw new MctError({ code: "INVALID_PARAMS", message: "Command is required" }, 4);
-    }
-
-    const line = `${trimmed.replace(/^\//, "")}\n`;
-    // O_NONBLOCK write: bash wrapper holds FIFO fd in rw mode so this returns immediately.
-    let fd: number;
-    try {
-      fd = openSync(entry.stdinPipe, "w");
-    } catch (error) {
       throw new MctError(
-        { code: "SERVER_STDIN_OPEN_FAILED", message: `Failed to open stdin FIFO: ${(error as Error).message}`, details: { stdinPipe: entry.stdinPipe } },
-        5
+        { code: "INVALID_PARAMS", message: "Command is required" },
+        4,
       );
     }
-    try {
-      writeSync(fd, line);
-    } finally {
-      closeSync(fd);
-    }
+
+    await this.commandPipe.send(entry.stdinPipe, trimmed.replace(/^\//, ""));
 
     return { sent: true, command: trimmed, stdinPipe: entry.stdinPipe };
   }
 
   async readLogs(
     serverName: string,
-    options: { tail?: number; grep?: string; since?: number; sinceStart?: boolean; afterMarker?: string; rawColors?: boolean } = {}
-  ): Promise<{ logPath: string; totalLines: number; returnedLines: number; lines: string[] }> {
+    options: ServerLogReadOptions = {},
+  ): Promise<{
+    logPath: string;
+    totalLines: number;
+    returnedLines: number;
+    lines: string[];
+  }> {
     const entry = await this.requireRuntimeEntry(serverName);
-    const logPath = entry.logPath;
-
-    let raw = await readFile(logPath, "utf8").catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return "";
-      throw error;
-    });
-
-    if (options.sinceStart && entry.logStartOffset && entry.logStartOffset > 0) {
-      raw = raw.slice(entry.logStartOffset);
-    }
-
-    let lines = raw.split("\n");
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines = lines.slice(0, -1);
-    const total = lines.length;
-
-    if (!options.rawColors) {
-      lines = lines.map((line) => stripAnsiCodes(line));
-    }
-
-    if (options.since !== undefined && options.since > 0) {
-      lines = lines.slice(Math.max(0, options.since));
-    }
-
-    if (options.afterMarker) {
-      let markerIndex = -1;
-      for (let index = lines.length - 1; index >= 0; index--) {
-        if (lines[index]!.includes(options.afterMarker)) {
-          markerIndex = index;
-          break;
-        }
-      }
-      if (markerIndex >= 0) {
-        lines = lines.slice(markerIndex + 1);
-      }
-    }
-
-    if (options.grep) {
-      const re = new RegExp(options.grep);
-      lines = lines.filter((line) => re.test(line));
-    }
-
-    if (options.tail !== undefined && options.tail > 0 && lines.length > options.tail) {
-      lines = lines.slice(lines.length - options.tail);
-    }
-
-    return { logPath, totalLines: total, returnedLines: lines.length, lines };
+    return this.logs.read(entry.logPath, options, entry.logStartOffset);
   }
 
-  async markLogs(serverName: string, label?: string): Promise<{ logPath: string; marker: string }> {
+  async markLogs(
+    serverName: string,
+    label?: string,
+  ): Promise<{ logPath: string; marker: string }> {
     const entry = await this.requireRuntimeEntry(serverName);
-    const marker = `MCT_MARK ${new Date().toISOString()} ${label ?? ""}`.trim();
-    await writeFile(entry.logPath, `\n${marker}\n`, { flag: "a", encoding: "utf8" });
-    return { logPath: entry.logPath, marker };
+    return this.logs.mark(entry.logPath, label);
   }
 
   async followLogs(
     serverName: string,
-    options: { grep?: string; timeoutSeconds: number; firstMatchOnly?: boolean; rawColors?: boolean }
-  ): Promise<{ logPath: string; matched: boolean; matches: string[]; timedOut: boolean }> {
+    options: {
+      grep?: string;
+      timeoutSeconds: number;
+      firstMatchOnly?: boolean;
+      rawColors?: boolean;
+    },
+  ): Promise<{
+    logPath: string;
+    matched: boolean;
+    matches: string[];
+    timedOut: boolean;
+  }> {
     const entry = await this.requireRuntimeEntry(serverName);
-    const logPath = entry.logPath;
-    const re = options.grep ? new RegExp(options.grep) : null;
-
-    let offset = 0;
-    try { offset = (await stat(logPath)).size; } catch { /* file may not exist yet */ }
-
-    const matches: string[] = [];
-    let buffer = "";
-    let done = false;
-
-    return await new Promise((resolve) => {
-      let timer: NodeJS.Timeout;
-      let poll: NodeJS.Timeout;
-
-      const finish = (timedOut: boolean) => {
-        if (done) return;
-        done = true;
-        if (poll) clearInterval(poll);
-        if (timer) clearTimeout(timer);
-        resolve({ logPath, matched: matches.length > 0, matches, timedOut });
-      };
-
-      const drain = async () => {
-        if (done) return;
-        let currentSize: number;
-        try { currentSize = (await stat(logPath)).size; } catch { return; }
-        if (currentSize < offset) { offset = 0; buffer = ""; } // rotation / truncate
-        if (currentSize === offset) return;
-
-        // Read raw bytes and decode — stat().size is bytes, not UTF-16 chars.
-        const fh = await fsOpen(logPath, "r");
-        try {
-          const length = currentSize - offset;
-          const buf = Buffer.allocUnsafe(length);
-          await fh.read(buf, 0, length, offset);
-          offset = currentSize;
-          buffer += buf.toString("utf8");
-        } finally {
-          await fh.close();
-        }
-
-        const parts = buffer.split("\n");
-        buffer = parts.pop() ?? "";
-        for (const line of parts) {
-          const rendered = options.rawColors ? line : stripAnsiCodes(line);
-          if (!re || re.test(rendered)) {
-            matches.push(rendered);
-            if (options.firstMatchOnly) return finish(false);
-          }
-        }
-      };
-
-      timer = setTimeout(() => finish(true), options.timeoutSeconds * 1000);
-      poll = setInterval(() => { void drain(); }, 300);
-    });
+    return this.logs.follow(entry.logPath, options);
   }
 
-  private async requireRuntimeEntry(serverName: string): Promise<ServerRuntimeEntry> {
+  private async requireRuntimeEntry(
+    serverName: string,
+  ): Promise<ServerRuntimeEntry> {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
     const entry = state.servers[stateKey];
     if (!entry) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${stateKey} is not running` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${stateKey} is not running`,
+        },
+        5,
       );
     }
     return entry;
-  }
-
-  private async describeStartup(logPath: string): Promise<ServerStartupSnapshot> {
-    const raw = await readFile(logPath, "utf8").catch(() => "");
-    const recentLines = raw
-      .split(/\r?\n/)
-      .map((line) => stripAnsiCodes(line).trim())
-      .filter((line) => line.length > 0)
-      .slice(-10);
-    const lastLine = recentLines[recentLines.length - 1] ?? null;
-
-    return {
-      phase: detectServerStartupPhase(recentLines),
-      logPath,
-      recentLines,
-      lastLine
-    };
   }
 
   async readiness(serverName: string) {
     const entry = await this.requireRuntimeEntry(serverName);
     const processAlive = isProcessRunning(entry.pid);
     const portReachable = await isTcpPortReachable("127.0.0.1", entry.port);
-    const snapshot = await this.describeStartup(entry.logPath);
+    const snapshot = await this.logs.describeStartup(entry.logPath);
     return {
       process: { alive: processAlive, pid: entry.pid },
       port: { reachable: portReachable, host: "127.0.0.1", port: entry.port },
@@ -554,17 +518,22 @@ export class ServerInstanceManager {
         readyLineSeen: snapshot.phase === "ready",
         lastLine: snapshot.lastLine,
         recentLines: snapshot.recentLines,
-        path: snapshot.logPath
-      }
+        path: snapshot.logPath,
+      },
     };
   }
 
-  private async requireRunning(serverName: string): Promise<ServerRuntimeEntry> {
+  private async requireRunning(
+    serverName: string,
+  ): Promise<ServerRuntimeEntry> {
     const entry = await this.requireRuntimeEntry(serverName);
     if (!isProcessRunning(entry.pid)) {
       throw new MctError(
-        { code: "SERVER_NOT_RUNNING", message: `Server ${this.project}/${serverName} PID ${entry.pid} is not alive` },
-        5
+        {
+          code: "SERVER_NOT_RUNNING",
+          message: `Server ${this.project}/${serverName} PID ${entry.pid} is not alive`,
+        },
+        5,
       );
     }
     return entry;
@@ -591,7 +560,9 @@ export class ServerInstanceManager {
     }
   }
 
-  static async listAll(globalState: GlobalStateStore): Promise<ServerInstanceMeta[]> {
+  static async listAll(
+    globalState: GlobalStateStore,
+  ): Promise<ServerInstanceMeta[]> {
     const { resolveProjectsDir } = await import("../util/paths.js");
     const projectsDir = resolveProjectsDir();
     const results: ServerInstanceMeta[] = [];
@@ -612,7 +583,11 @@ export class ServerInstanceManager {
     return results;
   }
 
-  async deploy(serverName: string, jarPaths: string[], cwd: string): Promise<string[]> {
+  async deploy(
+    serverName: string,
+    jarPaths: string[],
+    cwd: string,
+  ): Promise<string[]> {
     const instanceDir = resolveServerInstanceDir(this.project, serverName);
     const pluginsDir = path.join(instanceDir, "plugins");
     await mkdir(pluginsDir, { recursive: true });
@@ -637,8 +612,11 @@ export class ServerInstanceManager {
       return JSON.parse(raw) as ServerInstanceMeta;
     } catch {
       throw new MctError(
-        { code: "INSTANCE_NOT_FOUND", message: `Server instance ${this.project}/${serverName} not found` },
-        3
+        {
+          code: "INSTANCE_NOT_FOUND",
+          message: `Server instance ${this.project}/${serverName} not found`,
+        },
+        3,
       );
     }
   }
@@ -664,27 +642,4 @@ export class ServerInstanceManager {
 
     return port;
   }
-}
-
-function detectServerStartupPhase(lines: string[]) {
-  const joined = lines.join("\n");
-  if (/Done \(.+\)! For help, type "help"/.test(joined)) {
-    return "ready";
-  }
-  if (/Preparing start region|Preparing level/.test(joined)) {
-    return "initializing-world";
-  }
-  if (/Starting Minecraft server on/.test(joined)) {
-    return "binding-port";
-  }
-  if (/Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version/.test(joined)) {
-    return "bootstrapping";
-  }
-  if (/Downloading |Applying patches/.test(joined)) {
-    return "downloading";
-  }
-  if (lines.length > 0) {
-    return "starting";
-  }
-  return "waiting-for-log";
 }

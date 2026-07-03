@@ -2,11 +2,12 @@ package com.mct.core.handler;
 
 import static com.mct.core.util.ParamHelper.*;
 
+import com.mct.core.input.KeyboardInputBridge;
+import com.mct.core.input.MouseInputBridge;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.mixin.KeyBindingAccessor;
-import com.mct.mixin.KeyboardInvoker;
-import com.mct.mixin.MouseInvoker;
+import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -26,26 +28,23 @@ import org.lwjgl.glfw.GLFW;
 public final class InputHandler extends ActionHandler {
 
     private final Set<String> heldInputKeys = Collections.synchronizedSet(new LinkedHashSet<>());
+    private final MouseInputHandler mouseInput;
 
     public InputHandler(MinecraftClient client, ClientStateTracker stateTracker) {
         super(client, stateTracker);
+        this.mouseInput = new MouseInputHandler(client, stateTracker, this);
     }
 
     @Override
     public Map<String, Object> handle(String action, Map<String, Object> params) {
         return switch (action) {
-            case "input.click" -> inputClick(params);
-            case "input.double-click" -> inputDoubleClick(params);
-            case "input.mouse-move" -> inputMouseMove(params);
-            case "input.drag" -> inputDrag(params);
-            case "input.scroll" -> inputScroll(params);
+            case "input.click", "input.double-click", "input.mouse-move", "input.drag", "input.scroll", "input.mouse-pos" -> mouseInput.handle(action, params);
             case "input.key-press" -> inputKeyPress(params);
             case "input.key-hold" -> inputKeyHold(params);
             case "input.key-down" -> inputKeyDown(params);
             case "input.key-up" -> inputKeyUp(params);
             case "input.key-combo" -> inputKeyCombo(params);
             case "input.type" -> inputType(params);
-            case "input.mouse-pos" -> runOnClientThread(this::currentMousePosition);
             case "input.keys-down" -> inputKeysDown();
             default -> throw new ActionException("INVALID_ACTION");
         };
@@ -54,14 +53,7 @@ public final class InputHandler extends ActionHandler {
     // --- Public helpers used by other handlers ---
 
     public void moveMouseTo(int scaledX, int scaledY) {
-        runOnClientThread(() -> {
-            long window = client.getWindow().getHandle();
-            double rawX = scaledToRawX(scaledX);
-            double rawY = scaledToRawY(scaledY);
-            GLFW.glfwSetCursorPos(window, rawX, rawY);
-            ((MouseInvoker) client.mouse).mct$onCursorPos(window, rawX, rawY);
-            return true;
-        });
+        mouseInput.moveMouseTo(scaledX, scaledY);
     }
 
     public void pressMovementKey(KeyBinding key, long milliseconds) {
@@ -101,96 +93,10 @@ public final class InputHandler extends ActionHandler {
 
     // --- Private action methods ---
 
-    private Map<String, Object> inputClick(Map<String, Object> params) {
-        int x = getInt(params, "x");
-        int y = getInt(params, "y");
-        String button = normalizeMouseButton(getString(params, "button", "left"));
-        List<String> modifiers = getStringList(params, "modifiers");
-        return withTemporaryModifiers(modifiers, () -> {
-            moveMouseTo(x, y);
-            clickMouseButton(button);
-            LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-            result.put("clicked", true);
-            result.put("button", button);
-            result.put("mouse", runOnClientThread(this::currentMousePosition));
-            if (!modifiers.isEmpty()) {
-                result.put("modifiers", modifiers);
-            }
-            return result;
-        });
-    }
-
-    private Map<String, Object> inputDoubleClick(Map<String, Object> params) {
-        int x = getInt(params, "x");
-        int y = getInt(params, "y");
-        String button = normalizeMouseButton(getString(params, "button", "left"));
-        moveMouseTo(x, y);
-        clickMouseButton(button);
-        safeSleep(100L);
-        clickMouseButton(button);
-        return Map.of(
-            "clicked", true,
-            "button", button,
-            "count", 2,
-            "mouse", runOnClientThread(this::currentMousePosition)
-        );
-    }
-
-    private Map<String, Object> inputMouseMove(Map<String, Object> params) {
-        moveMouseTo(getInt(params, "x"), getInt(params, "y"));
-        LinkedHashMap<String, Object> result = new LinkedHashMap<>(runOnClientThread(this::currentMousePosition));
-        result.put("moved", true);
-        return result;
-    }
-
-    private Map<String, Object> inputDrag(Map<String, Object> params) {
-        int fromX = getInt(params, "fromX");
-        int fromY = getInt(params, "fromY");
-        int toX = getInt(params, "toX");
-        int toY = getInt(params, "toY");
-        String button = normalizeMouseButton(getString(params, "button", "left"));
-        moveMouseTo(fromX, fromY);
-        dispatchMouseButton(button, GLFW.GLFW_PRESS);
-        safeSleep(50L);
-        moveMouseTo(fromX, fromY);
-        safeSleep(25L);
-        int steps = Math.max(10, (int) Math.ceil(Math.hypot(toX - fromX, toY - fromY) / 8.0D));
-        for (int step = 1; step <= steps; step++) {
-            double progress = (double) step / (double) steps;
-            int nextX = (int) Math.round(fromX + ((toX - fromX) * progress));
-            int nextY = (int) Math.round(fromY + ((toY - fromY) * progress));
-            moveMouseTo(nextX, nextY);
-            safeSleep(25L);
-        }
-        dispatchMouseButton(button, GLFW.GLFW_RELEASE);
-        return Map.of(
-            "dragged", true,
-            "button", button,
-            "from", Map.of("x", fromX, "y", fromY),
-            "to", Map.of("x", toX, "y", toY)
-        );
-    }
-
-    private Map<String, Object> inputScroll(Map<String, Object> params) {
-        int x = getInt(params, "x");
-        int y = getInt(params, "y");
-        int delta = getInt(params, "delta");
-        moveMouseTo(x, y);
-        runOnClientThread(() -> {
-            ((MouseInvoker) client.mouse).mct$onMouseScroll(client.getWindow().getHandle(), 0.0D, delta);
-            return true;
-        });
-        return Map.of(
-            "scrolled", true,
-            "delta", delta,
-            "mouse", runOnClientThread(this::currentMousePosition)
-        );
-    }
-
     private Map<String, Object> inputKeyPress(Map<String, Object> params) {
         String keyName = getString(params, "key");
         pressInputBinding(resolveInputBinding(keyName), 100L);
-        return Map.of("pressed", true, "key", normalizeInputName(keyName));
+        return com.mct.core.util.MctMaps.mapOf("pressed", true, "key", normalizeInputName(keyName));
     }
 
     private Map<String, Object> inputKeyHold(Map<String, Object> params) {
@@ -201,7 +107,7 @@ public final class InputHandler extends ActionHandler {
         dispatchInputBinding(binding, GLFW.GLFW_PRESS);
         safeSleep(duration);
         dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "held", true,
             "key", binding.name,
             "actualDuration", Duration.between(startedAt, Instant.now()).toMillis()
@@ -211,20 +117,20 @@ public final class InputHandler extends ActionHandler {
     private Map<String, Object> inputKeyDown(Map<String, Object> params) {
         InputBinding binding = resolveInputBinding(getString(params, "key"));
         dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-        return Map.of("down", true, "key", binding.name, "keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("down", true, "key", binding.name, "keys", snapshotHeldInputKeys());
     }
 
     private Map<String, Object> inputKeyUp(Map<String, Object> params) {
         InputBinding binding = resolveInputBinding(getString(params, "key"));
         dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
-        return Map.of("up", true, "key", binding.name, "keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("up", true, "key", binding.name, "keys", snapshotHeldInputKeys());
     }
 
     private Map<String, Object> inputKeyCombo(Map<String, Object> params) {
         List<InputBinding> keys = getList(params, "keys").stream()
             .map(String::valueOf)
             .map(this::resolveInputBinding)
-            .toList();
+            .collect(Collectors.toList());
         for (InputBinding binding : keys) {
             dispatchInputBinding(binding, GLFW.GLFW_PRESS);
             safeSleep(35L);
@@ -234,9 +140,9 @@ public final class InputHandler extends ActionHandler {
             dispatchInputBinding(keys.get(index), GLFW.GLFW_RELEASE);
             safeSleep(20L);
         }
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "pressed", true,
-            "keys", keys.stream().map(b -> b.name).toList()
+            "keys", keys.stream().map(b -> b.name).collect(Collectors.toList())
         );
     }
 
@@ -247,44 +153,21 @@ public final class InputHandler extends ActionHandler {
                 throw new ActionException("INVALID_STATE");
             }
             long window = client.getWindow().getHandle();
-            KeyboardInvoker keyboard = (KeyboardInvoker) client.keyboard;
+            KeyboardInputBridge keyboard = (KeyboardInputBridge) client.keyboard;
             text.codePoints().forEach(codePoint -> keyboard.mct$onChar(window, codePoint, 0));
             return true;
         });
-        return Map.of("typed", true, "text", text);
+        return com.mct.core.util.MctMaps.mapOf("typed", true, "text", text);
     }
 
     private Map<String, Object> inputKeysDown() {
-        return Map.of("keys", snapshotHeldInputKeys());
+        return com.mct.core.util.MctMaps.mapOf("keys", snapshotHeldInputKeys());
     }
 
     // --- Internal helpers ---
 
-    private LinkedHashMap<String, Object> currentMousePosition() {
-        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("x", rawToScaledX(client.mouse.getX()));
-        result.put("y", rawToScaledY(client.mouse.getY()));
-        return result;
-    }
-
-    private void clickMouseButton(String button) {
-        dispatchMouseButton(button, GLFW.GLFW_PRESS);
-        safeSleep(60L);
-        dispatchMouseButton(button, GLFW.GLFW_RELEASE);
-        safeSleep(40L);
-    }
-
     private void dispatchMouseButton(String button, int action) {
-        int glfwButton = switch (normalizeMouseButton(button)) {
-            case "left" -> GLFW.GLFW_MOUSE_BUTTON_LEFT;
-            case "right" -> GLFW.GLFW_MOUSE_BUTTON_RIGHT;
-            case "middle" -> GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
-            default -> throw new ActionException("INVALID_PARAMS");
-        };
-        runOnClientThread(() -> {
-            ((MouseInvoker) client.mouse).mct$onMouseButton(client.getWindow().getHandle(), glfwButton, action, 0);
-            return true;
-        });
+        mouseInput.dispatchMouseButton(button, action);
     }
 
     private void pressInputBinding(InputBinding binding, long holdMillis) {
@@ -318,7 +201,7 @@ public final class InputHandler extends ActionHandler {
         int keyCode = binding.keyCode;
         int scancode = GLFW.glfwGetKeyScancode(keyCode);
         runOnClientThread(() -> {
-            client.keyboard.onKey(client.getWindow().getHandle(), keyCode, scancode, action, 0);
+            ClientVersionModulesHolder.get().compatibility().dispatchKey(client, keyCode, scancode, action);
             return true;
         });
         updateHeldInputKey(binding.name, action != GLFW.GLFW_RELEASE);
@@ -334,11 +217,11 @@ public final class InputHandler extends ActionHandler {
 
     private List<String> snapshotHeldInputKeys() {
         synchronized (heldInputKeys) {
-            return heldInputKeys.stream().sorted().toList();
+            return heldInputKeys.stream().sorted().collect(Collectors.toList());
         }
     }
 
-    private <T> T withTemporaryModifiers(List<String> modifiers, java.util.function.Supplier<T> action) {
+    <T> T withTemporaryModifiers(List<String> modifiers, java.util.function.Supplier<T> action) {
         ArrayList<InputBinding> acquired = new ArrayList<>();
         for (String modifier : modifiers) {
             InputBinding binding = resolveInputBinding(modifier);

@@ -14,6 +14,7 @@ public final class ClientVersionModules {
     private final ImageAdapter image;
     private final ScreenshotAdapter screenshot;
     private final InteractionAdapter interaction;
+    private final VersionCompatibility compatibility;
 
     public ClientVersionModules(
         TextAdapter text,
@@ -27,7 +28,8 @@ public final class ClientVersionModules {
         NetworkAdapter network,
         ImageAdapter image,
         ScreenshotAdapter screenshot,
-        InteractionAdapter interaction
+        InteractionAdapter interaction,
+        VersionCompatibility compatibility
     ) {
         this.text = text;
         this.scoreboard = scoreboard;
@@ -41,6 +43,7 @@ public final class ClientVersionModules {
         this.image = image;
         this.screenshot = screenshot;
         this.interaction = interaction;
+        this.compatibility = compatibility;
     }
 
     public TextAdapter text() {
@@ -89,5 +92,13 @@ public final class ClientVersionModules {
 
     public InteractionAdapter interaction() {
         return interaction;
+    }
+
+    public ClientWorldAccessor clientWorld() {
+        return compatibility;
+    }
+
+    public VersionCompatibility compatibility() {
+        return compatibility;
     }
 }

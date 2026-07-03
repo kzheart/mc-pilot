@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildProgram } from "../index.js";
-import { buildClientSearchResults, buildServerSearchResults } from "./SearchCommand.js";
+import {
+  buildClientSearchResults,
+  buildServerSearchResults,
+} from "./SearchCommand.js";
 
 function collectLeafCommands() {
   const leaves: string[] = [];
 
   const visit = (prefix: string, command: ReturnType<typeof buildProgram>) => {
     for (const subcommand of command.commands) {
-      const next = prefix ? `${prefix} ${subcommand.name()}` : subcommand.name();
+      const next = prefix
+        ? `${prefix} ${subcommand.name()}`
+        : subcommand.name();
       if (subcommand.commands.length === 0) {
         leaves.push(next);
         continue;
@@ -26,36 +31,36 @@ function collectLeafCommands() {
 test("buildServerSearchResults groups filtered Paper versions", () => {
   const results = buildServerSearchResults({
     type: "paper",
-    version: "1.20.4"
+    version: "1.20.4",
   });
 
   assert.deepEqual(results, [
     {
       type: "paper",
-      versions: [{ version: "1.20.4", build: "496" }]
-    }
+      versions: [{ version: "1.20.4", build: "496" }],
+    },
   ]);
 });
 
 test("buildClientSearchResults groups loader data by Minecraft version", () => {
   const results = buildClientSearchResults({
-    loader: "fabric"
+    loader: "fabric",
   });
 
   assert.equal(results.length, 10);
   assert.equal(results[0]?.version, "1.21.11");
   assert(
-    results.every((entry) =>
-      Array.isArray(entry.loaders)
-      && entry.loaders[0]?.loader === "fabric"
-    )
+    results.every(
+      (entry) =>
+        Array.isArray(entry.loaders) && entry.loaders[0]?.loader === "fabric",
+    ),
   );
 });
 
 test("buildClientSearchResults carries variant validation metadata into grouped output", () => {
   const [result] = buildClientSearchResults({
     loader: "fabric",
-    version: "1.20.1"
+    version: "1.20.1",
   });
 
   assert.deepEqual(result, {
@@ -67,16 +72,16 @@ test("buildClientSearchResults carries variant validation metadata into grouped 
         supported: true,
         loaderVersion: "0.16.14",
         modVersion: "0.9.1",
-        validation: "verified"
-      }
-    ]
+        validation: "verified",
+      },
+    ],
   });
 });
 
 test("buildClientSearchResults exposes configured Forge variants", () => {
   const [result] = buildClientSearchResults({
     loader: "forge",
-    version: "1.20.2"
+    version: "1.20.2",
   });
 
   assert.deepEqual(result, {
@@ -88,9 +93,9 @@ test("buildClientSearchResults exposes configured Forge variants", () => {
         supported: true,
         loaderVersion: "48.1.0",
         modVersion: "0.9.1",
-        validation: "limited"
-      }
-    ]
+        validation: "limited",
+      },
+    ],
   });
 });
 

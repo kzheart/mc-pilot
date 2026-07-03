@@ -1,7 +1,6 @@
 import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
@@ -11,19 +10,14 @@ import {
   findVariantByVersionAndLoader,
   getDefaultVariant,
   getModArtifactFileName,
-  loadModVariantCatalog
+  loadModVariantCatalog,
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
 import { prepareManagedClientRuntime } from "./FabricRuntimeDownloader.js";
 
-function getLaunchScriptPath() {
-  const thisFile = fileURLToPath(import.meta.url);
-  // dist/download/client/ClientDownloader.js -> scripts/launch-fabric-client.mjs
-  return path.resolve(path.dirname(thisFile), "..", "..", "..", "scripts", "launch-fabric-client.mjs");
-}
-
 const GITHUB_RELEASE_BASE_URL =
-  process.env.MCT_MOD_DOWNLOAD_BASE_URL || "https://github.com/kzheart/mc-pilot/releases/download";
+  process.env.MCT_MOD_DOWNLOAD_BASE_URL ||
+  "https://github.com/kzheart/mc-pilot/releases/download";
 
 export interface DownloadClientOptions {
   loader?: LoaderType;
@@ -55,24 +49,27 @@ function ensureSupportedVariant(variant: ModVariant) {
         message: `Variant ${variant.id} is not buildable yet`,
         details: {
           support: variant.support,
-          validation: variant.validation
-        }
+          validation: variant.validation,
+        },
       },
-      4
+      4,
     );
   }
 
-  if (variant.loader === "fabric" && (!variant.fabricLoaderVersion || !variant.yarnMappings)) {
+  if (
+    variant.loader === "fabric" &&
+    (!variant.fabricLoaderVersion || !variant.yarnMappings)
+  ) {
     throw new MctError(
       {
         code: "VARIANT_NOT_BUILDABLE",
         message: `Variant ${variant.id} is not buildable yet`,
         details: {
           support: variant.support,
-          validation: variant.validation
-        }
+          validation: variant.validation,
+        },
       },
-      4
+      4,
     );
   }
 
@@ -83,10 +80,10 @@ function ensureSupportedVariant(variant: ModVariant) {
         message: `Variant ${variant.id} is not buildable yet`,
         details: {
           support: variant.support,
-          validation: variant.validation
-        }
+          validation: variant.validation,
+        },
       },
-      4
+      4,
     );
   }
 
@@ -94,9 +91,9 @@ function ensureSupportedVariant(variant: ModVariant) {
     throw new MctError(
       {
         code: "UNSUPPORTED_LOADER",
-        message: `Loader ${variant.loader} is not implemented yet`
+        message: `Loader ${variant.loader} is not implemented yet`,
       },
-      4
+      4,
     );
   }
 }
@@ -105,24 +102,42 @@ export async function resolveArtifact(
   cwd: string,
   variant: ModVariant,
   cacheManager: CacheManager,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
 ) {
   const artifactFileName = getModArtifactFileName(variant);
-  const gradleModule = (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
-  const buildArtifactPath = path.join(cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
+  const gradleModule =
+    (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
+  const buildArtifactPath = path.join(
+    cwd,
+    "client-mod",
+    gradleModule,
+    "build",
+    "libs",
+    artifactFileName,
+  );
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   // 1. Check local build artifact
   try {
     await access(buildArtifactPath);
     await copyFileIfMissing(buildArtifactPath, cacheArtifactPath);
-    return { sourcePath: buildArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "local-build" as const };
+    return {
+      sourcePath: buildArtifactPath,
+      cachePath: cacheArtifactPath,
+      artifactFileName,
+      source: "local-build" as const,
+    };
   } catch {}
 
   // 2. Check cache
   try {
     await access(cacheArtifactPath);
-    return { sourcePath: cacheArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "cache" as const };
+    return {
+      sourcePath: cacheArtifactPath,
+      cachePath: cacheArtifactPath,
+      artifactFileName,
+      source: "cache" as const,
+    };
   } catch {}
 
   // 3. Download from GitHub Releases
@@ -132,7 +147,12 @@ export async function resolveArtifact(
 
   try {
     await downloadFile(downloadUrl, cacheArtifactPath, fetchImpl);
-    return { sourcePath: cacheArtifactPath, cachePath: cacheArtifactPath, artifactFileName, source: "github-release" as const };
+    return {
+      sourcePath: cacheArtifactPath,
+      cachePath: cacheArtifactPath,
+      artifactFileName,
+      source: "github-release" as const,
+    };
   } catch (error) {
     throw new MctError(
       {
@@ -142,10 +162,10 @@ export async function resolveArtifact(
           localBuild: buildArtifactPath,
           cache: cacheArtifactPath,
           downloadUrl,
-          downloadError: error instanceof Error ? error.message : String(error)
-        }
+          downloadError: error instanceof Error ? error.message : String(error),
+        },
       },
-      4
+      4,
     );
   }
 }
@@ -158,21 +178,26 @@ interface ClientLaunchRuntimePaths {
   nativesDir?: string;
 }
 
-function resolveLaunchRuntimePaths(cwd: string, options: DownloadClientOptions): ClientLaunchRuntimePaths | undefined {
+function resolveLaunchRuntimePaths(
+  cwd: string,
+  options: DownloadClientOptions,
+): ClientLaunchRuntimePaths | undefined {
   const runtimePaths = {
     instanceDir: options.instanceDir,
     metaDir: options.metaDir,
     librariesDir: options.librariesDir,
     assetsDir: options.assetsDir,
-    nativesDir: options.nativesDir
+    nativesDir: options.nativesDir,
   };
   const requiredEntries = Object.entries({
     instanceDir: runtimePaths.instanceDir,
     metaDir: runtimePaths.metaDir,
     librariesDir: runtimePaths.librariesDir,
-    assetsDir: runtimePaths.assetsDir
+    assetsDir: runtimePaths.assetsDir,
   });
-  const providedRequired = requiredEntries.filter(([, value]) => Boolean(value));
+  const providedRequired = requiredEntries.filter(([, value]) =>
+    Boolean(value),
+  );
 
   if (providedRequired.length === 0) {
     return undefined;
@@ -188,10 +213,10 @@ function resolveLaunchRuntimePaths(cwd: string, options: DownloadClientOptions):
         code: "INVALID_PARAMS",
         message: "Client runtime directories must be configured together",
         details: {
-          missing
-        }
+          missing,
+        },
       },
-      4
+      4,
     );
   }
 
@@ -202,20 +227,23 @@ function resolveLaunchRuntimePaths(cwd: string, options: DownloadClientOptions):
     assetsDir: path.resolve(cwd, runtimePaths.assetsDir!),
     ...(runtimePaths.nativesDir
       ? {
-          nativesDir: path.resolve(cwd, runtimePaths.nativesDir)
+          nativesDir: path.resolve(cwd, runtimePaths.nativesDir),
         }
-      : {})
+      : {}),
   };
 }
 
-function buildLaunchArgs(runtimePaths: ClientLaunchRuntimePaths, variant: ModVariant) {
+function buildLaunchArgs(
+  runtimePaths: ClientLaunchRuntimePaths,
+  variant: ModVariant,
+) {
   if (variant.loader !== "fabric") {
     throw new MctError(
       {
         code: "INVALID_PARAMS",
-        message: `Custom runtime directories are not supported for ${variant.loader} clients yet`
+        message: `Custom runtime directories are not supported for ${variant.loader} clients yet`,
       },
-      4
+      4,
     );
   }
 
@@ -228,26 +256,36 @@ function buildLaunchArgs(runtimePaths: ClientLaunchRuntimePaths, variant: ModVar
     runtimePaths.librariesDir,
     "--assets-dir",
     runtimePaths.assetsDir,
-    ...(runtimePaths.nativesDir ? ["--natives-dir", runtimePaths.nativesDir] : []),
+    ...(runtimePaths.nativesDir
+      ? ["--natives-dir", runtimePaths.nativesDir]
+      : []),
     "--minecraft-version",
     variant.minecraftVersion,
     "--fabric-loader-version",
-    variant.fabricLoaderVersion ?? "0.16.14"
+    variant.fabricLoaderVersion ?? "0.16.14",
   ];
 }
 
-function buildManagedLaunchArgs(runtimeRootDir: string, versionId: string, gameDir: string) {
+function buildManagedLaunchArgs(
+  runtimeRootDir: string,
+  versionId: string,
+  gameDir: string,
+) {
   return [
     "--runtime-root",
     runtimeRootDir,
     "--version-id",
     versionId,
     "--game-dir",
-    gameDir
+    gameDir,
   ];
 }
 
-async function ensureJavaReady(variant: ModVariant, detectJavaImpl: typeof detectJava, command?: string) {
+async function ensureJavaReady(
+  variant: ModVariant,
+  detectJavaImpl: typeof detectJava,
+  command?: string,
+) {
   const result = await detectJavaImpl(command ?? "java");
   const requiredVersion = variant.javaVersion ?? 17;
 
@@ -257,10 +295,10 @@ async function ensureJavaReady(variant: ModVariant, detectJavaImpl: typeof detec
         code: "JAVA_NOT_FOUND",
         message: `Java ${requiredVersion}+ is required for ${variant.id}`,
         details: {
-          command: result.command
-        }
+          command: result.command,
+        },
       },
-      4
+      4,
     );
   }
 
@@ -271,10 +309,10 @@ async function ensureJavaReady(variant: ModVariant, detectJavaImpl: typeof detec
         message: `Java ${requiredVersion}+ is required for ${variant.id}`,
         details: {
           detected: result.majorVersion,
-          command: result.command
-        }
+          command: result.command,
+        },
       },
-      4
+      4,
     );
   }
 
@@ -285,13 +323,14 @@ export async function downloadClientModToDir(
   cwd: string,
   targetDir: string,
   options: DownloadClientOptions,
-  dependencies: DownloadClientDependencies = {}
+  dependencies: DownloadClientDependencies = {},
 ) {
   const loader = options.loader ?? "fabric";
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
   const detectJavaImpl = dependencies.detectJavaImpl ?? detectJava;
   const fetchImpl = dependencies.fetchImpl ?? fetch;
-  const prepareManagedRuntimeImpl = dependencies.prepareManagedRuntimeImpl ?? prepareManagedClientRuntime;
+  const prepareManagedRuntimeImpl =
+    dependencies.prepareManagedRuntimeImpl ?? prepareManagedClientRuntime;
   const catalog = await loadModVariantCatalog();
   const variant = options.version
     ? findVariantByVersionAndLoader(catalog, options.version, loader)
@@ -303,9 +342,9 @@ export async function downloadClientModToDir(
     throw new MctError(
       {
         code: "VARIANT_NOT_FOUND",
-        message: `No mod variant found for ${options.version ?? "default"} / ${loader}`
+        message: `No mod variant found for ${options.version ?? "default"} / ${loader}`,
       },
-      4
+      4,
     );
   }
 
@@ -323,13 +362,26 @@ export async function downloadClientModToDir(
   const runtimePaths = resolveLaunchRuntimePaths(cwd, options);
   const managedRuntime = runtimePaths
     ? undefined
-    : await prepareManagedRuntimeImpl(variant, {
-        runtimeRootDir: path.join(cacheManager.getRootDir(), "client", "runtime", variant.minecraftVersion),
-        gameDir: minecraftDir
-      }, { fetchImpl });
+    : await prepareManagedRuntimeImpl(
+        variant,
+        {
+          runtimeRootDir: path.join(
+            cacheManager.getRootDir(),
+            "client",
+            "runtime",
+            variant.minecraftVersion,
+          ),
+          gameDir: minecraftDir,
+        },
+        { fetchImpl },
+      );
   const generatedLaunchArgs = runtimePaths
     ? buildLaunchArgs(runtimePaths, variant)
-    : buildManagedLaunchArgs(managedRuntime!.runtimeRootDir, managedRuntime!.versionId, managedRuntime!.gameDir);
+    : buildManagedLaunchArgs(
+        managedRuntime!.runtimeRootDir,
+        managedRuntime!.versionId,
+        managedRuntime!.gameDir,
+      );
 
   return {
     downloaded: true,
@@ -345,6 +397,6 @@ export async function downloadClientModToDir(
     cachePath: artifact.cachePath,
     launchArgs: generatedLaunchArgs,
     runtimeRootDir: managedRuntime?.runtimeRootDir,
-    runtimeVersionId: managedRuntime?.versionId
+    runtimeVersionId: managedRuntime?.versionId,
   };
 }

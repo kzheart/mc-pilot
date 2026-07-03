@@ -65,11 +65,12 @@ export class StateStore {
   async withLock<T>(
     name: string,
     task: () => Promise<T>,
-    options: { timeoutMs?: number; staleMs?: number } = {}
+    options: { timeoutMs?: number; staleMs?: number } = {},
   ): Promise<T> {
     await this.ensure();
 
-    const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
+    const deadline =
+      Date.now() + (options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
     const staleMs = options.staleMs ?? DEFAULT_LOCK_STALE_MS;
     const safeName = name.replace(/[\\/]/g, "-");
     const lockDir = path.join(this.rootDir, `${safeName}.lock`);
@@ -81,15 +82,20 @@ export class StateStore {
         const owner: LockOwner = {
           pid: process.pid,
           acquiredAt: new Date().toISOString(),
-          acquiredAtMs: Date.now()
+          acquiredAtMs: Date.now(),
         };
-        await writeFile(ownerPath, `${JSON.stringify(owner, null, 2)}\n`, "utf8");
+        await writeFile(
+          ownerPath,
+          `${JSON.stringify(owner, null, 2)}\n`,
+          "utf8",
+        );
         break;
       } catch (error) {
-        const lockExists = typeof error === "object"
-          && error !== null
-          && "code" in error
-          && (error as NodeJS.ErrnoException).code === "EEXIST";
+        const lockExists =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as NodeJS.ErrnoException).code === "EEXIST";
         if (!lockExists) {
           throw error;
         }
@@ -113,14 +119,21 @@ export class StateStore {
     }
   }
 
-  private async cleanupStaleLock(lockDir: string, ownerPath: string, staleMs: number) {
+  private async cleanupStaleLock(
+    lockDir: string,
+    ownerPath: string,
+    staleMs: number,
+  ) {
     try {
       const raw = await readFile(ownerPath, "utf8");
       const owner = JSON.parse(raw) as Partial<LockOwner>;
       const pid = Number(owner.pid);
-      const acquiredAtMs = typeof owner.acquiredAtMs === "number" ? owner.acquiredAtMs : NaN;
-      const ownerAlive = Number.isInteger(pid) && pid > 0 ? isPidRunning(pid) : false;
-      const isStale = Number.isFinite(acquiredAtMs) && Date.now() - acquiredAtMs > staleMs;
+      const acquiredAtMs =
+        typeof owner.acquiredAtMs === "number" ? owner.acquiredAtMs : NaN;
+      const ownerAlive =
+        Number.isInteger(pid) && pid > 0 ? isPidRunning(pid) : false;
+      const isStale =
+        Number.isFinite(acquiredAtMs) && Date.now() - acquiredAtMs > staleMs;
 
       if (!ownerAlive || isStale) {
         await rm(lockDir, { recursive: true, force: true });

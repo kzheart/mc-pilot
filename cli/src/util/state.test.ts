@@ -13,10 +13,15 @@ test("StateStore can write, read and remove JSON snapshots", async () => {
     const store = new StateStore(tempDir);
 
     await store.writeJson("sample.json", { name: "bot", port: 25560 });
-    assert.deepEqual(await store.readJson("sample.json", {}), { name: "bot", port: 25560 });
+    assert.deepEqual(await store.readJson("sample.json", {}), {
+      name: "bot",
+      port: 25560,
+    });
 
     await store.remove("sample.json");
-    assert.deepEqual(await store.readJson("sample.json", { empty: true }), { empty: true });
+    assert.deepEqual(await store.readJson("sample.json", { empty: true }), {
+      empty: true,
+    });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

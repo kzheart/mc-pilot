@@ -17,9 +17,9 @@ test("WebSocketClient sends request and receives JSON response", async () => {
           success: true,
           data: {
             echoedAction: request.action,
-            params: request.params
-          }
-        })
+            params: request.params,
+          },
+        }),
       );
     });
   });

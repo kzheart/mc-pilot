@@ -1,6 +1,6 @@
 {
   "name": "@kzheart_/mc-pilot",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Minecraft plugin/mod automated testing CLI – control a real Minecraft client to simulate player actions",
   "type": "module",
   "bin": {
@@ -39,19 +39,22 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json",
     "bundle:helper": "node scripts/bundle-recorder.mjs",
+    "format": "biome format --write .",
+    "lint": "biome ci .",
     "prepack": "npm run build && npm run bundle:helper",
     "test": "npm run clean && tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js",
     "test:e2e": "npm run clean && tsc -p tsconfig.json && node --test dist/*.e2e.test.js"
   },
   "dependencies": {
     "@xmcl/core": "^2.15.1",
-    "@xmcl/file-transfer": "^2.0.3",
     "@xmcl/installer": "^6.1.2",
+    "@xmcl/unzip": "^2.1.2",
     "commander": "^14.0.1",
     "pngjs": "^7.0.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
     "@types/node": "^24.5.2",
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.18.1",

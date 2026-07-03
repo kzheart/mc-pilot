@@ -9,13 +9,18 @@ import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
 import { getMinecraftSupport, type ServerType } from "../VersionMatrix.js";
 
-const SERVER_DOWNLOAD_BASE_URLS: Record<Extract<ServerType, "paper" | "purpur">, string> = {
-  paper: process.env.MCT_PAPER_API_BASE_URL || "https://api.papermc.io/v2/projects",
-  purpur: process.env.MCT_PURPUR_API_BASE_URL || "https://api.purpurmc.org/v2"
+const SERVER_DOWNLOAD_BASE_URLS: Record<
+  Extract<ServerType, "paper" | "purpur">,
+  string
+> = {
+  paper:
+    process.env.MCT_PAPER_API_BASE_URL || "https://api.papermc.io/v2/projects",
+  purpur: process.env.MCT_PURPUR_API_BASE_URL || "https://api.purpurmc.org/v2",
 };
 
 const MOJANG_VERSION_MANIFEST_URL =
-  process.env.MCT_MOJANG_VERSION_MANIFEST_URL || "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+  process.env.MCT_MOJANG_VERSION_MANIFEST_URL ||
+  "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 const SPIGOT_BUILD_TOOLS_URL =
   process.env.MCT_SPIGOT_BUILDTOOLS_URL ||
   "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar";
@@ -27,7 +32,7 @@ type ExecFileLike = (
   options: {
     cwd?: string;
     maxBuffer?: number;
-  }
+  },
 ) => Promise<{
   stdout: string;
   stderr: string;
@@ -47,7 +52,11 @@ export interface DownloadServerDependencies {
   execFileImpl?: ExecFileLike;
 }
 
-function resolveDownloadUrl(type: Extract<ServerType, "paper" | "purpur">, version: string, build: string) {
+function resolveDownloadUrl(
+  type: Extract<ServerType, "paper" | "purpur">,
+  version: string,
+  build: string,
+) {
   if (type === "paper") {
     return `${SERVER_DOWNLOAD_BASE_URLS.paper}/paper/versions/${version}/builds/${build}/downloads/paper-${version}-${build}.jar`;
   }
@@ -55,14 +64,20 @@ function resolveDownloadUrl(type: Extract<ServerType, "paper" | "purpur">, versi
   return `${SERVER_DOWNLOAD_BASE_URLS.purpur}/purpur/${version}/${build}/download`;
 }
 
-async function fetchJsonWithRetry<T>(url: string, fetchImpl: typeof fetch, attempts = 4): Promise<T> {
+async function fetchJsonWithRetry<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  attempts = 4,
+): Promise<T> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetchImpl(url);
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
+        throw new Error(
+          `HTTP ${response.status} ${response.statusText}`.trim(),
+        );
       }
       return (await response.json()) as T;
     } catch (error) {
@@ -77,7 +92,10 @@ async function fetchJsonWithRetry<T>(url: string, fetchImpl: typeof fetch, attem
   throw lastError;
 }
 
-async function resolveVanillaDownloadSpec(version: string, fetchImpl: typeof fetch) {
+async function resolveVanillaDownloadSpec(
+  version: string,
+  fetchImpl: typeof fetch,
+) {
   const manifest = await fetchJsonWithRetry<{
     versions: Array<{ id: string; url: string }>;
   }>(MOJANG_VERSION_MANIFEST_URL, fetchImpl);
@@ -86,9 +104,9 @@ async function resolveVanillaDownloadSpec(version: string, fetchImpl: typeof fet
     throw new MctError(
       {
         code: "UNSUPPORTED_VERSION",
-        message: `Unsupported vanilla version ${version}`
+        message: `Unsupported vanilla version ${version}`,
       },
-      4
+      4,
     );
   }
 
@@ -104,9 +122,9 @@ async function resolveVanillaDownloadSpec(version: string, fetchImpl: typeof fet
     throw new MctError(
       {
         code: "UNSUPPORTED_VERSION",
-        message: `Vanilla server jar is not available for ${version}`
+        message: `Vanilla server jar is not available for ${version}`,
       },
-      4
+      4,
     );
   }
 
@@ -115,7 +133,7 @@ async function resolveVanillaDownloadSpec(version: string, fetchImpl: typeof fet
     version,
     build: "release",
     fileName: `vanilla-${version}.jar`,
-    downloadUrl: serverDownload.url
+    downloadUrl: serverDownload.url,
   };
 }
 
@@ -123,18 +141,32 @@ async function buildSpigotServerJar(
   version: string,
   cacheManager: CacheManager,
   fetchImpl: typeof fetch,
-  execFileImpl: ExecFileLike
+  execFileImpl: ExecFileLike,
 ) {
-  const buildToolsJarPath = cacheManager.getServerJarPath("spigot", "buildtools", "latest");
-  const cachePath = cacheManager.getServerJarPath("spigot", version, "buildtools");
-  const buildDir = path.join(cacheManager.getRootDir(), "server", "spigot", "build", version);
+  const buildToolsJarPath = cacheManager.getServerJarPath(
+    "spigot",
+    "buildtools",
+    "latest",
+  );
+  const cachePath = cacheManager.getServerJarPath(
+    "spigot",
+    version,
+    "buildtools",
+  );
+  const buildDir = path.join(
+    cacheManager.getRootDir(),
+    "server",
+    "spigot",
+    "build",
+    version,
+  );
   const builtJarPath = path.join(buildDir, `spigot-${version}.jar`);
 
   try {
     await access(cachePath);
     return {
       cachePath,
-      build: "buildtools"
+      build: "buildtools",
     };
   } catch {}
 
@@ -147,11 +179,21 @@ async function buildSpigotServerJar(
   await mkdir(buildDir, { recursive: true });
   await execFileImpl(
     "java",
-    ["-jar", buildToolsJarPath, "--rev", version, "--compile", "SPIGOT", "--disable-certificate-check", "--output-dir", "."],
+    [
+      "-jar",
+      buildToolsJarPath,
+      "--rev",
+      version,
+      "--compile",
+      "SPIGOT",
+      "--disable-certificate-check",
+      "--output-dir",
+      ".",
+    ],
     {
       cwd: buildDir,
-      maxBuffer: 32 * 1024 * 1024
-    }
+      maxBuffer: 32 * 1024 * 1024,
+    },
   );
 
   try {
@@ -162,17 +204,17 @@ async function buildSpigotServerJar(
         code: "DOWNLOAD_FAILED",
         message: `BuildTools did not produce spigot-${version}.jar`,
         details: {
-          buildDir
-        }
+          buildDir,
+        },
       },
-      2
+      2,
     );
   }
 
   await copyFileIfMissing(builtJarPath, cachePath);
   return {
     cachePath,
-    build: "buildtools"
+    build: "buildtools",
   };
 }
 
@@ -185,9 +227,9 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
     throw new MctError(
       {
         code: "UNSUPPORTED_VERSION",
-        message: `Unsupported ${type} version ${options.version ?? ""}`.trim()
+        message: `Unsupported ${type} version ${options.version ?? ""}`.trim(),
       },
-      4
+      4,
     );
   }
 
@@ -197,7 +239,7 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
       version: resolvedVersion,
       build: "release",
       fileName: `vanilla-${resolvedVersion}.jar`,
-      downloadUrl: ""
+      downloadUrl: "",
     };
   }
 
@@ -207,18 +249,19 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
       version: resolvedVersion,
       build: "buildtools",
       fileName: `spigot-${resolvedVersion}.jar`,
-      downloadUrl: SPIGOT_BUILD_TOOLS_URL
+      downloadUrl: SPIGOT_BUILD_TOOLS_URL,
     };
   }
 
-  const resolvedBuild = options.build ?? versionEntry.servers[type].latestBuild?.toString();
+  const resolvedBuild =
+    options.build ?? versionEntry.servers[type].latestBuild?.toString();
   if (!resolvedBuild) {
     throw new MctError(
       {
         code: "INVALID_PARAMS",
-        message: `${type} ${resolvedVersion} requires an explicit build`
+        message: `${type} ${resolvedVersion} requires an explicit build`,
       },
-      4
+      4,
     );
   }
 
@@ -227,17 +270,18 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
     version: resolvedVersion,
     build: resolvedBuild,
     fileName: `${type}-${resolvedVersion}-${resolvedBuild}.jar`,
-    downloadUrl: resolveDownloadUrl(type, resolvedVersion, resolvedBuild)
+    downloadUrl: resolveDownloadUrl(type, resolvedVersion, resolvedBuild),
   };
 }
 
 export async function downloadServerJarToCache(
   options: DownloadServerOptions,
-  dependencies: DownloadServerDependencies = {}
+  dependencies: DownloadServerDependencies = {},
 ) {
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
   const fetchImpl = dependencies.fetchImpl ?? fetch;
-  const execFileImpl = (dependencies.execFileImpl ?? execFileAsync) as ExecFileLike;
+  const execFileImpl = (dependencies.execFileImpl ??
+    execFileAsync) as ExecFileLike;
   const initialSpec = resolveServerDownloadSpec(options);
   const spec =
     initialSpec.type === "vanilla"
@@ -245,7 +289,14 @@ export async function downloadServerJarToCache(
       : initialSpec;
   const cachePath =
     spec.type === "spigot"
-      ? (await buildSpigotServerJar(spec.version, cacheManager, fetchImpl, execFileImpl)).cachePath
+      ? (
+          await buildSpigotServerJar(
+            spec.version,
+            cacheManager,
+            fetchImpl,
+            execFileImpl,
+          )
+        ).cachePath
       : cacheManager.getServerJarPath(spec.type, spec.version, spec.build);
 
   if (spec.type !== "spigot") {
@@ -262,6 +313,6 @@ export async function downloadServerJarToCache(
     version: spec.version,
     build: spec.build,
     cachePath,
-    fileName: spec.fileName
+    fileName: spec.fileName,
   };
 }

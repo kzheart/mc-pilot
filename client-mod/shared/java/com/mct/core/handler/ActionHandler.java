@@ -4,6 +4,7 @@ import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
 import com.mct.core.util.ParamHelper;
+import com.mct.core.util.SessionReliability;
 import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,6 +17,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ClientPlayerInteractionManager;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -82,14 +84,32 @@ public abstract class ActionHandler {
         return latest;
     }
 
+    protected <T> T waitForCondition(Map<String, Object> params, java.util.function.Supplier<T> supplier, java.util.function.Predicate<T> done) {
+        double waitSeconds = ParamHelper.getDouble(params, "wait", 0.0D);
+        if (waitSeconds <= 0.0D) {
+            return runOnClientThread(supplier::get);
+        }
+        return pollOnClientThread(waitSeconds, supplier, done, "TIMEOUT");
+    }
+
     // --- Require helpers ---
 
     protected ClientPlayerEntity requirePlayer() {
         ClientPlayerEntity player = client.player;
-        if (player == null || player.networkHandler == null || player.clientWorld == null) {
+        if (player == null || player.networkHandler == null || ClientVersionModulesHolder.get().clientWorld().getClientWorld(player) == null) {
+            SessionReliability.tryAutoReconnect(client, stateTracker);
             throw new ActionException("NOT_IN_WORLD");
         }
+        SessionReliability.markInWorld();
         return player;
+    }
+
+    protected ClientWorld clientWorld(ClientPlayerEntity player) {
+        return ClientVersionModulesHolder.get().clientWorld().getClientWorld(player);
+    }
+
+    protected ClientWorld requireClientWorld() {
+        return clientWorld(requirePlayer());
     }
 
     protected ClientPlayerInteractionManager requireInteractionManager() {
@@ -118,7 +138,7 @@ public abstract class ActionHandler {
     // --- Data conversion helpers ---
 
     protected Map<String, Object> positionMap(ClientPlayerEntity player) {
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "x", player.getX(),
             "y", player.getY(),
             "z", player.getZ(),
@@ -129,11 +149,11 @@ public abstract class ActionHandler {
     }
 
     protected Map<String, Object> rotationMap(ClientPlayerEntity player) {
-        return Map.of("yaw", player.getYaw(), "pitch", player.getPitch());
+        return com.mct.core.util.MctMaps.mapOf("yaw", player.getYaw(), "pitch", player.getPitch());
     }
 
     protected Map<String, Object> blockPosMap(BlockPos pos) {
-        return Map.of("x", pos.getX(), "y", pos.getY(), "z", pos.getZ());
+        return com.mct.core.util.MctMaps.mapOf("x", pos.getX(), "y", pos.getY(), "z", pos.getZ());
     }
 
     protected BlockPos blockPos(Map<String, Object> params) {

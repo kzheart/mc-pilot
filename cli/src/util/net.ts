@@ -24,7 +24,11 @@ export async function isTcpPortReachable(host: string, port: number) {
   });
 }
 
-export async function waitForTcpPort(host: string, port: number, timeoutSeconds: number) {
+export async function waitForTcpPort(
+  host: string,
+  port: number,
+  timeoutSeconds: number,
+) {
   const deadline = Date.now() + timeoutSeconds * 1000;
 
   while (Date.now() < deadline) {
@@ -32,7 +36,7 @@ export async function waitForTcpPort(host: string, port: number, timeoutSeconds:
       return {
         reachable: true,
         host,
-        port
+        port,
       };
     }
 
@@ -42,8 +46,8 @@ export async function waitForTcpPort(host: string, port: number, timeoutSeconds:
   throw new MctError(
     {
       code: "TIMEOUT",
-      message: `Timed out waiting for ${host}:${port}`
+      message: `Timed out waiting for ${host}:${port}`,
     },
-    2
+    2,
   );
 }

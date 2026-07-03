@@ -1,4 +1,9 @@
-import { searchClientVersions, searchServerVersions, type ClientLoader, type ServerType } from "./VersionMatrix.js";
+import {
+  searchClientVersions,
+  searchServerVersions,
+  type ClientLoader,
+  type ServerType,
+} from "./VersionMatrix.js";
 
 export interface ServerSearchCommandResult {
   type: ServerType;
@@ -28,16 +33,20 @@ export function buildServerSearchResults(filter?: {
 }): ServerSearchCommandResult[] {
   const grouped = new Map<ServerType, ServerSearchCommandResult>();
 
-  for (const entry of searchServerVersions(filter).filter((item) => item.supported)) {
+  for (const entry of searchServerVersions(filter).filter(
+    (item) => item.supported,
+  )) {
     const current = grouped.get(entry.type) ?? {
       type: entry.type,
-      versions: []
+      versions: [],
     };
 
     current.versions.push({
       version: entry.minecraftVersion,
-      ...(entry.latestBuild != null ? { build: String(entry.latestBuild) } : {}),
-      ...(entry.requiresBuildTools ? { requiresBuildTools: true } : {})
+      ...(entry.latestBuild != null
+        ? { build: String(entry.latestBuild) }
+        : {}),
+      ...(entry.requiresBuildTools ? { requiresBuildTools: true } : {}),
     });
     grouped.set(entry.type, current);
   }
@@ -55,7 +64,7 @@ export function buildClientSearchResults(filter?: {
     const current = grouped.get(entry.minecraftVersion) ?? {
       version: entry.minecraftVersion,
       javaVersion: entry.javaVersion,
-      loaders: []
+      loaders: [],
     };
 
     current.loaders.push({
@@ -64,7 +73,7 @@ export function buildClientSearchResults(filter?: {
       ...(entry.loaderVersion ? { loaderVersion: entry.loaderVersion } : {}),
       ...(entry.modVersion ? { modVersion: entry.modVersion } : {}),
       ...(entry.validation ? { validation: entry.validation } : {}),
-      ...(entry.notes ? { notes: entry.notes } : {})
+      ...(entry.notes ? { notes: entry.notes } : {}),
     });
     grouped.set(entry.minecraftVersion, current);
   }

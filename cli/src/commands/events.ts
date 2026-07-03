@@ -3,9 +3,13 @@ import path from "node:path";
 
 import { Command } from "commander";
 
-import { MctError } from "../util/errors.js";
+import { MctError, invalidParams } from "../util/errors.js";
 import { resolveMctHome } from "../util/paths.js";
 import { wrapCommand } from "../util/command.js";
+import {
+  resolveAllProfileClientNames,
+  resolveInstanceName,
+} from "./request-helpers.js";
 
 interface EventEntry {
   t: number;
@@ -32,48 +36,34 @@ interface WaitOptions {
 
 function resolveEventsFile(clientName: string | undefined): string {
   if (!clientName) {
-    throw new MctError(
-      {
-        code: "INVALID_PARAMS",
-        message: "Client name is required. Use --client <name> or set an active profile."
-      },
-      4
+    throw invalidParams(
+      "Client name is required. Use --client <name> or set an active profile.",
     );
   }
   return path.join(resolveMctHome(), "logs", clientName, "events.jsonl");
 }
 
-function resolveEventClientNames(context: { activeProfile: { clients: string[] } | null }, explicitClient: string | undefined, allClients: boolean): string[] {
+function resolveEventClientNames(
+  context: { activeProfile: { clients: string[] } | null },
+  explicitClient: string | undefined,
+  allClients: boolean,
+): string[] {
   if (allClients) {
-    const clients = context.activeProfile?.clients ?? [];
-    if (clients.length === 0) {
-      throw new MctError(
-        { code: "INVALID_PARAMS", message: "--all-clients requires an active profile with clients" },
-        4
-      );
-    }
-    return clients;
+    return resolveAllProfileClientNames(context);
   }
-  const clientName = explicitClient ?? context.activeProfile?.clients[0];
-  if (!clientName) {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: "Client name is required. Use --client <name> or set an active profile." },
-      4
-    );
-  }
-  return [clientName];
+  return [resolveInstanceName(context, explicitClient, "client")];
 }
 
-function parseSince(raw: string | undefined, nowMs: number): number | undefined {
+function parseSince(
+  raw: string | undefined,
+  nowMs: number,
+): number | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   // 支持 "30s" / "5m" / "1h" / "200ms" / epoch 毫秒
   const m = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(trimmed);
   if (!m) {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: `Invalid --since value: ${raw}` },
-      4
-    );
+    throw invalidParams(`Invalid --since value: ${raw}`);
   }
   const value = Number(m[1]);
   const unit = m[2];
@@ -81,7 +71,12 @@ function parseSince(raw: string | undefined, nowMs: number): number | undefined 
     // epoch millis
     return value;
   }
-  const multipliers: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+  const multipliers: Record<string, number> = {
+    ms: 1,
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+  };
   return nowMs - value * multipliers[unit];
 }
 
@@ -100,13 +95,21 @@ function readAllEvents(filePath: string): EventEntry[] {
   return out;
 }
 
-function filterEvents(events: EventEntry[], options: { sinceMs?: number; type?: string }): EventEntry[] {
+function filterEvents(
+  events: EventEntry[],
+  options: { sinceMs?: number; type?: string },
+): EventEntry[] {
   let filtered = events;
   if (options.sinceMs !== undefined) {
     filtered = filtered.filter((event) => event.t >= options.sinceMs!);
   }
   if (options.type) {
-    const wanted = new Set(options.type.split(",").map((s) => s.trim()).filter(Boolean));
+    const wanted = new Set(
+      options.type
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
     filtered = filtered.filter((event) => wanted.has(event.type));
   }
   return filtered;
@@ -115,7 +118,7 @@ function filterEvents(events: EventEntry[], options: { sinceMs?: number; type?: 
 function buildPayloadText(event: EventEntry): string {
   return JSON.stringify({
     type: event.type,
-    payload: event.payload ?? {}
+    payload: event.payload ?? {},
   });
 }
 
@@ -124,17 +127,24 @@ function buildMatchPattern(raw: string | undefined): RegExp | null {
   try {
     return new RegExp(raw);
   } catch {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: `Invalid --match pattern: ${raw}` },
-      4
-    );
+    throw invalidParams(`Invalid --match pattern: ${raw}`);
   }
 }
 
 async function waitForEvent(
   filePath: string,
-  options: { timeoutSeconds: number; sinceMs: number; type?: string; match?: string }
-): Promise<{ file: string; matched: true; waitedMs: number; event: EventEntry }> {
+  options: {
+    timeoutSeconds: number;
+    sinceMs: number;
+    type?: string;
+    match?: string;
+  },
+): Promise<{
+  file: string;
+  matched: true;
+  waitedMs: number;
+  event: EventEntry;
+}> {
   const deadline = Date.now() + options.timeoutSeconds * 1000;
   const matchPattern = buildMatchPattern(options.match);
   const startedAt = Date.now();
@@ -142,7 +152,7 @@ async function waitForEvent(
   while (Date.now() < deadline) {
     const events = filterEvents(readAllEvents(filePath), {
       sinceMs: options.sinceMs,
-      type: options.type
+      type: options.type,
     });
 
     const matched = matchPattern
@@ -154,7 +164,7 @@ async function waitForEvent(
         file: filePath,
         matched: true,
         waitedMs: Date.now() - startedAt,
-        event: matched
+        event: matched,
       };
     }
 
@@ -169,50 +179,66 @@ async function waitForEvent(
         file: filePath,
         type: options.type ?? null,
         match: options.match ?? null,
-        sinceMs: options.sinceMs
-      }
+        sinceMs: options.sinceMs,
+      },
     },
-    2
+    2,
   );
 }
 
 export function createEventsCommand() {
   const command = new Command("events").description(
-    "Inspect the client event log (written by the mod to ~/.mct/logs/<client>/events.jsonl)"
+    "Inspect the client event log (written by the mod to ~/.mct/logs/<client>/events.jsonl)",
   );
 
   command
     .command("list")
     .description("Print events. Defaults to the last 20 for the active client.")
-    .option("--tail <n>", "Show the last N events (default 20)", (v) => Number(v))
-    .option("--since <duration>", "Only show events since duration ago (e.g. 30s, 5m, 1h) or epoch ms")
+    .option("--tail <n>", "Show the last N events (default 20)", (v) =>
+      Number(v),
+    )
+    .option(
+      "--since <duration>",
+      "Only show events since duration ago (e.g. 30s, 5m, 1h) or epoch ms",
+    )
     .option("--type <types>", "Comma-separated list of event types to include")
     .option("--all", "Show all events (ignore --tail)")
     .option("--file <path>", "Override the log file path")
     .action(
-      wrapCommand(async (context, { options, globalOptions }: { options: ListOptions; globalOptions: { client?: string } }) => {
-        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
-        const filePath = options.file ?? resolveEventsFile(clientName);
-        const events = readAllEvents(filePath);
-        let filtered = filterEvents(events, {
-          sinceMs: parseSince(options.since, Date.now()),
-          type: options.type
-        });
+      wrapCommand(
+        async (
+          context,
+          {
+            options,
+            globalOptions,
+          }: { options: ListOptions; globalOptions: { client?: string } },
+        ) => {
+          const filePath =
+            options.file ??
+            resolveEventsFile(
+              resolveInstanceName(context, globalOptions.client, "client"),
+            );
+          const events = readAllEvents(filePath);
+          let filtered = filterEvents(events, {
+            sinceMs: parseSince(options.since, Date.now()),
+            type: options.type,
+          });
 
-        if (!options.all) {
-          const tail = options.tail ?? 20;
-          if (filtered.length > tail) {
-            filtered = filtered.slice(filtered.length - tail);
+          if (!options.all) {
+            const tail = options.tail ?? 20;
+            if (filtered.length > tail) {
+              filtered = filtered.slice(filtered.length - tail);
+            }
           }
-        }
 
-        return {
-          file: filePath,
-          total: events.length,
-          returned: filtered.length,
-          events: filtered
-        };
-      })
+          return {
+            file: filePath,
+            total: events.length,
+            returned: filtered.length,
+            events: filtered,
+          };
+        },
+      ),
     );
 
   command
@@ -225,84 +251,158 @@ export function createEventsCommand() {
       wrapCommand(
         async (
           context,
-          { args, options, globalOptions }: {
+          {
+            args,
+            options,
+            globalOptions,
+          }: {
             args: (string | undefined)[];
             options: { type?: string; file?: string };
             globalOptions: { client?: string };
-          }
+          },
         ) => {
           const tail = args[0] ? Number(args[0]) : 20;
-          const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
-          const filePath = options.file ?? resolveEventsFile(clientName);
+          const filePath =
+            options.file ??
+            resolveEventsFile(
+              resolveInstanceName(context, globalOptions.client, "client"),
+            );
           let events = filterEvents(readAllEvents(filePath), {
-            type: options.type
+            type: options.type,
           });
           if (events.length > tail) events = events.slice(events.length - tail);
           return { file: filePath, returned: events.length, events };
-        }
-      )
+        },
+      ),
     );
 
   command
     .command("wait")
-    .description("Wait for a matching event. Defaults to events emitted after this command starts.")
+    .description(
+      "Wait for a matching event. Defaults to events emitted after this command starts.",
+    )
     .option("--timeout <seconds>", "Timeout in seconds (default 10)", Number)
-    .option("--since <duration>", "Also consider events since duration ago (e.g. 30s, 5m, 1h) or epoch ms")
+    .option(
+      "--since <duration>",
+      "Also consider events since duration ago (e.g. 30s, 5m, 1h) or epoch ms",
+    )
     .option("--type <types>", "Comma-separated list of event types to include")
-    .option("--match <pattern>", "Regex matched against event type and payload JSON")
+    .option(
+      "--match <pattern>",
+      "Regex matched against event type and payload JSON",
+    )
     .option("--file <path>", "Override the log file path")
     .action(
-      wrapCommand(async (context, { options, globalOptions }: { options: WaitOptions; globalOptions: { client?: string } }) => {
-        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
-        const filePath = options.file ?? resolveEventsFile(clientName);
-        return waitForEvent(filePath, {
-          timeoutSeconds: options.timeout ?? context.timeout("default"),
-          sinceMs: parseSince(options.since, Date.now()) ?? Date.now(),
-          type: options.type,
-          match: options.match
-        });
-      })
+      wrapCommand(
+        async (
+          context,
+          {
+            options,
+            globalOptions,
+          }: { options: WaitOptions; globalOptions: { client?: string } },
+        ) => {
+          const filePath =
+            options.file ??
+            resolveEventsFile(
+              resolveInstanceName(context, globalOptions.client, "client"),
+            );
+          return waitForEvent(filePath, {
+            timeoutSeconds: options.timeout ?? context.timeout("default"),
+            sinceMs: parseSince(options.since, Date.now()) ?? Date.now(),
+            type: options.type,
+            match: options.match,
+          });
+        },
+      ),
     );
 
   command
     .command("clear")
     .description("Truncate the event log for the active client")
-    .option("--all-clients", "Clear event logs for every client in the active profile")
+    .option(
+      "--all-clients",
+      "Clear event logs for every client in the active profile",
+    )
     .option("--file <path>", "Override the log file path")
     .action(
-      wrapCommand(async (context, { options, globalOptions }: { options: { file?: string; allClients?: boolean }; globalOptions: { client?: string } }) => {
-        const { truncateSync, existsSync: exists, mkdirSync } = await import("node:fs");
-        if (options.file) {
-          if (exists(options.file)) {
-            truncateSync(options.file, 0);
-            return { cleared: true, file: options.file };
+      wrapCommand(
+        async (
+          context,
+          {
+            options,
+            globalOptions,
+          }: {
+            options: { file?: string; allClients?: boolean };
+            globalOptions: { client?: string };
+          },
+        ) => {
+          const {
+            truncateSync,
+            existsSync: exists,
+            mkdirSync,
+          } = await import("node:fs");
+          if (options.file) {
+            if (exists(options.file)) {
+              truncateSync(options.file, 0);
+              return { cleared: true, file: options.file };
+            }
+            mkdirSync(path.dirname(options.file), { recursive: true });
+            return {
+              cleared: false,
+              reason: "file_not_found",
+              file: options.file,
+            };
           }
-          mkdirSync(path.dirname(options.file), { recursive: true });
-          return { cleared: false, reason: "file_not_found", file: options.file };
-        }
 
-        const clients = resolveEventClientNames(context, globalOptions.client, Boolean(options.allClients));
-        const results = clients.map((clientName) => {
-          const filePath = resolveEventsFile(clientName);
-          if (exists(filePath)) {
-            truncateSync(filePath, 0);
-            return { client: clientName, cleared: true, file: filePath };
-          }
-          mkdirSync(path.dirname(filePath), { recursive: true });
-          return { client: clientName, cleared: false, reason: "file_not_found", file: filePath };
-        });
-        return { cleared: results.some((result) => result.cleared), clients: results };
-      })
+          const clients = resolveEventClientNames(
+            context,
+            globalOptions.client,
+            Boolean(options.allClients),
+          );
+          const results = clients.map((clientName) => {
+            const filePath = resolveEventsFile(clientName);
+            if (exists(filePath)) {
+              truncateSync(filePath, 0);
+              return { client: clientName, cleared: true, file: filePath };
+            }
+            mkdirSync(path.dirname(filePath), { recursive: true });
+            return {
+              client: clientName,
+              cleared: false,
+              reason: "file_not_found",
+              file: filePath,
+            };
+          });
+          return {
+            cleared: results.some((result) => result.cleared),
+            clients: results,
+          };
+        },
+      ),
     );
 
   command
     .command("path")
-    .description("Print the expected path to the event log for the active client")
+    .description(
+      "Print the expected path to the event log for the active client",
+    )
     .action(
-      wrapCommand(async (context, { globalOptions }: { globalOptions: { client?: string } }) => {
-        const clientName = globalOptions.client ?? context.activeProfile?.clients[0];
-        return { file: resolveEventsFile(clientName), exists: existsSync(resolveEventsFile(clientName)) };
-      })
+      wrapCommand(
+        async (
+          context,
+          { globalOptions }: { globalOptions: { client?: string } },
+        ) => {
+          const clientName = resolveInstanceName(
+            context,
+            globalOptions.client,
+            "client",
+          );
+          return {
+            file: resolveEventsFile(clientName),
+            exists: existsSync(resolveEventsFile(clientName)),
+          };
+        },
+      ),
     );
 
   return command;

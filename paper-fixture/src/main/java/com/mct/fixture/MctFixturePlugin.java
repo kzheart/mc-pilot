@@ -11,7 +11,6 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Sign;
-import org.bukkit.block.sign.Side;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
@@ -29,7 +28,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Merchant;
 import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
@@ -89,8 +87,11 @@ public final class MctFixturePlugin extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("Only players can use this command.");
+        Player player = sender instanceof Player senderPlayer
+            ? senderPlayer
+            : Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+        if (player == null) {
+            sender.sendMessage("No online player is available for this command.");
             return true;
         }
 
@@ -147,12 +148,7 @@ public final class MctFixturePlugin extends JavaPlugin implements Listener {
         Player player = event.getPlayer();
         Bukkit.getScheduler().runTaskLater(this, () -> {
             if (player.isOnline()) {
-                resetFixture(player);
-            }
-        }, 1L);
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (player.isOnline()) {
-                resetFixture(player);
+                applyPersistentHud(player);
             }
         }, 20L);
     }
@@ -354,17 +350,15 @@ public final class MctFixturePlugin extends JavaPlugin implements Listener {
         World world = player.getWorld();
         Sign sign = (Sign) world.getBlockAt(SIGN_X, PLAY_Y, SIGN_Z).getState();
         sign.setEditable(true);
-        sign.setWaxed(false);
         sign.update(true, false);
-        player.openSign(sign, Side.FRONT);
+        player.openSign(sign);
     }
 
     private void resetPlayer(Player player, World world) {
         player.closeInventory();
         Location target = new Location(world, 12.5D, PLAY_Y, 37.5D, 180.0F, 0.0F);
         boolean teleported = player.teleport(target);
-        player.setVelocity(new Vector(0, 0, 0));
-        player.setFallDistance(0.0F);
+        stabilizePlayerAt(player, target);
         player.setGravity(true);
         player.setGameMode(GameMode.SURVIVAL);
         player.setHealth(player.getMaxHealth());
@@ -387,11 +381,22 @@ public final class MctFixturePlugin extends JavaPlugin implements Listener {
         player.getInventory().setItemInOffHand(new ItemStack(Material.SHIELD, 1));
         player.updateInventory();
         getLogger().info("Reset player teleported=" + teleported + " target=" + target + " actual=" + player.getLocation());
+        Bukkit.getScheduler().runTaskLater(this, () -> stabilizePlayerAt(player, target), 1L);
+        Bukkit.getScheduler().runTaskLater(this, () -> stabilizePlayerAt(player, target), 3L);
+    }
+
+    private void stabilizePlayerAt(Player player, Location target) {
+        if (!player.isOnline()) {
+            return;
+        }
+        player.teleport(target);
+        player.setVelocity(new Vector(0, 0, 0));
+        player.setFallDistance(0.0F);
     }
 
     private void applyPersistentHud(Player player) {
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
-        Objective objective = scoreboard.registerNewObjective("mct_sidebar", Criteria.DUMMY, "MCT Sidebar");
+        Objective objective = scoreboard.registerNewObjective("mct_sidebar", "dummy", "MCT Sidebar");
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         objective.getScore("Ready").setScore(3);
         objective.getScore("Arena").setScore(2);

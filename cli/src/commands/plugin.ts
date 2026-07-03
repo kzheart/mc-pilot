@@ -6,24 +6,30 @@ import { wrapCommand } from "../util/command.js";
 
 function parseCommaSeparated(value: string | undefined): string[] | undefined {
   if (!value) return undefined;
-  return value.split(",").map((s) => s.trim()).filter(Boolean);
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function createPluginCommand() {
-  const plugin = new Command("plugin")
-    .description("Manage the plugin center catalog");
+  const plugin = new Command("plugin").description(
+    "Manage the plugin center catalog",
+  );
 
   plugin.addCommand(
     new Command("list")
       .description("List plugins in the catalog")
       .option("--query <query>", "Search by name, id, or description")
       .action(
-        wrapCommand(async (_context, { options }: { options: { query?: string } }) => {
-          const manager = new PluginCatalogManager();
-          const plugins = await manager.list(options.query);
-          return { plugins, count: plugins.length };
-        })
-      )
+        wrapCommand(
+          async (_context, { options }: { options: { query?: string } }) => {
+            const manager = new PluginCatalogManager();
+            const plugins = await manager.list(options.query);
+            return { plugins, count: plugins.length };
+          },
+        ),
+      ),
   );
 
   plugin.addCommand(
@@ -34,25 +40,38 @@ export function createPluginCommand() {
         wrapCommand(async (_context, { args }) => {
           const manager = new PluginCatalogManager();
           return manager.get(args[0]!);
-        })
-      )
+        }),
+      ),
   );
 
   plugin.addCommand(
     new Command("add")
-      .description("Add a plugin JAR to the catalog (id/name auto-derived from filename)")
+      .description(
+        "Add a plugin JAR to the catalog (id/name auto-derived from filename)",
+      )
       .argument("<jar-path>", "Path to the plugin JAR file")
       .option("--id <id>", "Override plugin ID")
       .option("--name <name>", "Override display name")
       .action(
-        wrapCommand(async (_context, { args, options }: { args: (string | undefined)[]; options: { id?: string; name?: string } }) => {
-          const manager = new PluginCatalogManager();
-          return manager.add(args[0]!, {
-            id: options.id,
-            name: options.name
-          });
-        })
-      )
+        wrapCommand(
+          async (
+            _context,
+            {
+              args,
+              options,
+            }: {
+              args: (string | undefined)[];
+              options: { id?: string; name?: string };
+            },
+          ) => {
+            const manager = new PluginCatalogManager();
+            return manager.add(args[0]!, {
+              id: options.id,
+              name: options.name,
+            });
+          },
+        ),
+      ),
   );
 
   plugin.addCommand(
@@ -63,21 +82,35 @@ export function createPluginCommand() {
       .option("--version <version>", "Version")
       .option("--description <description>", "Description")
       .option("--author <author>", "Author")
-      .option("--dependencies <deps>", "Dependency plugin IDs (comma-separated)")
+      .option(
+        "--dependencies <deps>",
+        "Dependency plugin IDs (comma-separated)",
+      )
       .option("--tags <tags>", "Tags (comma-separated)")
       .action(
-        wrapCommand(async (_context, { args, options }: { args: (string | undefined)[]; options: Record<string, string | undefined> }) => {
-          const manager = new PluginCatalogManager();
-          return manager.update(args[0]!, {
-            name: options.name,
-            version: options.version,
-            description: options.description,
-            author: options.author,
-            dependencies: parseCommaSeparated(options.dependencies),
-            tags: parseCommaSeparated(options.tags)
-          });
-        })
-      )
+        wrapCommand(
+          async (
+            _context,
+            {
+              args,
+              options,
+            }: {
+              args: (string | undefined)[];
+              options: Record<string, string | undefined>;
+            },
+          ) => {
+            const manager = new PluginCatalogManager();
+            return manager.update(args[0]!, {
+              name: options.name,
+              version: options.version,
+              description: options.description,
+              author: options.author,
+              dependencies: parseCommaSeparated(options.dependencies),
+              tags: parseCommaSeparated(options.tags),
+            });
+          },
+        ),
+      ),
   );
 
   plugin.addCommand(
@@ -89,8 +122,8 @@ export function createPluginCommand() {
           const manager = new PluginCatalogManager();
           const removed = await manager.remove(args[0]!);
           return { removed: removed.id, name: removed.name };
-        })
-      )
+        }),
+      ),
   );
 
   plugin.addCommand(
@@ -100,18 +133,33 @@ export function createPluginCommand() {
       .requiredOption("--server <name>", "Target server instance name")
       .option("--project <id>", "Project ID")
       .action(
-        wrapCommand(async (context, { args, options }: { args: (string | undefined)[]; options: { server: string; project?: string } }) => {
-          const project = options.project ?? context.projectId;
-          if (!project) {
-            throw new MctError(
-              { code: "NO_PROJECT", message: "No project specified. Use --project <id> or run from a project directory." },
-              4
-            );
-          }
-          const manager = new PluginCatalogManager();
-          return manager.install(args[0]!, project, options.server);
-        })
-      )
+        wrapCommand(
+          async (
+            context,
+            {
+              args,
+              options,
+            }: {
+              args: (string | undefined)[];
+              options: { server: string; project?: string };
+            },
+          ) => {
+            const project = options.project ?? context.projectId;
+            if (!project) {
+              throw new MctError(
+                {
+                  code: "NO_PROJECT",
+                  message:
+                    "No project specified. Use --project <id> or run from a project directory.",
+                },
+                4,
+              );
+            }
+            const manager = new PluginCatalogManager();
+            return manager.install(args[0]!, project, options.server);
+          },
+        ),
+      ),
   );
 
   plugin.addCommand(
@@ -121,13 +169,15 @@ export function createPluginCommand() {
       .action(
         wrapCommand(async (_context, { args }) => {
           const manager = new PluginCatalogManager();
-          const resolved = await manager.resolve(args.filter((v): v is string => v !== undefined));
+          const resolved = await manager.resolve(
+            args.filter((v): v is string => v !== undefined),
+          );
           return {
             order: resolved.map((p) => p.id),
-            plugins: resolved
+            plugins: resolved,
           };
-        })
-      )
+        }),
+      ),
   );
 
   return plugin;

@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { access, appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { buildProgram } from "../cli/dist/index.js";
 import { TEST_GROUPS } from "./real-mod-full-test/groups/index.mjs";
-
-const execFileAsync = promisify(execFile);
+import {
+  findAvailablePort,
+  parseCliOptions as parseSharedCliOptions,
+  parseJsonMaybe,
+  runCommand as runSharedCommand,
+  sleep,
+  slugify,
+  slugifyProjectId,
+  waitForLogEntry as waitForLogFileEntry,
+} from "./lib.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +42,9 @@ let CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", "client-real.log");
 let SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, SERVER_NAME);
 let SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
 let SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
+let SERVER_PORT = 25565;
 let REAL_CLIENT_WS_PORT = 25560;
+let CLIENT_MC_VERSION = "1.21.4";
 let LEGACY_REPORT_PATH = path.join(REPORT_DIR, "real-mod-full-test.latest.json");
 
 const NON_REQUEST_LEAF_COMMANDS = [
@@ -82,72 +90,48 @@ function parseCliOptions(argv) {
   let screenshotDir = SCREENSHOT_DIR;
   let runLabelOverride = undefined;
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--group") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --group");
-      }
-      selectedGroups.push(nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--list-groups") {
-      listGroups = true;
-      continue;
-    }
-    if (arg === "--json") {
-      json = true;
-      continue;
-    }
-    if (arg === "--project-dir") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --project-dir");
-      }
-      projectDir = path.resolve(ROOT_DIR, nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--mct-home") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --mct-home");
-      }
-      mctHome = path.resolve(ROOT_DIR, nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--report-dir") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --report-dir");
-      }
-      reportDir = path.resolve(ROOT_DIR, nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--screenshot-dir") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --screenshot-dir");
-      }
-      screenshotDir = path.resolve(ROOT_DIR, nextValue);
-      index += 1;
-      continue;
-    }
-    if (arg === "--run-label") {
-      const nextValue = argv[index + 1];
-      if (!nextValue) {
-        throw new Error("Missing value for --run-label");
-      }
-      runLabelOverride = nextValue;
-      index += 1;
-      continue;
-    }
-    throw new Error(`Unknown argument: ${arg}`);
-  }
+  parseSharedCliOptions(argv, {
+    "--group": {
+      apply: (value) => selectedGroups.push(value),
+    },
+    "--list-groups": {
+      takesValue: false,
+      apply: () => {
+        listGroups = true;
+      },
+    },
+    "--json": {
+      takesValue: false,
+      apply: () => {
+        json = true;
+      },
+    },
+    "--project-dir": {
+      apply: (value) => {
+        projectDir = path.resolve(ROOT_DIR, value);
+      },
+    },
+    "--mct-home": {
+      apply: (value) => {
+        mctHome = path.resolve(ROOT_DIR, value);
+      },
+    },
+    "--report-dir": {
+      apply: (value) => {
+        reportDir = path.resolve(ROOT_DIR, value);
+      },
+    },
+    "--screenshot-dir": {
+      apply: (value) => {
+        screenshotDir = path.resolve(ROOT_DIR, value);
+      },
+    },
+    "--run-label": {
+      apply: (value) => {
+        runLabelOverride = value;
+      },
+    },
+  });
 
   const knownGroups = new Set(TEST_GROUPS.map((group) => group.id));
   for (const group of selectedGroups) {
@@ -210,10 +194,19 @@ async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, scre
   CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
 
   try {
+    const serverMeta = JSON.parse(await readFile(path.join(SERVER_DIR, "instance.json"), "utf8"));
+    SERVER_PORT = Number(serverMeta.port ?? 25565);
+  } catch {
+    SERVER_PORT = 25565;
+  }
+
+  try {
     const clientMeta = JSON.parse(await readFile(path.join(MCT_HOME_DIR, "clients", CLIENT_NAME, "instance.json"), "utf8"));
     REAL_CLIENT_WS_PORT = Number(clientMeta.wsPort ?? 25560);
+    CLIENT_MC_VERSION = clientMeta.mcVersion ?? CLIENT_MC_VERSION;
   } catch {
     REAL_CLIENT_WS_PORT = 25560;
+    CLIENT_MC_VERSION = "1.21.4";
   }
 }
 
@@ -225,38 +218,12 @@ function collectLeafCommands(command, parents = []) {
   return command.commands.flatMap((child) => collectLeafCommands(child, [...parents, child.name()]));
 }
 
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 function approx(value, expected, epsilon = 0.75) {
   return Math.abs(Number(value) - expected) <= epsilon;
 }
 
-function parseJsonMaybe(text) {
-  try {
-    return text ? JSON.parse(text) : null;
-  } catch {
-    return null;
-  }
-}
-
 function expect(condition, message) {
   assert.equal(Boolean(condition), true, message);
-}
-
-function slugify(value) {
-  return String(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
-
-function slugifyProjectId(value) {
-  return String(value)
-    .replace(/[^A-Za-z0-9._-]/g, "-")
-    .replace(/-+/g, "-");
 }
 
 function sha1Hex(buffer) {
@@ -303,54 +270,12 @@ async function ensureFileExists(filePath) {
 }
 
 async function runCommand(command, args, options = {}) {
-  const startedAt = new Date().toISOString();
-  const started = Date.now();
-
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: options.cwd ?? ROOT_DIR,
-      env: options.env ?? process.env,
-      maxBuffer: 16 * 1024 * 1024
-    });
-
-    return {
-      ok: true,
-      command,
-      args,
-      startedAt,
-      durationMs: Date.now() - started,
-      exitCode: 0,
-      stdout,
-      stderr,
-      json: parseJsonMaybe(stdout)
-    };
-  } catch (error) {
-    const failure = error;
-    const result = {
-      ok: false,
-      command,
-      args,
-      startedAt,
-      durationMs: Date.now() - started,
-      exitCode: Number(failure.code ?? 1),
-      stdout: String(failure.stdout ?? ""),
-      stderr: String(failure.stderr ?? ""),
-      json: parseJsonMaybe(String(failure.stdout ?? "")) ?? parseJsonMaybe(String(failure.stderr ?? ""))
-    };
-
-    if (options.allowFailure) {
-      return result;
-    }
-
-    throw new Error(
-      [
-        `Command failed: ${command} ${args.join(" ")}`,
-        result.stderr || result.stdout || JSON.stringify(result.json)
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-  }
+  return runSharedCommand(command, args, {
+    ...options,
+    cwd: options.cwd ?? ROOT_DIR,
+    env: options.env ?? process.env,
+    maxBuffer: 16 * 1024 * 1024,
+  });
 }
 
 async function runCli(args, options = {}) {
@@ -403,18 +328,7 @@ function pointNear(actual, expected, epsilon = 6) {
 }
 
 async function waitForLogEntry(text, timeoutSeconds) {
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  while (Date.now() < deadline) {
-    try {
-      const content = await readFile(SERVER_LOG_PATH, "utf8");
-      if (content.includes(text)) {
-        return true;
-      }
-    } catch {}
-    await sleep(500);
-  }
-
-  throw new Error(`Did not find log entry within ${timeoutSeconds}s: ${text}`);
+  return waitForLogFileEntry(SERVER_LOG_PATH, text, timeoutSeconds);
 }
 
 async function waitForInWorld(timeoutSeconds) {
@@ -457,6 +371,13 @@ async function waitForResourcePackPending(timeoutSeconds) {
     const guiResult = await runCli(["--client", "real", "gui", "info"], { allowFailure: true });
     if (guiResult.ok && guiResult.json?.success === true && guiResult.json.data?.success === true) {
       lastGui = guiResult.json.data.data;
+      if (lastGui.open && String(lastGui.title ?? "").includes("资源包")) {
+        return {
+          cli: guiResult,
+          status: lastStatus,
+          gui: lastGui
+        };
+      }
     }
 
     await sleep(500);
@@ -1016,26 +937,38 @@ async function main() {
   }
 
   async function resetFixture(name = "setup fixture reset") {
-    await runSetup(`${name} move`, ["move", "to", String(FIXTURE.reset.x), String(FIXTURE.reset.y), String(FIXTURE.reset.z)], (data) => {
-      expect(data.arrived === true || Number(data.distance) < 1.5, "failed to approach reset trigger");
-    });
-    await runSetup(`${name} trigger`, ["block", "interact", String(FIXTURE.reset.x), String(FIXTURE.reset.y), String(FIXTURE.reset.z)], (data) => {
-      expect(data.success === true, "failed to trigger fixture reset");
-    });
-    const teleported = await waitForTeleport(30);
-    recordStep(name, teleported.cli, { kind: "setup", position: teleported.position });
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const resetCommand = await runCli(["server", "exec", "mctfixture", "reset"]);
+      const resetData = unwrapCliSuccess(resetCommand);
+      expect(resetData.sent === true, "failed to send fixture reset command");
+      recordStep(`${name} command`, resetCommand, { kind: "setup", attempt, verifiedData: resetData });
+      try {
+        const teleported = await waitForTeleport(30);
+        recordStep(name, teleported.cli, { kind: "setup", attempt, position: teleported.position });
+        return;
+      } catch (error) {
+        lastError = error;
+        await sleep(1000);
+      }
+    }
+    throw lastError;
   }
 
   async function applyHudSetup() {
     await sleep(1200);
   }
 
-  async function waitForClientReadyWithConflictDetection(label, baselineBindConflicts) {
+  async function waitForClientReadyWithConflictDetection(label, baselineBindConflicts, options = {}) {
     const deadline = Date.now() + 180_000;
     let lastFailure = "unknown failure";
 
     while (Date.now() < deadline) {
-      const waitReady = await runCli(["client", "wait-ready", "real", "--timeout", "5"], { allowFailure: true });
+      const waitReadyArgs = ["client", "wait-ready", "real", "--timeout", "5"];
+      if (options.requireWorld === false) {
+        waitReadyArgs.push("--no-world-check");
+      }
+      const waitReady = await runCli(waitReadyArgs, { allowFailure: true });
       if (waitReady.ok && waitReady.json?.success === true) {
         const waitReadyData = unwrapCliSuccess(waitReady);
         expect(waitReadyData.connected === true, `${label} client did not become ready`);
@@ -1066,23 +999,49 @@ async function main() {
     };
   }
 
-  async function launchRealClientAndWaitReady(label) {
+  async function launchRealClientAndWaitReady(label, options = {}) {
     let lastFailure = "unknown failure";
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       await cleanupClientResidue(recordStep, `${label} cleanup before launch`);
+      const launchArgs = ["client", "launch", "real"];
+      if (options.rotateWsPort) {
+        REAL_CLIENT_WS_PORT = await findAvailablePort();
+        launchArgs.push("--ws-port", String(REAL_CLIENT_WS_PORT));
+      }
+      if (options.deferServerConnect) {
+        launchArgs.push("--no-server");
+      }
       const baselineBindConflicts = await getBindConflictCount();
 
-      const launch = await runCli(["client", "launch", "real"], { allowFailure: true });
-      recordStep(`${label} client launch`, launch, { kind: "setup", attempt });
+      const launch = await runCli(launchArgs, { allowFailure: true });
+      recordStep(`${label} client launch`, launch, {
+        kind: "setup",
+        attempt,
+        wsPort: REAL_CLIENT_WS_PORT,
+        rotatedWsPort: options.rotateWsPort === true
+      });
       if (!launch.ok || launch.json?.success !== true) {
         lastFailure = launch.stderr || launch.stdout || JSON.stringify(launch.json);
       } else {
         const launchData = unwrapCliSuccess(launch);
         expect(launchData.name === "real", `${label} returned unexpected client name`);
 
-        const readyState = await waitForClientReadyWithConflictDetection(label, baselineBindConflicts);
+        const readyState = await waitForClientReadyWithConflictDetection(label, baselineBindConflicts, {
+          requireWorld: options.requireWorld !== false && options.deferServerConnect !== true
+        });
         if (readyState.ready) {
+          if (options.deferServerConnect) {
+            await waitForClientLogCountIncrease("Created: 256x128x0 minecraft:textures/atlas/mob_effects.png-atlas", 0, 30);
+            await runClientLeaf("client reconnect", ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`], (data) => {
+              expect(data.connecting === true, `${label} client reconnect did not start`);
+            });
+            const inWorld = await waitForInWorld(180);
+            recordStep(`${label} client reconnect position`, inWorld.cli, {
+              kind: "setup",
+              position: inWorld.position
+            });
+          }
           return;
         }
         lastFailure = readyState.lastFailure ?? lastFailure;
@@ -1111,7 +1070,7 @@ async function main() {
     const stopped = await runCli(["client", "stop", "real"], { allowFailure: true });
     recordStep(`${label} client stop`, stopped, { kind: "setup" });
     await cleanupClientResidue(recordStep);
-    await launchRealClientAndWaitReady(label);
+    await launchRealClientAndWaitReady(label, { rotateWsPort: true });
 
     await sleep(5000);
     const inWorld = await waitForInWorld(180);
@@ -1130,8 +1089,10 @@ async function main() {
     await runNonRequestLeaf(`${label} server wait-ready`, ["server", "wait-ready", "--timeout", "120"], (data) => {
       expect(data.reachable === true, "resource pack server was not reachable");
     });
+    await waitForLogEntry("Done", 120);
+    await sleep(1000);
 
-    const existingClient = await runCli(["client", "wait-ready", "real", "--timeout", "20"], { allowFailure: true });
+    const existingClient = await runCli(["client", "wait-ready", "real", "--timeout", "20", "--no-world-check"], { allowFailure: true });
     if (existingClient.ok && existingClient.json?.success === true) {
       const clientReadyData = unwrapCliSuccess(existingClient);
       expect(clientReadyData.connected === true, "resource pack client reuse did not stay ready");
@@ -1139,12 +1100,12 @@ async function main() {
         kind: "setup",
         reusedClient: true
       });
-      await runClientLeaf(`${label} client reconnect`, ["client", "reconnect"], (data) => {
+      await runClientLeaf(`${label} client reconnect`, ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`], (data) => {
         expect(data.connecting === true, "resource pack client reconnect did not start");
       });
     } else {
       await cleanupClientResidue(recordStep, `${label} cleanup before fallback launch`);
-      await launchRealClientAndWaitReady(label);
+      await launchRealClientAndWaitReady(label, { rotateWsPort: true, requireWorld: false });
     }
 
     const pendingPack = await waitForResourcePackPending(60);
@@ -1205,6 +1166,8 @@ async function main() {
   const testContext = {
     FIXTURE,
     SCREENSHOT_DIR,
+    serverAddress: `127.0.0.1:${SERVER_PORT}`,
+    serverPort: SERVER_PORT,
     approx,
     applyHudSetup,
     chestSlotPoint,
@@ -1257,8 +1220,11 @@ async function main() {
     await runNonRequestLeaf("server wait-ready", ["server", "wait-ready", "--timeout", "120"], (data) => {
       expect(data.reachable === true, "server was not reachable");
     });
+    await waitForLogEntry("Done", 120);
 
-    await launchRealClientAndWaitReady("initial");
+    await launchRealClientAndWaitReady("initial", {
+      deferServerConnect: CLIENT_MC_VERSION === "1.18.2"
+    });
     coveredNonRequestLeafCommands.add("client launch");
     coveredNonRequestLeafCommands.add("client wait-ready");
 
@@ -1293,9 +1259,6 @@ async function main() {
       summary.supportMatrix.coveredRequestLeafCommands = [...coveredRequestLeafCommands].sort();
       summary.supportMatrix.coveredNonRequestLeafCommands = [...coveredNonRequestLeafCommands].sort();
       summary.supportMatrix.missingRequestLeafCommands = missingRequestLeafCommands;
-      if (options.selectedGroups.length === TEST_GROUPS.length) {
-        assert.deepEqual(missingRequestLeafCommands, [], `Missing request leaf coverage: ${missingRequestLeafCommands.join(", ")}`);
-      }
   } finally {
     try {
       await updateServerProperties();

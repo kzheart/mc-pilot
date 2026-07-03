@@ -19,7 +19,9 @@ export class GlobalStateStore extends StateStore {
   }
 
   async readServerState(): Promise<GlobalServerState> {
-    return this.readJson<GlobalServerState>(SERVERS_STATE_FILE, { servers: {} });
+    return this.readJson<GlobalServerState>(SERVERS_STATE_FILE, {
+      servers: {},
+    });
   }
 
   async writeServerState(state: GlobalServerState): Promise<void> {
@@ -27,14 +29,18 @@ export class GlobalStateStore extends StateStore {
   }
 
   async readClientState(): Promise<GlobalClientState> {
-    return this.readJson<GlobalClientState>(CLIENTS_STATE_FILE, { clients: {} });
+    return this.readJson<GlobalClientState>(CLIENTS_STATE_FILE, {
+      clients: {},
+    });
   }
 
   async writeClientState(state: GlobalClientState): Promise<void> {
     await this.writeJson(CLIENTS_STATE_FILE, state);
   }
 
-  async updateClientState<T>(mutate: (state: GlobalClientState) => Promise<T> | T): Promise<T> {
+  async updateClientState<T>(
+    mutate: (state: GlobalClientState) => Promise<T> | T,
+  ): Promise<T> {
     return this.withClientLock(async () => {
       const state = await this.readClientState();
       const result = await mutate(state);
@@ -43,7 +49,9 @@ export class GlobalStateStore extends StateStore {
     });
   }
 
-  async updateServerState<T>(mutate: (state: GlobalServerState) => Promise<T> | T): Promise<T> {
+  async updateServerState<T>(
+    mutate: (state: GlobalServerState) => Promise<T> | T,
+  ): Promise<T> {
     return this.withServerLock(async () => {
       const state = await this.readServerState();
       const result = await mutate(state);

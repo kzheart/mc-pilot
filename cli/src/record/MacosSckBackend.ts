@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { openSync, closeSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +11,7 @@ import type {
   RecordingHandle,
   RecordStartOptions,
   RecordTarget,
-  StopTarget
+  StopTarget,
 } from "./RecorderBackend.js";
 
 const START_TIMEOUT_MS = 30_000;
@@ -57,7 +57,11 @@ export function resolveHelperBinary(): string {
   }
 
   // 2) 仓库内开发构建兜底:cli/ → 仓库根 recorder/macos/.build
-  return path.resolve(packageRoot, "..", `recorder/macos/.build/release/${HELPER_BINARY_NAME}`);
+  return path.resolve(
+    packageRoot,
+    "..",
+    `recorder/macos/.build/release/${HELPER_BINARY_NAME}`,
+  );
 }
 
 async function readHelperEvents(eventLogPath: string): Promise<HelperEvent[]> {
@@ -83,7 +87,7 @@ async function waitForEvent(
   eventLogPath: string,
   eventName: string,
   helperPid: number,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<HelperEvent | null> {
   const deadline = Date.now() + timeoutMs;
 
@@ -92,8 +96,11 @@ async function waitForEvent(
     const error = events.find((event) => event.event === "error");
     if (error) {
       throw new MctError(
-        { code: "RECORDER_ERROR", message: error.message ?? "recorder helper failed" },
-        2
+        {
+          code: "RECORDER_ERROR",
+          message: error.message ?? "recorder helper failed",
+        },
+        2,
       );
     }
 
@@ -124,7 +131,10 @@ export class MacosSckBackend implements RecorderBackend {
 
   async isSupported(): Promise<{ ok: boolean; reason?: string }> {
     if (process.platform !== "darwin") {
-      return { ok: false, reason: `platform ${process.platform} is not supported by ${this.name}` };
+      return {
+        ok: false,
+        reason: `platform ${process.platform} is not supported by ${this.name}`,
+      };
     }
 
     const binary = resolveHelperBinary();
@@ -134,7 +144,7 @@ export class MacosSckBackend implements RecorderBackend {
         reason:
           `recorder helper not found at ${binary}; ` +
           `try reinstalling the package, or for local dev run: cd recorder/macos && swift build -c release ` +
-          `(or set MCT_RECORDER_BIN)`
+          `(or set MCT_RECORDER_BIN)`,
       };
     }
 
@@ -148,44 +158,67 @@ export class MacosSckBackend implements RecorderBackend {
         ok: false,
         reason:
           "screen recording permission not granted; enable it for your terminal in " +
-          "System Settings > Privacy & Security > Screen Recording"
+          "System Settings > Privacy & Security > Screen Recording",
       };
     }
 
     return { ok: true };
   }
 
-  async start(target: RecordTarget, outputDir: string, opts: RecordStartOptions): Promise<RecordingHandle> {
+  async start(
+    target: RecordTarget,
+    outputDir: string,
+    opts: RecordStartOptions,
+  ): Promise<RecordingHandle> {
     const binary = resolveHelperBinary();
     const fps = opts.fps ?? 30;
     const outputPath = path.join(outputDir, "recording.mp4");
     const eventLogPath = path.join(outputDir, HELPER_EVENT_LOG);
 
-    const args = ["--pid", String(target.pid), "--output", outputPath, "--fps", String(fps)];
+    const args = [
+      "--pid",
+      String(target.pid),
+      "--output",
+      outputPath,
+      "--fps",
+      String(fps),
+    ];
     if (opts.windowTitle) {
       args.push("--window-title", opts.windowTitle);
     }
 
     const eventLogFd = openSync(eventLogPath, "a");
-    let child;
+    let child: ChildProcess;
     try {
       child = spawn(binary, args, {
         detached: true,
-        stdio: ["ignore", eventLogFd, eventLogFd]
+        stdio: ["ignore", eventLogFd, eventLogFd],
       });
     } finally {
       closeSync(eventLogFd);
     }
 
     const helperPid = await new Promise<number>((resolve, reject) => {
-      child.once("error", (error) => reject(new MctError(
-        { code: "RECORDER_ERROR", message: `cannot spawn recorder helper: ${error.message}` },
-        2
-      )));
+      child.once("error", (error) =>
+        reject(
+          new MctError(
+            {
+              code: "RECORDER_ERROR",
+              message: `cannot spawn recorder helper: ${error.message}`,
+            },
+            2,
+          ),
+        ),
+      );
       child.once("spawn", () => resolve(child.pid!));
     });
 
-    const started = await waitForEvent(eventLogPath, "started", helperPid, START_TIMEOUT_MS);
+    const started = await waitForEvent(
+      eventLogPath,
+      "started",
+      helperPid,
+      START_TIMEOUT_MS,
+    );
     if (!started || typeof started.timestamp !== "number") {
       try {
         process.kill(helperPid, "SIGKILL");
@@ -196,9 +229,9 @@ export class MacosSckBackend implements RecorderBackend {
         {
           code: "RECORDER_ERROR",
           message: "recorder helper did not report started in time",
-          details: { eventLogPath }
+          details: { eventLogPath },
         },
-        2
+        2,
       );
     }
 
@@ -208,7 +241,7 @@ export class MacosSckBackend implements RecorderBackend {
       helperPid,
       outputPath,
       startedAt: started.timestamp,
-      fps
+      fps,
     };
   }
 
@@ -217,7 +250,7 @@ export class MacosSckBackend implements RecorderBackend {
       kind: "video",
       path: target.outputPath,
       startedAt: target.startedAt,
-      fps: target.fps
+      fps: target.fps,
     };
 
     if (!isPidRunning(target.helperPid)) {
@@ -230,15 +263,24 @@ export class MacosSckBackend implements RecorderBackend {
     }
 
     process.kill(target.helperPid, "SIGTERM");
-    const stopped = await waitForEvent(target.eventLogPath, "stopped", target.helperPid, STOP_TIMEOUT_MS);
+    const stopped = await waitForEvent(
+      target.eventLogPath,
+      "stopped",
+      target.helperPid,
+      STOP_TIMEOUT_MS,
+    );
     if (!stopped) {
       throw new MctError(
         {
           code: "RECORDER_ERROR",
-          message: "recorder helper did not finalize in time; recording file may be incomplete",
-          details: { helperPid: target.helperPid, eventLogPath: target.eventLogPath }
+          message:
+            "recorder helper did not finalize in time; recording file may be incomplete",
+          details: {
+            helperPid: target.helperPid,
+            eventLogPath: target.eventLogPath,
+          },
         },
-        2
+        2,
       );
     }
 

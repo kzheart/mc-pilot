@@ -21,14 +21,9 @@ public abstract class InGameHudStateMixin {
     @Shadow
     private Text subtitle;
 
-    @Shadow
-    private int titleFadeInTicks;
-
-    @Shadow
-    private int titleStayTicks;
-
-    @Shadow
-    private int titleFadeOutTicks;
+    private int mct$titleFadeInTicks;
+    private int mct$titleStayTicks;
+    private int mct$titleFadeOutTicks;
 
     @Inject(method = "setOverlayMessage", at = @At("TAIL"))
     private void mct$recordActionBar(Text message, boolean tinted, CallbackInfo ci) {
@@ -37,6 +32,9 @@ public abstract class InGameHudStateMixin {
 
     @Inject(method = "setTitleTicks", at = @At("TAIL"))
     private void mct$recordTitleTicks(int fadeInTicks, int stayTicks, int fadeOutTicks, CallbackInfo ci) {
+        mct$titleFadeInTicks = fadeInTicks;
+        mct$titleStayTicks = stayTicks;
+        mct$titleFadeOutTicks = fadeOutTicks;
         recordTitleState();
     }
 
@@ -61,6 +59,6 @@ public abstract class InGameHudStateMixin {
     }
 
     private void recordTitleState() {
-        ClientStateTracker.getInstance().recordTitle(title, subtitle, titleFadeInTicks, titleStayTicks, titleFadeOutTicks);
+        ClientStateTracker.getInstance().recordTitle(title, subtitle, mct$titleFadeInTicks, mct$titleStayTicks, mct$titleFadeOutTicks);
     }
 }

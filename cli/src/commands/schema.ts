@@ -9,6 +9,6 @@ export function createSchemaCommand(getProgram: () => Command) {
     .action(
       wrapCommand(async () => {
         return buildSchemaDocument(getProgram());
-      })
+      }),
     );
 }

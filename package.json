@@ -1,12 +1,13 @@
 {
   "name": "mc-pilot",
   "private": true,
-  "version": "0.9.8",
+  "version": "0.12.0",
   "workspaces": [
     "cli"
   ],
   "scripts": {
     "build": "npm --prefix cli run build",
+    "check:protocol": "node scripts/check-protocol-sync.mjs",
     "test:cli": "npm --prefix cli test",
     "test:cli:e2e": "npm --prefix cli run test:e2e",
     "test": "npm run test:cli && npm run test:cli:e2e && npm run test:real:smoke",

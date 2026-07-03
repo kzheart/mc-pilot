@@ -6,14 +6,22 @@ import path from "node:path";
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { createRecorderBackend } from "../record/factory.js";
 import { HELPER_EVENT_LOG } from "../record/MacosSckBackend.js";
-import { RecordingStateStore, TIMELINE_FILE, type ActiveRecording, type TimelineEntry } from "../record/recording-state.js";
+import {
+  RecordingStateStore,
+  TIMELINE_FILE,
+  type ActiveRecording,
+  type TimelineEntry,
+} from "../record/recording-state.js";
 import type { RecordingArtifact } from "../record/RecorderBackend.js";
-import { renderViewerHtml, type ViewerEventEntry } from "../record/viewer-template.js";
+import {
+  renderViewerHtml,
+  type ViewerEventEntry,
+} from "../record/viewer-template.js";
 import { wrapCommand } from "../util/command.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
-import { MctError } from "../util/errors.js";
+import { MctError, invalidParams } from "../util/errors.js";
 import { resolveMctHome, resolveProjectRecordingsDir } from "../util/paths.js";
-import { resolvePreferredClientName } from "./request-helpers.js";
+import { resolveInstanceName } from "./request-helpers.js";
 
 export interface RecordingManifest {
   recordingId: string;
@@ -37,23 +45,18 @@ const EVENTS_FILE = "events.jsonl";
 
 function requireRecordingsDir(context: CommandContext): string {
   if (!context.projectId) {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: "record requires a project context (run inside a project or pass --project)" },
-      4
+    throw invalidParams(
+      "record requires a project context (run inside a project or pass --project)",
     );
   }
   return resolveProjectRecordingsDir(context.projectId);
 }
 
-function requireClientName(context: CommandContext, globalOptions: GlobalOptions): string {
-  const clientName = resolvePreferredClientName(context, globalOptions);
-  if (!clientName) {
-    throw new MctError(
-      { code: "INVALID_PARAMS", message: "Client name is required. Use --client <name> or set an active profile." },
-      4
-    );
-  }
-  return clientName;
+function requireClientName(
+  context: CommandContext,
+  globalOptions: GlobalOptions,
+): string {
+  return resolveInstanceName(context, globalOptions.client, "client");
 }
 
 function isPidRunning(pid: number) {
@@ -66,25 +69,45 @@ function isPidRunning(pid: number) {
 }
 
 function buildRecordingId(clientName: string): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "-").slice(0, 19);
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .replace("T", "-")
+    .slice(0, 19);
   return `${timestamp}-${clientName}`;
 }
 
 async function readManifest(dir: string): Promise<RecordingManifest | null> {
   try {
-    return JSON.parse(await readFile(path.join(dir, MANIFEST_FILE), "utf8")) as RecordingManifest;
+    return JSON.parse(
+      await readFile(path.join(dir, MANIFEST_FILE), "utf8"),
+    ) as RecordingManifest;
   } catch {
     return null;
   }
 }
 
 async function writeManifest(dir: string, manifest: RecordingManifest) {
-  await writeFile(path.join(dir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    path.join(dir, MANIFEST_FILE),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 /** 从客户端全量事件日志按录制时间窗切片到产物目录 */
-async function sliceEvents(clientName: string, dir: string, startedAt: number, stoppedAt: number): Promise<number> {
-  const sourcePath = path.join(resolveMctHome(), "logs", clientName, EVENTS_FILE);
+async function sliceEvents(
+  clientName: string,
+  dir: string,
+  startedAt: number,
+  stoppedAt: number,
+): Promise<number> {
+  const sourcePath = path.join(
+    resolveMctHome(),
+    "logs",
+    clientName,
+    EVENTS_FILE,
+  );
   let raw: string;
   try {
     raw = await readFile(sourcePath, "utf8");
@@ -96,13 +119,21 @@ async function sliceEvents(clientName: string, dir: string, startedAt: number, s
     if (!line) return false;
     try {
       const entry = JSON.parse(line) as { t?: number };
-      return typeof entry.t === "number" && entry.t >= startedAt && entry.t <= stoppedAt;
+      return (
+        typeof entry.t === "number" &&
+        entry.t >= startedAt &&
+        entry.t <= stoppedAt
+      );
     } catch {
       return false;
     }
   });
 
-  await writeFile(path.join(dir, EVENTS_FILE), lines.length ? `${lines.join("\n")}\n` : "", "utf8");
+  await writeFile(
+    path.join(dir, EVENTS_FILE),
+    lines.length ? `${lines.join("\n")}\n` : "",
+    "utf8",
+  );
   return lines.length;
 }
 
@@ -118,7 +149,7 @@ async function countJsonlLines(filePath: string): Promise<number> {
 async function startRecording(
   context: CommandContext,
   globalOptions: GlobalOptions,
-  options: { fps?: number; backend?: string; windowTitle?: string }
+  options: { fps?: number; backend?: string; windowTitle?: string },
 ) {
   const recordingsDir = requireRecordingsDir(context);
   const clientName = requireClientName(context, globalOptions);
@@ -127,8 +158,11 @@ async function startRecording(
   const supported = await backend.isSupported();
   if (!supported.ok) {
     throw new MctError(
-      { code: "RECORDER_UNSUPPORTED", message: supported.reason ?? "recorder backend is not supported" },
-      3
+      {
+        code: "RECORDER_UNSUPPORTED",
+        message: supported.reason ?? "recorder backend is not supported",
+      },
+      3,
     );
   }
 
@@ -144,9 +178,9 @@ async function startRecording(
           {
             code: "ALREADY_RECORDING",
             message: `client ${clientName} is already being recorded (${existing.recordingId})`,
-            details: { recordingId: existing.recordingId, dir: existing.dir }
+            details: { recordingId: existing.recordingId, dir: existing.dir },
           },
-          2
+          2,
         );
       }
       // 残留条目且 helper 已死:自动清理后继续
@@ -160,7 +194,7 @@ async function startRecording(
 
   const handle = await backend.start({ clientName, pid: client.pid }, dir, {
     fps: options.fps,
-    windowTitle: options.windowTitle
+    windowTitle: options.windowTitle,
   });
 
   const manifest: RecordingManifest = {
@@ -172,9 +206,9 @@ async function startRecording(
       kind: "video",
       path: path.relative(dir, handle.outputPath),
       startedAt: handle.startedAt,
-      fps: handle.fps
+      fps: handle.fps,
     },
-    status: "recording"
+    status: "recording",
   };
   await writeManifest(dir, manifest);
 
@@ -188,16 +222,26 @@ async function startRecording(
     eventLogPath: path.join(dir, HELPER_EVENT_LOG),
     startedAt: handle.startedAt,
     fps: handle.fps,
-    projectId: context.projectId
+    projectId: context.projectId,
   };
   await store.updateRecordings((state) => {
     state.active[clientName] = active;
   });
 
-  return { recordingId, clientName, dir, startedAt: handle.startedAt, fps: handle.fps, helperPid: handle.helperPid };
+  return {
+    recordingId,
+    clientName,
+    dir,
+    startedAt: handle.startedAt,
+    fps: handle.fps,
+    helperPid: handle.helperPid,
+  };
 }
 
-async function stopRecording(context: CommandContext, globalOptions: GlobalOptions) {
+async function stopRecording(
+  context: CommandContext,
+  globalOptions: GlobalOptions,
+) {
   const clientName = requireClientName(context, globalOptions);
 
   const store = new RecordingStateStore();
@@ -205,8 +249,11 @@ async function stopRecording(context: CommandContext, globalOptions: GlobalOptio
   const active = state.active[clientName];
   if (!active) {
     throw new MctError(
-      { code: "NOT_RECORDING", message: `no active recording for client ${clientName}` },
-      2
+      {
+        code: "NOT_RECORDING",
+        message: `no active recording for client ${clientName}`,
+      },
+      2,
     );
   }
 
@@ -218,7 +265,7 @@ async function stopRecording(context: CommandContext, globalOptions: GlobalOptio
       outputPath: active.outputPath,
       startedAt: active.startedAt,
       fps: active.fps,
-      eventLogPath: active.eventLogPath
+      eventLogPath: active.eventLogPath,
     });
   } finally {
     // 无论 finalize 是否成功都摘掉活动状态,避免卡死的条目阻塞后续录制
@@ -228,7 +275,12 @@ async function stopRecording(context: CommandContext, globalOptions: GlobalOptio
   }
 
   const stoppedAt = Date.now();
-  const eventCount = await sliceEvents(clientName, active.dir, active.startedAt, stoppedAt);
+  const eventCount = await sliceEvents(
+    clientName,
+    active.dir,
+    active.startedAt,
+    stoppedAt,
+  );
 
   const manifest = (await readManifest(active.dir)) ?? {
     recordingId: active.recordingId,
@@ -239,9 +291,9 @@ async function stopRecording(context: CommandContext, globalOptions: GlobalOptio
       kind: artifact.kind,
       path: path.relative(active.dir, artifact.path),
       startedAt: artifact.startedAt,
-      fps: artifact.fps
+      fps: artifact.fps,
     },
-    status: "recording" as const
+    status: "recording" as const,
   };
   manifest.artifact.frames = artifact.frames;
   manifest.stoppedAt = stoppedAt;
@@ -256,7 +308,9 @@ async function stopRecording(context: CommandContext, globalOptions: GlobalOptio
     durationMs: stoppedAt - active.startedAt,
     frames: artifact.frames ?? null,
     events: eventCount,
-    timelineEntries: await countJsonlLines(path.join(active.dir, TIMELINE_FILE))
+    timelineEntries: await countJsonlLines(
+      path.join(active.dir, TIMELINE_FILE),
+    ),
   };
 }
 
@@ -273,7 +327,9 @@ async function listRecordings(context: CommandContext) {
   }
 
   const state = await new RecordingStateStore().readRecordings();
-  const activeIds = new Set(Object.values(state.active).map((entry) => entry.recordingId));
+  const activeIds = new Set(
+    Object.values(state.active).map((entry) => entry.recordingId),
+  );
 
   const recordings = [];
   for (const name of entries.sort()) {
@@ -283,10 +339,12 @@ async function listRecordings(context: CommandContext) {
     recordings.push({
       recordingId: manifest.recordingId,
       clientName: manifest.clientName,
-      status: activeIds.has(manifest.recordingId) ? "recording" : manifest.status,
+      status: activeIds.has(manifest.recordingId)
+        ? "recording"
+        : manifest.status,
       startedIso: manifest.startedIso,
       stoppedAt: manifest.stoppedAt ?? null,
-      dir
+      dir,
     });
   }
   return { recordings };
@@ -311,24 +369,32 @@ async function readJsonl<T>(filePath: string): Promise<T[]> {
   }
 }
 
-async function viewRecording(context: CommandContext, recordingId: string, options: { open?: boolean }) {
+async function viewRecording(
+  context: CommandContext,
+  recordingId: string,
+  options: { open?: boolean },
+) {
   const recordingsDir = requireRecordingsDir(context);
   const dir = path.join(recordingsDir, recordingId);
 
   const manifest = await readManifest(dir);
   if (!manifest) {
-    const available = (await listRecordings(context)).recordings.map((entry) => entry.recordingId);
+    const available = (await listRecordings(context)).recordings.map(
+      (entry) => entry.recordingId,
+    );
     throw new MctError(
       {
         code: "NOT_FOUND",
         message: `recording ${recordingId} not found`,
-        details: { available }
+        details: { available },
       },
-      2
+      2,
     );
   }
 
-  const timeline = await readJsonl<TimelineEntry>(path.join(dir, TIMELINE_FILE));
+  const timeline = await readJsonl<TimelineEntry>(
+    path.join(dir, TIMELINE_FILE),
+  );
   const events = await readJsonl<ViewerEventEntry>(path.join(dir, EVENTS_FILE));
 
   const html = renderViewerHtml({
@@ -339,7 +405,7 @@ async function viewRecording(context: CommandContext, recordingId: string, optio
     status: manifest.status,
     videoPath: manifest.artifact.path,
     timeline,
-    events
+    events,
   });
 
   const viewerPath = path.join(dir, "viewer.html");
@@ -355,29 +421,42 @@ async function viewRecording(context: CommandContext, recordingId: string, optio
     viewer: viewerPath,
     opened: shouldOpen,
     timelineEntries: timeline.length,
-    events: events.length
+    events: events.length,
   };
 }
 
 export function createRecordCommand() {
-  const record = new Command("record").description("Record the client screen during a test session");
+  const record = new Command("record").description(
+    "Record the client screen during a test session",
+  );
 
   record
     .command("start")
     .description("Start recording the client window")
     .option("--fps <fps>", "Capture frame rate (default 30)", Number)
     .option("--backend <name>", "Recorder backend (default: by platform)")
-    .option("--window-title <hint>", "Window title hint for locating the client window")
+    .option(
+      "--window-title <hint>",
+      "Window title hint for locating the client window",
+    )
     .action(
       wrapCommand(async (context, { options, globalOptions }) =>
-        startRecording(context, globalOptions, options as { fps?: number; backend?: string; windowTitle?: string })
-      )
+        startRecording(
+          context,
+          globalOptions,
+          options as { fps?: number; backend?: string; windowTitle?: string },
+        ),
+      ),
     );
 
   record
     .command("stop")
     .description("Stop recording and finalize artifacts")
-    .action(wrapCommand(async (context, { globalOptions }) => stopRecording(context, globalOptions)));
+    .action(
+      wrapCommand(async (context, { globalOptions }) =>
+        stopRecording(context, globalOptions),
+      ),
+    );
 
   record
     .command("list")
@@ -386,12 +465,14 @@ export function createRecordCommand() {
 
   record
     .command("view <id>")
-    .description("Generate viewer.html for a recording (opens in browser on macOS)")
+    .description(
+      "Generate viewer.html for a recording (opens in browser on macOS)",
+    )
     .option("--no-open", "Do not open the viewer after generating it")
     .action(
       wrapCommand(async (context, { args, options }) =>
-        viewRecording(context, args[0]!, options as { open?: boolean })
-      )
+        viewRecording(context, args[0]!, options as { open?: boolean }),
+      ),
     );
 
   return record;

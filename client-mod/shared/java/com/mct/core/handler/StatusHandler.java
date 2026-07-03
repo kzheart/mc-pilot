@@ -5,6 +5,8 @@ import static com.mct.core.util.ParamHelper.*;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
+import com.mct.core.util.SessionReliability;
+import com.mct.version.ClientVersionModulesHolder;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -66,7 +68,7 @@ public final class StatusHandler extends ActionHandler {
             pollOnClientThread(timeoutSeconds, () -> requirePlayer().isOnGround(), Boolean::booleanValue, "TIMEOUT");
         }
 
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "waitedSeconds", Duration.ofMillis(System.currentTimeMillis() - startedAt + waitMillis).toMillis() / 1000.0D,
             "guiOpen", runOnClientThread(() -> client.currentScreen != null),
             "onGround", runOnClientThread(() -> requirePlayer().isOnGround())
@@ -92,7 +94,7 @@ public final class StatusHandler extends ActionHandler {
     }
 
     private Map<String, Object> effectsStatus() {
-        return Map.of("effects", ClientDataHelper.effectsToList(requirePlayer().getStatusEffects()));
+        return com.mct.core.util.MctMaps.mapOf("effects", ClientDataHelper.effectsToList(requirePlayer().getStatusEffects()));
     }
 
     private Map<String, Object> experienceStatus() {
@@ -133,33 +135,46 @@ public final class StatusHandler extends ActionHandler {
     private Map<String, Object> gamemodeStatus() {
         ClientPlayerInteractionManager interactionManager = requireInteractionManager();
         GameMode gameMode = interactionManager.getCurrentGameMode();
-        return Map.of("gameMode", gameMode != null ? gameMode.getName() : "unknown");
+        return com.mct.core.util.MctMaps.mapOf("gameMode", gameMode != null ? ClientVersionModulesHolder.get().compatibility().gameModeName(gameMode) : "unknown");
     }
 
     private Map<String, Object> worldStatus() {
         ClientPlayerEntity player = requirePlayer();
-        return Map.of(
-            "name", player.clientWorld.getRegistryKey().getValue().toString(),
-            "dimension", player.clientWorld.getRegistryKey().getValue().toString(),
-            "difficulty", player.clientWorld.getDifficulty().getName(),
-            "time", player.clientWorld.getTime(),
-            "weather", player.clientWorld.isThundering() ? "thunder" : player.clientWorld.isRaining() ? "rain" : "clear"
+        net.minecraft.client.world.ClientWorld world = clientWorld(player);
+        return com.mct.core.util.MctMaps.mapOf(
+            "name", world.getRegistryKey().getValue().toString(),
+            "dimension", world.getRegistryKey().getValue().toString(),
+            "difficulty", ClientVersionModulesHolder.get().compatibility().worldDifficultyName(world),
+            "time", ClientVersionModulesHolder.get().compatibility().worldTime(world),
+            "weather", world.isThundering() ? "thunder" : world.isRaining() ? "rain" : "clear"
         );
     }
 
     private Map<String, Object> allStatus() {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("health", healthStatus());
-        result.put("effects", effectsStatus());
-        result.put("experience", experienceStatus());
-        result.put("gamemode", gamemodeStatus());
-        result.put("world", worldStatus());
-        result.put("position", positionMap(requirePlayer()));
+        result.put("screen", ClientDataHelper.screenToMap(client));
+        result.put("screenCategory", SessionReliability.screenCategory(client));
+        result.put("disconnectReason", SessionReliability.disconnectReason(client));
+        try {
+            result.put("health", healthStatus());
+            result.put("effects", effectsStatus());
+            result.put("experience", experienceStatus());
+            result.put("gamemode", gamemodeStatus());
+            result.put("world", worldStatus());
+            result.put("position", positionMap(requirePlayer()));
+            result.put("inWorld", true);
+        } catch (ActionException exception) {
+            if (!"NOT_IN_WORLD".equals(exception.getCode())) {
+                throw exception;
+            }
+            SessionReliability.tryAutoReconnect(client, stateTracker);
+            result.put("inWorld", false);
+        }
         return result;
     }
 
     private Map<String, Object> screenSize() {
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "width", client.getWindow().getScaledWidth(),
             "height", client.getWindow().getScaledHeight(),
             "scaleFactor", client.getWindow().getScaleFactor()

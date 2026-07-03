@@ -45,7 +45,7 @@ public final class SessionHandler extends ActionHandler {
     }
 
     private Map<String, Object> scoreboardStatus() {
-        return ClientVersionModulesHolder.get().scoreboard().scoreboardStatus(requirePlayer().clientWorld.getScoreboard());
+        return ClientVersionModulesHolder.get().scoreboard().scoreboardStatus(clientWorld(requirePlayer()).getScoreboard());
     }
 
     private Map<String, Object> tabStatus() {
@@ -66,7 +66,7 @@ public final class SessionHandler extends ActionHandler {
     }
 
     private Map<String, Object> bossBarStatus() {
-        return Map.of("bossBars", stateTracker.getBossBars());
+        return com.mct.core.util.MctMaps.mapOf("bossBars", stateTracker.getBossBars());
     }
 
     private Map<String, Object> actionBarStatus() {
@@ -80,13 +80,13 @@ public final class SessionHandler extends ActionHandler {
     private Map<String, Object> nameTagStatus(String playerName) {
         ClientPlayNetworkHandler networkHandler = requirePlayer().networkHandler;
         Optional<PlayerListEntry> entry = networkHandler.getPlayerList().stream()
-            .filter(candidate -> candidate.getProfile().getName().equalsIgnoreCase(playerName))
+            .filter(candidate -> ClientVersionModulesHolder.get().compatibility().profileName(candidate).equalsIgnoreCase(playerName))
             .findFirst();
         if (entry.isEmpty()) {
             throw new ActionException("ENTITY_NOT_FOUND");
         }
         Team team = entry.get().getScoreboardTeam();
-        return Map.of(
+        return com.mct.core.util.MctMaps.mapOf(
             "displayName", client.inGameHud.getPlayerListHud().getPlayerName(entry.get()).getString(),
             "prefix", team != null ? team.getPrefix().getString() : "",
             "suffix", team != null ? team.getSuffix().getString() : ""
@@ -114,16 +114,16 @@ public final class SessionHandler extends ActionHandler {
 
     private Map<String, Object> reconnectClient(Map<String, Object> params) {
         String address = getOptionalString(params, "address");
-        if (address == null || address.isBlank()) {
+        if (address == null || address.trim().isEmpty()) {
             address = System.getenv("MCT_CLIENT_SERVER");
         }
-        if (address == null || address.isBlank() || !ServerAddress.isValid(address)) {
+        if (address == null || address.trim().isEmpty() || !ServerAddress.isValid(address)) {
             throw new ActionException("INVALID_PARAMS");
         }
 
         Screen parent = client.currentScreen != null ? client.currentScreen : new TitleScreen();
         ServerAddress serverAddress = ServerAddress.parse(address);
         ClientVersionModulesHolder.get().reconnect().connect(client, parent, serverAddress, address);
-        return Map.of("connecting", true, "address", address);
+        return com.mct.core.util.MctMaps.mapOf("connecting", true, "address", address);
     }
 }

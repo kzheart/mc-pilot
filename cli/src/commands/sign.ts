@@ -3,7 +3,9 @@ import { Command } from "commander";
 import { createRequestAction } from "./request-helpers.js";
 
 export function createSignCommand() {
-  const command = new Command("sign").description("Sign block operations (reads/writes directly, no GUI interaction needed)");
+  const command = new Command("sign").description(
+    "Sign block operations (reads/writes directly, no GUI interaction needed)",
+  );
 
   command
     .command("read")
@@ -15,8 +17,8 @@ export function createSignCommand() {
       createRequestAction("sign.read", ({ args }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
-        z: Number(args[2])
-      }))
+        z: Number(args[2]),
+      })),
     );
 
   command
@@ -25,14 +27,17 @@ export function createSignCommand() {
     .argument("<x>", "X coordinate")
     .argument("<y>", "Y coordinate")
     .argument("<z>", "Z coordinate")
-    .requiredOption("--lines <lines...>", "Four lines of text, e.g. --lines \"Line 1\" \"Line 2\" \"Line 3\" \"Line 4\"")
+    .requiredOption(
+      "--lines <lines...>",
+      'Four lines of text, e.g. --lines "Line 1" "Line 2" "Line 3" "Line 4"',
+    )
     .action(
       createRequestAction("sign.edit", ({ args, options }) => ({
         x: Number(args[0]),
         y: Number(args[1]),
         z: Number(args[2]),
-        lines: options.lines
-      }))
+        lines: options.lines,
+      }), () => 30),
     );
 
   return command;

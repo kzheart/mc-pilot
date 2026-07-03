@@ -12,10 +12,16 @@ import { GlobalStateStore } from "./util/global-state.js";
 import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
 import { ServerInstanceManager } from "./instance/ServerInstanceManager.js";
 import { createDefaultProjectFile } from "./util/project.js";
-import { resolveClientInstanceDir, resolveServerInstanceDir } from "./util/paths.js";
+import {
+  resolveClientInstanceDir,
+  resolveServerInstanceDir,
+} from "./util/paths.js";
 
 const execFileAsync = promisify(execFile);
-const CLI_ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), "index.js");
+const CLI_ENTRY = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "index.js",
+);
 
 async function getFreePort() {
   const net = await import("node:net");
@@ -41,25 +47,30 @@ async function getFreePort() {
 }
 
 function spawnDetachedNode(script: string, args: string[]) {
-  const child = spawn(process.execPath, ["--input-type=module", "-e", script, ...args], {
-    detached: true,
-    stdio: "ignore"
-  });
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "-e", script, ...args],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  );
   child.unref();
   return child;
 }
 
 async function runCli(cwd: string, mctHome: string, args: string[]) {
-  const { stdout } = await execFileAsync(process.execPath, [
-    CLI_ENTRY,
-    ...args
-  ], {
-    cwd,
-    env: {
-      ...process.env,
-      MCT_HOME: mctHome
-    }
-  });
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [CLI_ENTRY, ...args],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        MCT_HOME: mctHome,
+      },
+    },
+  );
 
   return JSON.parse(stdout) as { success: boolean; data: any };
 }
@@ -79,7 +90,7 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
       server.listen(port, "127.0.0.1");
       setInterval(() => {}, 1000);
     `,
-    [String(serverPort)]
+    [String(serverPort)],
   );
   const wsProbe = spawnDetachedNode(
     `
@@ -109,7 +120,7 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
       });
       setInterval(() => {}, 1000);
     `,
-    [String(wsPort)]
+    [String(wsPort)],
   );
   assert.ok(serverProbe.pid);
   assert.ok(wsProbe.pid);
@@ -118,7 +129,11 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
     await mkdir(projectDir, { recursive: true });
     process.env.MCT_HOME = mctHome;
 
-    const initResult = await runCli(projectDir, mctHome, ["init", "--name", "test-project"]);
+    const initResult = await runCli(projectDir, mctHome, [
+      "init",
+      "--name",
+      "test-project",
+    ]);
     assert.equal(initResult.success, true);
     const projectId = String(initResult.data.projectId);
 
@@ -131,28 +146,40 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
       project: projectId,
       type: "paper",
       version: "1.20.4",
-      port: serverPort
+      port: serverPort,
     });
     await clientManager.create({
       name: "fabric-dev",
       version: "1.20.4",
       wsPort,
-      launchArgs: ["--runtime-root", "/tmp/runtime", "--version-id", "1.20.4", "--game-dir", "/tmp/game"]
+      launchArgs: [
+        "--runtime-root",
+        "/tmp/runtime",
+        "--version-id",
+        "1.20.4",
+        "--game-dir",
+        "/tmp/game",
+      ],
     });
 
-    const projectFilePath = path.join(mctHome, "projects", projectId, "project.json");
+    const projectFilePath = path.join(
+      mctHome,
+      "projects",
+      projectId,
+      "project.json",
+    );
     const projectFile = createDefaultProjectFile(projectDir, "test-project");
     projectFile.defaultProfile = "dev";
     projectFile.profiles = {
       dev: {
         server: "paper-dev",
-        clients: ["fabric-dev"]
-      }
+        clients: ["fabric-dev"],
+      },
     };
     projectFile.timeout = {
       serverReady: 5,
       clientReady: 5,
-      default: 2
+      default: 2,
     };
     await writeFile(projectFilePath, JSON.stringify(projectFile, null, 2));
 
@@ -165,9 +192,9 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
           port: serverPort,
           startedAt: new Date().toISOString(),
           logPath: path.join(mctHome, "logs", "server.log"),
-          instanceDir: resolveServerInstanceDir(projectId, "paper-dev")
-        }
-      }
+          instanceDir: resolveServerInstanceDir(projectId, "paper-dev"),
+        },
+      },
     });
     await globalState.writeClientState({
       defaultClient: "fabric-dev",
@@ -178,9 +205,9 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
           wsPort,
           startedAt: new Date().toISOString(),
           logPath: path.join(mctHome, "logs", "client.log"),
-          instanceDir: resolveClientInstanceDir("fabric-dev")
-        }
-      }
+          instanceDir: resolveClientInstanceDir("fabric-dev"),
+        },
+      },
     });
 
     const infoResult = await runCli(projectDir, mctHome, ["info"]);
@@ -189,14 +216,24 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
     assert.equal(infoResult.data.project, "test-project");
     assert.equal(infoResult.data.activeProfile.server, "paper-dev");
 
-    const serverReadyResult = await runCli(projectDir, mctHome, ["server", "wait-ready"]);
+    const serverReadyResult = await runCli(projectDir, mctHome, [
+      "server",
+      "wait-ready",
+    ]);
     assert.equal(serverReadyResult.success, true);
 
-    const clientReadyResult = await runCli(projectDir, mctHome, ["client", "wait-ready"]);
+    const clientReadyResult = await runCli(projectDir, mctHome, [
+      "client",
+      "wait-ready",
+    ]);
     assert.equal(clientReadyResult.success, true);
     assert.equal(clientReadyResult.data.inWorld, true);
 
-    const chatResult = await runCli(projectDir, mctHome, ["chat", "send", "hello system e2e"]);
+    const chatResult = await runCli(projectDir, mctHome, [
+      "chat",
+      "send",
+      "hello system e2e",
+    ]);
     assert.equal(chatResult.success, true);
     assert.equal(chatResult.data.data.echoedAction, "chat.send");
     assert.equal(chatResult.data.data.params.message, "hello system e2e");
@@ -210,7 +247,9 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
     assert.deepEqual(serverState.servers, {});
     assert.deepEqual(clientState.clients, {});
 
-    const persistedProject = JSON.parse(await readFile(projectFilePath, "utf8"));
+    const persistedProject = JSON.parse(
+      await readFile(projectFilePath, "utf8"),
+    );
     assert.equal(persistedProject.defaultProfile, "dev");
   } finally {
     if (originalMctHome === undefined) {
@@ -219,8 +258,16 @@ test("system e2e: CLI orchestrates the current global instance workflow", async 
       process.env.MCT_HOME = originalMctHome;
     }
 
-    try { process.kill(serverProbe.pid ?? 0, "SIGTERM"); } catch { /* ignore */ }
-    try { process.kill(wsProbe.pid ?? 0, "SIGTERM"); } catch { /* ignore */ }
+    try {
+      process.kill(serverProbe.pid ?? 0, "SIGTERM");
+    } catch {
+      /* ignore */
+    }
+    try {
+      process.kill(wsProbe.pid ?? 0, "SIGTERM");
+    } catch {
+      /* ignore */
+    }
     await rm(tempDir, { recursive: true, force: true });
   }
 });

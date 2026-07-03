@@ -14,6 +14,9 @@ public final class ActionDispatcher {
     private final GuiInventoryHandler guiInventory;
     private final SessionHandler session;
     private final WorldHandler world;
+    private final SignBookHandler signBook;
+    private final EntityCombatHandler entityCombat;
+    private final ContainerCraftHandler containerCraft;
 
     public ActionDispatcher(MinecraftClient client) {
         ClientStateTracker stateTracker = ClientStateTracker.getInstance();
@@ -23,7 +26,10 @@ public final class ActionDispatcher {
         this.movement = new MovementHandler(client, stateTracker, input);
         this.guiInventory = new GuiInventoryHandler(client, stateTracker);
         this.session = new SessionHandler(client, stateTracker);
-        this.world = new WorldHandler(client, stateTracker, movement, input);
+        this.world = new WorldHandler(client, stateTracker);
+        this.signBook = new SignBookHandler(client, stateTracker);
+        this.entityCombat = new EntityCombatHandler(client, stateTracker, movement, input);
+        this.containerCraft = new ContainerCraftHandler(client, stateTracker);
     }
 
     public Map<String, Object> execute(String action, Map<String, Object> params) {
@@ -45,8 +51,17 @@ public final class ActionDispatcher {
         if (action.startsWith("hud.") || action.startsWith("client.") || action.startsWith("resourcepack.")) {
             return session.handle(action, params);
         }
-        if (action.startsWith("combat.") || action.startsWith("sign.") || action.startsWith("book.") || action.startsWith("block.") || action.startsWith("entity.") || action.startsWith("craft.")) {
+        if (action.startsWith("block.")) {
             return world.handle(action, params);
+        }
+        if (action.startsWith("sign.") || action.startsWith("book.")) {
+            return signBook.handle(action, params);
+        }
+        if (action.startsWith("entity.") || action.startsWith("combat.")) {
+            return entityCombat.handle(action, params);
+        }
+        if (action.startsWith("craft.")) {
+            return containerCraft.handle(action, params);
         }
         throw new ActionException("INVALID_ACTION");
     }

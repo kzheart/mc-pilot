@@ -25,6 +25,8 @@ import net.minecraft.component.type.WrittenBookContentComponent;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
+import net.minecraft.network.packet.c2s.play.UpdateSignC2SPacket;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.scoreboard.ScoreboardDisplaySlot;
 import net.minecraft.scoreboard.ScoreboardEntry;
 import net.minecraft.scoreboard.ScoreboardObjective;
@@ -57,7 +59,8 @@ public final class VersionAdaptersImpl {
             createNetworkAdapter(),
             createImageAdapter(),
             createScreenshotAdapter(),
-            createInteractionAdapter()
+            createInteractionAdapter(),
+            createCompatibility()
         );
     }
 
@@ -183,6 +186,11 @@ public final class VersionAdaptersImpl {
                 signAccessor.mct$setCurrentRow(row);
                 signAccessor.mct$setCurrentRowMessage(message);
             }
+
+            @Override
+            public void sendSignUpdate(ClientPlayerEntity player, BlockPos pos, String[] lines) {
+                player.networkHandler.sendPacket(new UpdateSignC2SPacket(pos, true, lines[0], lines[1], lines[2], lines[3]));
+            }
         };
     }
 
@@ -285,6 +293,55 @@ public final class VersionAdaptersImpl {
             @Override
             public void sendChatMessage(ClientPlayerEntity player, String message) {
                 player.networkHandler.sendChatMessage(message);
+            }
+        };
+    }
+
+    private static VersionCompatibility createCompatibility() {
+        return new VersionCompatibility() {
+            @Override
+            public net.minecraft.client.world.ClientWorld getClientWorld(ClientPlayerEntity player) {
+                return player.clientWorld;
+            }
+
+            @Override
+            public net.minecraft.util.math.Vec3d getPlayerPos(ClientPlayerEntity player) {
+                return player.getPos();
+            }
+
+            @Override
+            public int getSelectedSlot(net.minecraft.entity.player.PlayerInventory inventory) {
+                return inventory.selectedSlot;
+            }
+
+            @Override
+            public void setSelectedSlot(net.minecraft.entity.player.PlayerInventory inventory, int slot) {
+                inventory.selectedSlot = slot;
+            }
+
+            @Override
+            public net.minecraft.util.math.Direction directionByName(String name) {
+                return net.minecraft.util.math.Direction.byName(name);
+            }
+
+            @Override
+            public String gameModeName(net.minecraft.world.GameMode gameMode) {
+                return gameMode.getName();
+            }
+
+            @Override
+            public String profileName(net.minecraft.client.network.PlayerListEntry entry) {
+                return entry.getProfile().getName();
+            }
+
+            @Override
+            public String worldDifficultyName(net.minecraft.client.world.ClientWorld world) {
+                return world.getDifficulty().getName();
+            }
+
+            @Override
+            public long worldTime(net.minecraft.client.world.ClientWorld world) {
+                return world.getTime();
             }
         };
     }

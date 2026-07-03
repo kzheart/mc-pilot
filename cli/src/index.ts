@@ -8,7 +8,13 @@ import { createBookCommand } from "./commands/book.js";
 import { createClientCommand } from "./commands/client.js";
 import { createChatCommand } from "./commands/chat.js";
 import { createCombatCommand } from "./commands/combat.js";
-import { createAnvilCommand, createCraftCommand, createEnchantCommand, createRecipeCommand, createTradeCommand } from "./commands/craft.js";
+import {
+  createAnvilCommand,
+  createCraftCommand,
+  createEnchantCommand,
+  createRecipeCommand,
+  createTradeCommand,
+} from "./commands/craft.js";
 import { createEntityCommand } from "./commands/entity.js";
 import { createEventsCommand } from "./commands/events.js";
 import { createGuiCommand } from "./commands/gui.js";
@@ -31,7 +37,13 @@ import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
 import { createWaitLogCommand } from "./commands/wait-log.js";
 import { createPluginCommand } from "./commands/plugin.js";
-import { createInitCommand, createDeployCommand, createUpCommand, createDownCommand, createUseCommand } from "./commands/project.js";
+import {
+  createInitCommand,
+  createDeployCommand,
+  createUpCommand,
+  createDownCommand,
+  createUseCommand,
+} from "./commands/project.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
 export function buildProgram() {
@@ -40,7 +52,7 @@ export function buildProgram() {
   program
     .name("mct")
     .description(
-        "MC Pilot – Minecraft plugin/mod automated testing CLI\n\n" +
+      "MC Pilot – Minecraft plugin/mod automated testing CLI\n\n" +
         "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
         "All commands output JSON by default. Use --human for human-readable output.\n\n" +
         "Quick start:\n" +
@@ -48,15 +60,24 @@ export function buildProgram() {
         "  mct server create paper-1.20.4 --type paper --version 1.20.4\n" +
         "  mct client create fabric-1.20.4 --version 1.20.4\n" +
         "  mct up --profile 1.20\n" +
-        "  mct chat command \"gamemode creative\"\n" +
+        '  mct chat command "gamemode creative"\n' +
         "  mct move to 100 64 100\n" +
         "  mct screenshot --output ./test.png\n" +
-        "  mct down"
+        "  mct down",
     )
     .version(
-      JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version,
+      JSON.parse(
+        readFileSync(
+          path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            "..",
+            "package.json",
+          ),
+          "utf8",
+        ),
+      ).version,
       "--cli-version",
-      "Show CLI version"
+      "Show CLI version",
     );
 
   attachGlobalOptions(program);
@@ -73,9 +94,9 @@ export function buildProgram() {
           projectRootDir: context.projectRootDir,
           projectConfigPath: context.projectConfigPath,
           activeProfile: context.activeProfile,
-          globalStateDir: context.globalState.getRootDir()
+          globalStateDir: context.globalState.getRootDir(),
         };
-      })
+      }),
     );
 
   // Project lifecycle commands
@@ -126,6 +147,9 @@ export function buildProgram() {
 
 const program = buildProgram();
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   program.parseAsync(process.argv);
 }

@@ -90,7 +90,7 @@ export const statusInputMoveGroup = {
       ["input", "scroll", String(Math.round(screenSize.width / 2)), String(Math.round(screenSize.height / 2)), "--delta", "1"],
       async (data) => {
         expect(data.scrolled === true, "input scroll did not report success");
-        const held = unwrapRequestSuccess(await runCli(["--client", "real", "inventory", "held"]));
+        const held = unwrapRequestSuccess(await runCli(["--client", "real", "inventory", "held", "--not-type", "minecraft:dirt", "--wait", "5"]));
         expect(held.item?.type !== "minecraft:dirt", "input scroll did not change the selected hotbar slot");
       }
     );

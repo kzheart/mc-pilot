@@ -33,7 +33,10 @@ export function resolveProjectRecordingsDir(project: string): string {
   return path.join(resolveProjectDir(project), "recordings");
 }
 
-export function resolveServerInstanceDir(project: string, server: string): string {
+export function resolveServerInstanceDir(
+  project: string,
+  server: string,
+): string {
   return path.join(resolveProjectDir(project), server);
 }
 

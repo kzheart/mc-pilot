@@ -6,14 +6,25 @@ import {
   getSupportedMinecraftVersions,
   getVersionMatrix,
   searchClientVersions,
-  searchServerVersions
+  searchServerVersions,
 } from "./VersionMatrix.js";
 
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
   assert.equal(matrix.length, 10);
-  assert.deepEqual(getSupportedMinecraftVersions(), ["1.21.11", "1.21.4", "1.21.1", "1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.18.2", "1.16.5", "1.12.2"]);
+  assert.deepEqual(getSupportedMinecraftVersions(), [
+    "1.21.11",
+    "1.21.4",
+    "1.21.1",
+    "1.20.4",
+    "1.20.3",
+    "1.20.2",
+    "1.20.1",
+    "1.18.2",
+    "1.16.5",
+    "1.12.2",
+  ]);
 
   const latest = getMinecraftSupport("1.21.11");
   assert.ok(latest);
@@ -34,8 +45,8 @@ test("searchServerVersions can filter by type and version", () => {
       minecraftVersion: "1.20.4",
       supported: true,
       latestBuild: 496,
-      requiresBuildTools: undefined
-    }
+      requiresBuildTools: undefined,
+    },
   ]);
 });
 
@@ -70,7 +81,9 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
 
 test("searchClientVersions exposes newly supported 1.20.x fabric variants", () => {
   const results = searchClientVersions({ loader: "fabric" }).filter(
-    (entry) => entry.minecraftVersion === "1.20.3" || entry.minecraftVersion === "1.20.2"
+    (entry) =>
+      entry.minecraftVersion === "1.20.3" ||
+      entry.minecraftVersion === "1.20.2",
   );
 
   assert.deepEqual(results, [
@@ -81,7 +94,7 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       loaderVersion: "0.16.14",
       modVersion: "0.9.1",
       validation: "verified",
-      javaVersion: "17+"
+      javaVersion: "17+",
     },
     {
       loader: "fabric",
@@ -90,14 +103,17 @@ test("searchClientVersions exposes newly supported 1.20.x fabric variants", () =
       loaderVersion: "0.16.14",
       modVersion: "0.9.1",
       validation: "verified",
-      javaVersion: "17+"
-    }
+      javaVersion: "17+",
+    },
   ]);
 });
 
 test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
   const results = searchClientVersions({ loader: "forge" }).filter(
-    (entry) => entry.minecraftVersion === "1.20.4" || entry.minecraftVersion === "1.20.2" || entry.minecraftVersion === "1.20.1"
+    (entry) =>
+      entry.minecraftVersion === "1.20.4" ||
+      entry.minecraftVersion === "1.20.2" ||
+      entry.minecraftVersion === "1.20.1",
   );
 
   assert.deepEqual(results, [
@@ -108,7 +124,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       loaderVersion: "49.0.49",
       modVersion: "0.9.1",
       validation: "limited",
-      javaVersion: "17+"
+      javaVersion: "17+",
     },
     {
       loader: "forge",
@@ -117,7 +133,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       loaderVersion: "48.1.0",
       modVersion: "0.9.1",
       validation: "limited",
-      javaVersion: "17+"
+      javaVersion: "17+",
     },
     {
       loader: "forge",
@@ -126,7 +142,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       loaderVersion: "47.3.0",
       modVersion: "0.9.1",
       validation: "limited",
-      javaVersion: "17+"
-    }
+      javaVersion: "17+",
+    },
   ]);
 });

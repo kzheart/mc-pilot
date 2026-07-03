@@ -46,7 +46,7 @@ public final class ClientDataHelper {
         if (stack.isDamageable()) {
             result.put(
                 "durability",
-                Map.of(
+                com.mct.core.util.MctMaps.mapOf(
                     "current", Math.max(0, stack.getMaxDamage() - stack.getDamage()),
                     "max", stack.getMaxDamage(),
                     "damage", stack.getDamage()
@@ -109,7 +109,7 @@ public final class ClientDataHelper {
         result.put("name", entity.getName().getString());
         result.put(
             "pos",
-            Map.of(
+            com.mct.core.util.MctMaps.mapOf(
                 "x", entity.getX(),
                 "y", entity.getY(),
                 "z", entity.getZ()
@@ -131,7 +131,7 @@ public final class ClientDataHelper {
         ArrayList<Map<String, Object>> values = new ArrayList<>();
         for (StatusEffectInstance effect : effects) {
             values.add(
-                Map.of(
+                com.mct.core.util.MctMaps.mapOf(
                     "id", ClientVersionModulesHolder.get().itemData().statusEffectId(effect),
                     "amplifier", effect.getAmplifier(),
                     "duration", effect.getDuration(),
@@ -156,6 +156,8 @@ public final class ClientDataHelper {
             result.put("type", screen.getClass().getSimpleName());
             Text title = screen.getTitle();
             result.put("title", title != null ? title.getString() : "");
+            result.put("category", SessionReliability.screenCategory(client));
+            result.put("disconnectReason", SessionReliability.disconnectReason(client));
             result.put("width", screen.width);
             result.put("height", screen.height);
 
@@ -178,7 +180,7 @@ public final class ClientDataHelper {
                 result.put("playerInventoryTitleScreenY", accessor.mct$getY() + accessor.mct$getPlayerInventoryTitleY());
                 result.put(
                     "bounds",
-                    Map.of(
+                    com.mct.core.util.MctMaps.mapOf(
                         "x", accessor.mct$getX(),
                         "y", accessor.mct$getY(),
                         "width", accessor.mct$getBackgroundWidth(),
@@ -205,10 +207,11 @@ public final class ClientDataHelper {
 
     public static Map<String, Object> playerListEntryToMap(PlayerListEntry entry, Text displayName, Team team) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        result.put("name", entry.getProfile().getName());
-        result.put("displayName", displayName != null ? displayName.getString() : entry.getProfile().getName());
+        String profileName = ClientVersionModulesHolder.get().compatibility().profileName(entry);
+        result.put("name", profileName);
+        result.put("displayName", displayName != null ? displayName.getString() : profileName);
         result.put("latency", entry.getLatency());
-        result.put("gameMode", entry.getGameMode().getName());
+        result.put("gameMode", ClientVersionModulesHolder.get().compatibility().gameModeName(entry.getGameMode()));
         if (team != null) {
             result.put("team", team.getName());
             result.put("prefix", team.getPrefix().getString());
