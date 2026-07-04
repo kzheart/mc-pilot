@@ -4,7 +4,7 @@ import { buildServerSearchResults } from "../download/SearchCommand.js";
 import { downloadServerJarToCache } from "../download/server/ServerDownloader.js";
 import type { ServerType } from "../download/VersionMatrix.js";
 import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
-import { noProject } from "../util/errors.js";
+import { invalidParams, noProject } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import type { ServerType as InstanceServerType } from "../util/instance-types.js";
 import { resolveInstanceName } from "./request-helpers.js";
@@ -157,6 +157,34 @@ export function createServerCommand() {
         const manager = new ServerInstanceManager(context.globalState, project);
         return manager.stop(serverName);
       }),
+    );
+
+  command
+    .command("config")
+    .description("Update server instance settings (server must be stopped)")
+    .argument("[name]", "Server instance name (default: from active profile)")
+    .option("--port <number>", "New server port", Number)
+    .action(
+      wrapCommand(
+        async (
+          context,
+          {
+            args,
+            options,
+          }: { args: (string | undefined)[]; options: { port?: number } },
+        ) => {
+          const project = requireProject(context);
+          const serverName = resolveServerName(context, args[0]);
+          if (options.port === undefined) {
+            throw invalidParams("Nothing to update. Specify --port <number>.");
+          }
+          const manager = new ServerInstanceManager(
+            context.globalState,
+            project,
+          );
+          return manager.configure(serverName, { port: options.port });
+        },
+      ),
     );
 
   command

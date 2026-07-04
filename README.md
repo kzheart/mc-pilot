@@ -108,7 +108,7 @@ All commands output JSON by default. Use `--human` for human-readable output.
 |---|---|
 | `mct init` / `mct up` / `mct down` / `mct use` | Project lifecycle and active profile management |
 | `mct info` | Show current project, active profile and global state root |
-| `mct server` | Server management (search/create/start/stop/status/logs) |
+| `mct server` | Server management (search/create/start/stop/config/status/logs) |
 | `mct client` | Client management (search/create/launch/stop/list/wait-ready) |
 | `mct plugin` | Plugin catalog management and project installation |
 | `mct chat` | Chat (send/command/wait/history) |

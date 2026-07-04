@@ -24,7 +24,12 @@ import {
 } from "../util/paths.js";
 import { MctError } from "../util/errors.js";
 import { isTcpPortReachable } from "../util/net.js";
-import { isProcessRunning, killProcessTree } from "../util/process.js";
+import {
+  getListeningPids,
+  isInProcessTree,
+  isProcessRunning,
+  killProcessTree,
+} from "../util/process.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
 import { ServerCommandPipe } from "./ServerCommandPipe.js";
 import {
@@ -35,6 +40,8 @@ import {
 
 const INSTANCE_FILE = "instance.json";
 const SERVER_READY_POLL_MS = 500;
+// Grace period for a just-stopped server to release its port before start() fails.
+const START_PORT_GRACE_MS = 3000;
 
 export { stripAnsiCodes };
 
@@ -98,10 +105,28 @@ export class ServerInstanceManager {
     private readonly project: string,
   ) {}
 
-  async create(options: CreateServerOptions): Promise<ServerInstanceMeta> {
+  async create(
+    options: CreateServerOptions,
+  ): Promise<ServerInstanceMeta & { warnings?: string[] }> {
     const instanceDir = resolveServerInstanceDir(options.project, options.name);
     await mkdir(instanceDir, { recursive: true });
 
+    const warnings: string[] = [];
+    if (
+      options.port !== undefined &&
+      (await isTcpPortReachable("127.0.0.1", options.port))
+    ) {
+      // Not fatal: the squatter may be gone by the time the server starts,
+      // and tests legitimately pre-bind mock listeners. start() enforces it.
+      const listeningPids = getListeningPids(options.port);
+      warnings.push(
+        `Port ${options.port} is currently in use` +
+          (listeningPids.length > 0
+            ? ` by PID ${listeningPids.join(", ")}`
+            : "") +
+          "; starting this server will fail unless it is released.",
+      );
+    }
     const port = options.port ?? (await this.findAvailablePort());
     const jarPath = options.cachedJarPath;
 
@@ -138,7 +163,7 @@ export class ServerInstanceManager {
       `${JSON.stringify(meta, null, 2)}\n`,
       "utf8",
     );
-    return meta;
+    return warnings.length > 0 ? { ...meta, warnings } : meta;
   }
 
   async start(
@@ -161,6 +186,8 @@ export class ServerInstanceManager {
     }
 
     const meta = await this.loadMeta(serverName);
+    await this.waitPortReleased(meta.port, START_PORT_GRACE_MS);
+    await this.assertPortFree(meta.port);
     const instanceDir = resolveServerInstanceDir(this.project, serverName);
     const jarFile = await this.findJarFile(instanceDir);
 
@@ -377,6 +404,37 @@ export class ServerInstanceManager {
       }
 
       if (await isTcpPortReachable("127.0.0.1", entry.port)) {
+        // The port being reachable is not enough: an unrelated process may be
+        // squatting on it while our server crashes with a bind failure. Verify
+        // the listening socket belongs to the process tree we spawned.
+        const listeningPids = getListeningPids(entry.port);
+        const ownedByUs =
+          listeningPids.length === 0 || // lsof unavailable: keep legacy behavior
+          listeningPids.some((pid) => isInProcessTree(pid, entry.pid));
+
+        if (!ownedByUs) {
+          snapshot = await this.logs.describeStartup(entry.logPath);
+          throw new MctError(
+            {
+              code: "PORT_CONFLICT",
+              message:
+                `Port ${entry.port} is reachable but owned by unrelated process(es) ` +
+                `${listeningPids.join(", ")}, not server ${stateKey} (PID ${entry.pid}). ` +
+                `Stop the conflicting process or change the port with 'mct server config'.`,
+              details: {
+                pid: entry.pid,
+                port: entry.port,
+                listeningPids,
+                phase: snapshot.phase,
+                logPath: snapshot.logPath,
+                lastLine: snapshot.lastLine,
+                recentLines: snapshot.recentLines,
+              },
+            },
+            5,
+          );
+        }
+
         snapshot = await this.logs.describeStartup(entry.logPath);
         return {
           reachable: true,
@@ -386,6 +444,7 @@ export class ServerInstanceManager {
           signals: {
             processAlive: true,
             portReachable: true,
+            portOwnedByServer: true,
             readyLineSeen: snapshot.phase === "ready",
           },
           logPath: snapshot.logPath,
@@ -634,12 +693,92 @@ export class ServerInstanceManager {
   private async findAvailablePort(): Promise<number> {
     const state = await this.globalState.readServerState();
     const usedPorts = new Set(Object.values(state.servers).map((s) => s.port));
+    const instances = await ServerInstanceManager.listAll(this.globalState);
+    for (const instance of instances) {
+      usedPorts.add(instance.port);
+    }
 
     let port = 25565;
-    while (usedPorts.has(port)) {
+    // Also probe the real socket: the registry only knows mct-managed servers,
+    // while the port may be held by any unrelated process.
+    while (
+      usedPorts.has(port) ||
+      (await isTcpPortReachable("127.0.0.1", port))
+    ) {
       port += 1;
     }
 
     return port;
+  }
+
+  /** Poll until the port is free or the grace period expires. */
+  private async waitPortReleased(port: number, graceMs: number): Promise<void> {
+    const deadline = Date.now() + graceMs;
+    while (Date.now() < deadline) {
+      if (!(await isTcpPortReachable("127.0.0.1", port))) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
+  /** Fail fast when the port is already held by another process. */
+  private async assertPortFree(port: number): Promise<void> {
+    if (!(await isTcpPortReachable("127.0.0.1", port))) {
+      return;
+    }
+    const listeningPids = getListeningPids(port);
+    throw new MctError(
+      {
+        code: "PORT_IN_USE",
+        message:
+          `Port ${port} is already in use` +
+          (listeningPids.length > 0
+            ? ` by PID ${listeningPids.join(", ")}`
+            : "") +
+          ". Stop the conflicting process or pick another port ('mct server config <name> --port <port>').",
+        details: { port, listeningPids },
+      },
+      5,
+    );
+  }
+
+  /**
+   * Update instance settings (currently the port). The server must be stopped;
+   * instance.json is the source of truth and server.properties is synced on start.
+   */
+  async configure(
+    serverName: string,
+    updates: { port?: number },
+  ): Promise<ServerInstanceMeta> {
+    const stateKey = `${this.project}/${serverName}`;
+    const state = await this.globalState.readServerState();
+    const existing = state.servers[stateKey];
+    if (existing && isProcessRunning(existing.pid)) {
+      throw new MctError(
+        {
+          code: "SERVER_ALREADY_RUNNING",
+          message: `Server ${stateKey} is running. Stop it before changing its configuration.`,
+          details: existing,
+        },
+        5,
+      );
+    }
+
+    const meta = await this.loadMeta(serverName);
+    const instanceDir = resolveServerInstanceDir(this.project, serverName);
+
+    if (updates.port !== undefined) {
+      await this.assertPortFree(updates.port);
+      meta.port = updates.port;
+      await ensureServerPortProperty(instanceDir, updates.port);
+    }
+
+    await writeFile(
+      path.join(instanceDir, INSTANCE_FILE),
+      `${JSON.stringify(meta, null, 2)}\n`,
+      "utf8",
+    );
+    return meta;
   }
 }

@@ -910,3 +910,180 @@ test("GlobalStateStore.updateClientState serializes concurrent client state muta
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("ServerInstanceManager.waitReady rejects a port owned by an unrelated process", async () => {
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-port-conflict-"),
+  );
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  // The listener is owned by the test process; the registered server pid is an
+  // unrelated (but alive) child process, so the port must be treated as foreign.
+  const listener = net.createServer();
+  const foreignServer = spawn("sleep", ["30"], { stdio: "ignore" });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = listener.address();
+    assert.ok(address && typeof address !== "string");
+    assert.ok(foreignServer.pid);
+
+    const logPath = path.join(
+      process.env.MCT_HOME!,
+      "logs",
+      "server-demo-paper.log",
+    );
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await writeFile(logPath, 'Starting minecraft server version 1.20.4\n', "utf8");
+
+    const stateDir = path.join(process.env.MCT_HOME!, "state");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "servers.json"),
+      JSON.stringify({
+        servers: {
+          "demo/paper": {
+            pid: foreignServer.pid,
+            project: "demo",
+            name: "paper",
+            port: address.port,
+            startedAt: new Date().toISOString(),
+            logPath,
+            instanceDir: path.join(
+              process.env.MCT_HOME!,
+              "projects",
+              "demo",
+              "paper",
+            ),
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    await assert.rejects(
+      () => manager.waitReady("paper", 2),
+      (error: unknown) => {
+        assert.ok(error instanceof MctError);
+        assert.equal(error.code, "PORT_CONFLICT");
+        return true;
+      },
+    );
+  } finally {
+    listener.close();
+    foreignServer.kill("SIGKILL");
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.configure updates the port and syncs server.properties", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-config-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    const created = await manager.create({
+      name: "paper",
+      project: "demo",
+      type: "paper",
+      version: "1.20.4",
+      port: await getFreePort(),
+    });
+
+    const newPort = await getFreePort();
+    const updated = await manager.configure("paper", { port: newPort });
+    assert.equal(updated.port, newPort);
+    assert.notEqual(updated.port, created.port);
+
+    const instanceDir = path.join(
+      process.env.MCT_HOME!,
+      "projects",
+      "demo",
+      "paper",
+    );
+    const meta = JSON.parse(
+      await readFile(path.join(instanceDir, "instance.json"), "utf8"),
+    );
+    assert.equal(meta.port, newPort);
+    const properties = await readFile(
+      path.join(instanceDir, "server.properties"),
+      "utf8",
+    );
+    assert.ok(properties.includes(`server-port=${newPort}`));
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ServerInstanceManager.configure refuses to change a running server", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-config-run-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+
+  try {
+    const manager = new ServerInstanceManager(new GlobalStateStore(), "demo");
+    await manager.create({
+      name: "paper",
+      project: "demo",
+      type: "paper",
+      version: "1.20.4",
+      port: await getFreePort(),
+    });
+
+    const stateDir = path.join(process.env.MCT_HOME!, "state");
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "servers.json"),
+      JSON.stringify({
+        servers: {
+          "demo/paper": {
+            pid: process.pid,
+            project: "demo",
+            name: "paper",
+            port: 25565,
+            startedAt: new Date().toISOString(),
+            logPath: path.join(process.env.MCT_HOME!, "logs", "x.log"),
+            instanceDir: path.join(
+              process.env.MCT_HOME!,
+              "projects",
+              "demo",
+              "paper",
+            ),
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => manager.configure("paper", { port: 25599 }),
+      (error: unknown) => {
+        assert.ok(error instanceof MctError);
+        assert.equal(error.code, "SERVER_ALREADY_RUNNING");
+        return true;
+      },
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
