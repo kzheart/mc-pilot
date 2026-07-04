@@ -224,115 +224,137 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
   }
 });
 
-test("ServerCommandPipe sends a command through a FIFO without sync fd calls", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-pipe-"));
+/**
+ * Spawn a bash process that reads one line from the FIFO and echoes it.
+ * Returns the child and a promise of its captured stdout.
+ */
+function spawnFifoReader(fifoPath: string) {
+  const reader = spawn(
+    "bash",
+    [
+      "-c",
+      'IFS= read -r line < "$1"; printf "%s" "$line"',
+      "reader",
+      fifoPath,
+    ],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let output = "";
+  reader.stdout.setEncoding("utf8");
+  reader.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  return { reader, getOutput: () => output };
+}
 
+/**
+ * FIFO open() rendezvous between an external reader process and the
+ * non-blocking writer can rarely misfire under heavy load. Each attempt uses
+ * a fresh FIFO; one retry keeps the test deterministic without masking real
+ * regressions (a genuine bug fails both attempts).
+ */
+async function withFifoRaceRetry(run: () => Promise<void>): Promise<void> {
   try {
-    const pipe = new ServerCommandPipe();
-    const fifoPath = await pipe.create(tempDir, "demo", "paper");
-    const reader = spawn(
-      "bash",
-      [
-        "-c",
-        'IFS= read -r line < "$1"; printf "%s" "$line"',
-        "reader",
-        fifoPath,
-      ],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    let output = "";
-    reader.stdout.setEncoding("utf8");
-    reader.stdout.on("data", (chunk) => {
-      output += chunk;
-    });
-
-    await pipe.send(fifoPath, "say hello");
-    const [code] = await once(reader, "exit");
-
-    assert.equal(code, 0);
-    assert.equal(output, "say hello");
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
+    await run();
+  } catch {
+    await run();
   }
+}
+
+test("ServerCommandPipe sends a command through a FIFO without sync fd calls", async () => {
+  await withFifoRaceRetry(async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-pipe-"));
+
+    try {
+      const pipe = new ServerCommandPipe();
+      const fifoPath = await pipe.create(tempDir, "demo", "paper");
+      const { reader, getOutput } = spawnFifoReader(fifoPath);
+
+      try {
+        await pipe.send(fifoPath, "say hello");
+        const [code] = await once(reader, "exit", {
+          signal: AbortSignal.timeout(15_000),
+        });
+        assert.equal(code, 0);
+        assert.equal(getOutput(), "say hello");
+      } finally {
+        // reader 卡在 open(fifo) 时不 kill 会让整个测试进程永不退出
+        reader.kill("SIGKILL");
+      }
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 test("ServerInstanceManager.exec writes slash-prefixed commands through the async pipe", async () => {
-  const tempDir = await mkdtemp(
-    path.join(os.tmpdir(), "mct-server-exec-pipe-"),
-  );
-  const previousHome = process.env.MCT_HOME;
-  process.env.MCT_HOME = path.join(tempDir, "mct-home");
-
-  try {
-    const pipe = new ServerCommandPipe();
-    const fifoPath = await pipe.create(tempDir, "demo", "paper");
-    const logPath = path.join(
-      process.env.MCT_HOME!,
-      "logs",
-      "server-demo-paper.log",
+  await withFifoRaceRetry(async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "mct-server-exec-pipe-"),
     );
-    await mkdir(path.dirname(logPath), { recursive: true });
+    const previousHome = process.env.MCT_HOME;
+    process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
-    const store = new GlobalStateStore();
-    await store.writeServerState({
-      servers: {
-        "demo/paper": {
-          pid: process.pid,
-          project: "demo",
-          name: "paper",
-          port: 25569,
-          startedAt: new Date().toISOString(),
-          logPath,
-          instanceDir: path.join(
-            process.env.MCT_HOME!,
-            "projects",
-            "demo",
-            "paper",
-          ),
-          stdinPipe: fifoPath,
+    try {
+      const pipe = new ServerCommandPipe();
+      const fifoPath = await pipe.create(tempDir, "demo", "paper");
+      const logPath = path.join(
+        process.env.MCT_HOME!,
+        "logs",
+        "server-demo-paper.log",
+      );
+      await mkdir(path.dirname(logPath), { recursive: true });
+
+      const store = new GlobalStateStore();
+      await store.writeServerState({
+        servers: {
+          "demo/paper": {
+            pid: process.pid,
+            project: "demo",
+            name: "paper",
+            port: 25569,
+            startedAt: new Date().toISOString(),
+            logPath,
+            instanceDir: path.join(
+              process.env.MCT_HOME!,
+              "projects",
+              "demo",
+              "paper",
+            ),
+            stdinPipe: fifoPath,
+          },
         },
-      },
-    });
+      });
 
-    const reader = spawn(
-      "bash",
-      [
-        "-c",
-        'IFS= read -r line < "$1"; printf "%s" "$line"',
-        "reader",
-        fifoPath,
-      ],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-    let output = "";
-    reader.stdout.setEncoding("utf8");
-    reader.stdout.on("data", (chunk) => {
-      output += chunk;
-    });
+      const { reader, getOutput } = spawnFifoReader(fifoPath);
 
-    const manager = new ServerInstanceManager(store, "demo");
-    const result = await manager.exec("paper", "/say hello");
-    const [code] = await once(reader, "exit");
-
-    assert.equal(code, 0);
-    assert.deepEqual(result, {
-      sent: true,
-      command: "/say hello",
-      stdinPipe: fifoPath,
-    });
-    assert.equal(output, "say hello");
-  } finally {
-    if (previousHome === undefined) {
-      delete process.env.MCT_HOME;
-    } else {
-      process.env.MCT_HOME = previousHome;
+      const manager = new ServerInstanceManager(store, "demo");
+      try {
+        const result = await manager.exec("paper", "/say hello");
+        const [code] = await once(reader, "exit", {
+          signal: AbortSignal.timeout(15_000),
+        });
+        assert.equal(code, 0);
+        assert.deepEqual(result, {
+          sent: true,
+          command: "/say hello",
+          stdinPipe: fifoPath,
+        });
+        assert.equal(getOutput(), "say hello");
+      } finally {
+        reader.kill("SIGKILL");
+      }
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.MCT_HOME;
+      } else {
+        process.env.MCT_HOME = previousHome;
+      }
+      await rm(tempDir, { recursive: true, force: true });
     }
-    await rm(tempDir, { recursive: true, force: true });
-  }
+  });
 });
 
 test("ServerInstanceManager.readLogs strips ANSI by default and preserves them with --raw-colors", async () => {

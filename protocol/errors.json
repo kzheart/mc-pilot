@@ -85,6 +85,11 @@
       "code": "INTERNAL_ERROR",
       "exitCode": 1,
       "description": "CLI 内部错误"
+    },
+    {
+      "code": "SERVER_STDIN_WRITE_FAILED",
+      "exitCode": 5,
+      "description": "向服务器 stdin FIFO 写入失败"
     }
   ]
 }
