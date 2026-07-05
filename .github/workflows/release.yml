@@ -23,7 +23,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build all Fabric mod variants
+      - name: Build all mod variants
         run: ./gradlew build -q
         working-directory: client-mod
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p release-artifacts
           for dir in client-mod/version-*/build/libs; do
-            cp "$dir"/mct-client-mod-fabric-*.jar release-artifacts/ 2>/dev/null || true
+            cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
           done
           ls -la release-artifacts/
 
