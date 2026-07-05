@@ -14,6 +14,7 @@ import { ClientInstanceManager } from "./instance/ClientInstanceManager.js";
 import { ServerCommandPipe } from "./instance/ServerCommandPipe.js";
 import {
   ensureServerPortProperty,
+  ensureServerProperties,
   ServerInstanceManager,
 } from "./instance/ServerInstanceManager.js";
 import { GlobalStateStore } from "./util/global-state.js";
@@ -142,6 +143,33 @@ test("ensureServerPortProperty repairs an existing server-port entry", async () 
     assert.match(content, /^motd=Demo$/m);
     assert.match(content, /^server-port=25569$/m);
     assert.equal((content.match(/^server-port=/gm) ?? []).length, 1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("ensureServerProperties overrides online-mode and appends missing keys", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-props-"));
+
+  try {
+    await writeFile(
+      path.join(tempDir, "server.properties"),
+      "motd=Demo\nonline-mode=true\n",
+      "utf8",
+    );
+    await ensureServerProperties(tempDir, {
+      "server-port": "25569",
+      "online-mode": "false",
+    });
+
+    const content = await readFile(
+      path.join(tempDir, "server.properties"),
+      "utf8",
+    );
+    assert.match(content, /^motd=Demo$/m);
+    assert.match(content, /^server-port=25569$/m);
+    assert.match(content, /^online-mode=false$/m);
+    assert.equal((content.match(/^online-mode=/gm) ?? []).length, 1);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

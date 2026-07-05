@@ -10,6 +10,8 @@ export interface ServerInstanceMeta {
   jvmArgs: string[];
   javaCommand?: string;
   javaVersion?: number;
+  /** Synced to server.properties on start. Defaults to false (offline test clients). */
+  onlineMode?: boolean;
   createdAt: string;
 }
 

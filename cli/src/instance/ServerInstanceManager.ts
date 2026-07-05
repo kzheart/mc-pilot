@@ -45,9 +45,9 @@ const START_PORT_GRACE_MS = 3000;
 
 export { stripAnsiCodes };
 
-export async function ensureServerPortProperty(
+export async function ensureServerProperties(
   instanceDir: string,
-  port: number,
+  entries: Record<string, string>,
 ): Promise<void> {
   const filePath = path.join(instanceDir, "server.properties");
   let lines: string[] = [];
@@ -62,20 +62,29 @@ export async function ensureServerPortProperty(
     // initialize from scratch
   }
 
-  let updated = false;
-  lines = lines.map((line) => {
-    if (/^\s*server-port\s*=/.test(line)) {
-      updated = true;
-      return `server-port=${port}`;
+  for (const [key, value] of Object.entries(entries)) {
+    const pattern = new RegExp(`^\\s*${key}\\s*=`);
+    let updated = false;
+    lines = lines.map((line) => {
+      if (pattern.test(line)) {
+        updated = true;
+        return `${key}=${value}`;
+      }
+      return line;
+    });
+    if (!updated) {
+      lines.push(`${key}=${value}`);
     }
-    return line;
-  });
-
-  if (!updated) {
-    lines.push(`server-port=${port}`);
   }
 
   await writeFile(filePath, `${lines.join("\n")}\n`, "utf8");
+}
+
+export async function ensureServerPortProperty(
+  instanceDir: string,
+  port: number,
+): Promise<void> {
+  await ensureServerProperties(instanceDir, { "server-port": String(port) });
 }
 
 export interface CreateServerOptions {
@@ -88,6 +97,8 @@ export interface CreateServerOptions {
   javaCommand?: string;
   javaVersion?: number;
   eula?: boolean;
+  /** Defaults to false: mct test clients use offline accounts. */
+  onlineMode?: boolean;
   cachedJarPath?: string;
 }
 
@@ -143,8 +154,12 @@ export class ServerInstanceManager {
       );
     }
 
+    const onlineMode = options.onlineMode ?? false;
     await mkdir(path.join(instanceDir, "plugins"), { recursive: true });
-    await ensureServerPortProperty(instanceDir, port);
+    await ensureServerProperties(instanceDir, {
+      "server-port": String(port),
+      "online-mode": String(onlineMode),
+    });
 
     const meta: ServerInstanceMeta = {
       name: options.name,
@@ -155,6 +170,7 @@ export class ServerInstanceManager {
       jvmArgs: options.jvmArgs ?? [],
       javaCommand: options.javaCommand,
       javaVersion: options.javaVersion,
+      onlineMode,
       createdAt: new Date().toISOString(),
     };
 
@@ -208,7 +224,10 @@ export class ServerInstanceManager {
         "utf8",
       );
     }
-    await ensureServerPortProperty(instanceDir, meta.port);
+    await ensureServerProperties(instanceDir, {
+      "server-port": String(meta.port),
+      "online-mode": String(meta.onlineMode ?? false),
+    });
 
     const mctHome = resolveMctHome();
     const logsDir = path.join(mctHome, "logs");
@@ -744,12 +763,12 @@ export class ServerInstanceManager {
   }
 
   /**
-   * Update instance settings (currently the port). The server must be stopped;
+   * Update instance settings. The server must be stopped;
    * instance.json is the source of truth and server.properties is synced on start.
    */
   async configure(
     serverName: string,
-    updates: { port?: number },
+    updates: { port?: number; onlineMode?: boolean },
   ): Promise<ServerInstanceMeta> {
     const stateKey = `${this.project}/${serverName}`;
     const state = await this.globalState.readServerState();
@@ -772,6 +791,13 @@ export class ServerInstanceManager {
       await this.assertPortFree(updates.port);
       meta.port = updates.port;
       await ensureServerPortProperty(instanceDir, updates.port);
+    }
+
+    if (updates.onlineMode !== undefined) {
+      meta.onlineMode = updates.onlineMode;
+      await ensureServerProperties(instanceDir, {
+        "online-mode": String(updates.onlineMode),
+      });
     }
 
     await writeFile(

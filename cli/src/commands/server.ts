@@ -67,6 +67,10 @@ export function createServerCommand() {
     .option("--port <number>", "Server port (auto-assigned if omitted)", Number)
     .option("--jvm-args <args>", "JVM arguments (comma-separated)")
     .option("--eula", "Auto-accept EULA")
+    .option(
+      "--online-mode",
+      "Enable Mojang authentication (default: offline for test clients)",
+    )
     .action(
       wrapCommand(
         async (
@@ -83,6 +87,7 @@ export function createServerCommand() {
               port?: number;
               jvmArgs?: string;
               eula?: boolean;
+              onlineMode?: boolean;
             };
           },
         ) => {
@@ -108,6 +113,7 @@ export function createServerCommand() {
             port: options.port,
             jvmArgs: options.jvmArgs?.split(",").map((a) => a.trim()) ?? [],
             eula: options.eula,
+            onlineMode: options.onlineMode,
             cachedJarPath: downloadResult.cachePath,
           });
         },
@@ -164,6 +170,9 @@ export function createServerCommand() {
     .description("Update server instance settings (server must be stopped)")
     .argument("[name]", "Server instance name (default: from active profile)")
     .option("--port <number>", "New server port", Number)
+    .option("--online-mode <bool>", "Enable or disable Mojang authentication", (
+      value,
+    ) => value === "true")
     .action(
       wrapCommand(
         async (
@@ -171,18 +180,26 @@ export function createServerCommand() {
           {
             args,
             options,
-          }: { args: (string | undefined)[]; options: { port?: number } },
+          }: {
+            args: (string | undefined)[];
+            options: { port?: number; onlineMode?: boolean };
+          },
         ) => {
           const project = requireProject(context);
           const serverName = resolveServerName(context, args[0]);
-          if (options.port === undefined) {
-            throw invalidParams("Nothing to update. Specify --port <number>.");
+          if (options.port === undefined && options.onlineMode === undefined) {
+            throw invalidParams(
+              "Nothing to update. Specify --port <number> or --online-mode <true|false>.",
+            );
           }
           const manager = new ServerInstanceManager(
             context.globalState,
             project,
           );
-          return manager.configure(serverName, { port: options.port });
+          return manager.configure(serverName, {
+            port: options.port,
+            onlineMode: options.onlineMode,
+          });
         },
       ),
     );
