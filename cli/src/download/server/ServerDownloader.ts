@@ -7,14 +7,17 @@ import { promisify } from "node:util";
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
+import { proxyAwareFetch } from "../HttpClient.js";
 import { getMinecraftSupport, type ServerType } from "../VersionMatrix.js";
 
 const SERVER_DOWNLOAD_BASE_URLS: Record<
   Extract<ServerType, "paper" | "purpur">,
   string
 > = {
+  // PaperMC 旧版 v2 API 已于 2025 年下线(410 sunset),现用 Fill v3
   paper:
-    process.env.MCT_PAPER_API_BASE_URL || "https://api.papermc.io/v2/projects",
+    process.env.MCT_PAPER_API_BASE_URL ||
+    "https://fill.papermc.io/v3/projects",
   purpur: process.env.MCT_PURPUR_API_BASE_URL || "https://api.purpurmc.org/v2",
 };
 
@@ -52,15 +55,7 @@ export interface DownloadServerDependencies {
   execFileImpl?: ExecFileLike;
 }
 
-function resolveDownloadUrl(
-  type: Extract<ServerType, "paper" | "purpur">,
-  version: string,
-  build: string,
-) {
-  if (type === "paper") {
-    return `${SERVER_DOWNLOAD_BASE_URLS.paper}/paper/versions/${version}/builds/${build}/downloads/paper-${version}-${build}.jar`;
-  }
-
+function resolvePurpurDownloadUrl(version: string, build: string) {
   return `${SERVER_DOWNLOAD_BASE_URLS.purpur}/purpur/${version}/${build}/download`;
 }
 
@@ -135,6 +130,35 @@ async function resolveVanillaDownloadSpec(
     fileName: `vanilla-${version}.jar`,
     downloadUrl: serverDownload.url,
   };
+}
+
+async function resolvePaperDownloadUrl(
+  version: string,
+  build: string,
+  fetchImpl: typeof fetch,
+) {
+  const buildInfo = await fetchJsonWithRetry<{
+    downloads?: Record<string, { url?: string }>;
+  }>(
+    `${SERVER_DOWNLOAD_BASE_URLS.paper}/paper/versions/${version}/builds/${build}`,
+    fetchImpl,
+  );
+  const serverDownload = buildInfo.downloads?.["server:default"];
+  if (!serverDownload?.url) {
+    throw new MctError(
+      {
+        code: "DOWNLOAD_FAILED",
+        message: `Paper ${version} build ${build} has no server download`,
+        details: {
+          version,
+          build,
+        },
+      },
+      2,
+    );
+  }
+
+  return serverDownload.url;
 }
 
 async function buildSpigotServerJar(
@@ -270,7 +294,11 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
     version: resolvedVersion,
     build: resolvedBuild,
     fileName: `${type}-${resolvedVersion}-${resolvedBuild}.jar`,
-    downloadUrl: resolveDownloadUrl(type, resolvedVersion, resolvedBuild),
+    // paper 的实际下载地址需异步查询 Fill API,在下载时解析
+    downloadUrl:
+      type === "purpur"
+        ? resolvePurpurDownloadUrl(resolvedVersion, resolvedBuild)
+        : "",
   };
 }
 
@@ -279,14 +307,10 @@ export async function downloadServerJarToCache(
   dependencies: DownloadServerDependencies = {},
 ) {
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
-  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const fetchImpl = dependencies.fetchImpl ?? proxyAwareFetch;
   const execFileImpl = (dependencies.execFileImpl ??
     execFileAsync) as ExecFileLike;
-  const initialSpec = resolveServerDownloadSpec(options);
-  const spec =
-    initialSpec.type === "vanilla"
-      ? await resolveVanillaDownloadSpec(initialSpec.version, fetchImpl)
-      : initialSpec;
+  const spec = resolveServerDownloadSpec(options);
   const cachePath =
     spec.type === "spigot"
       ? (
@@ -303,7 +327,15 @@ export async function downloadServerJarToCache(
     try {
       await access(cachePath);
     } catch {
-      await downloadFile(spec.downloadUrl, cachePath, fetchImpl);
+      // 缓存命中时不发起网络请求,仅在需要下载时解析实际地址
+      const downloadUrl =
+        spec.type === "vanilla"
+          ? (await resolveVanillaDownloadSpec(spec.version, fetchImpl))
+              .downloadUrl
+          : spec.type === "paper"
+            ? await resolvePaperDownloadUrl(spec.version, spec.build, fetchImpl)
+            : spec.downloadUrl;
+      await downloadFile(downloadUrl, cachePath, fetchImpl);
     }
   }
 

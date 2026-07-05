@@ -10,9 +10,8 @@ import {
   installForge,
   installVersion,
 } from "@xmcl/installer";
-import { Agent, interceptors } from "undici";
-
 import { MctError } from "../../util/errors.js";
+import { DOWNLOAD_DISPATCHER, proxyAwareFetch } from "../HttpClient.js";
 import type { ModVariant } from "../types.js";
 import { applyArm64LwjglPatch } from "./Arm64LwjglPatcher.js";
 
@@ -26,25 +25,6 @@ export interface PreparedFabricRuntime {
   versionId: string;
 }
 
-const DOWNLOAD_DISPATCHER = new Agent({
-  connect: {
-    timeout: 30_000,
-  },
-  headersTimeout: 30_000,
-  bodyTimeout: 30_000,
-  connections: 8,
-  pipelining: 0,
-}).compose(
-  interceptors.retry({
-    maxRetries: 4,
-    minTimeout: 500,
-    maxTimeout: 5_000,
-  }),
-  interceptors.redirect({
-    maxRedirections: 5,
-  }),
-);
-
 async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
   init?: Parameters<typeof fetch>[1],
@@ -54,7 +34,7 @@ async function fetchWithRetry(
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(input, init);
+      const response = await proxyAwareFetch(input, init);
       if (response.ok) {
         return response;
       }
@@ -244,8 +224,8 @@ async function prepareManagedRuntime(
   await installDependencies(resolvedVersion, {
     side: "client",
     dispatcher: DOWNLOAD_DISPATCHER,
-    assetsDownloadConcurrency: 8,
-    librariesDownloadConcurrency: 4,
+    assetsDownloadConcurrency: 16,
+    librariesDownloadConcurrency: 16,
   });
 
   await applyArm64LwjglPatch(runtimeRootDir, installedVersionId, { fetchImpl });

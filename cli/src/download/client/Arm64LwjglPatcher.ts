@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { MinecraftFolder } from "@xmcl/core";
 
+import { proxyAwareFetch } from "../HttpClient.js";
+
 const LWJGL_ARM64_PATCH = {
   patchVersion: "3.3.1",
   jars: {
@@ -136,7 +138,7 @@ export async function applyArm64LwjglPatch(
     return null;
   }
 
-  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const fetchImpl = dependencies.fetchImpl ?? proxyAwareFetch;
   const minecraft = MinecraftFolder.from(runtimeRoot);
   const nativesDir = minecraft.getNativesRoot(versionId);
 

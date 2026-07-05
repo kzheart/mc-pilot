@@ -5,6 +5,7 @@ import process from "node:process";
 import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
+import { proxyAwareFetch } from "../HttpClient.js";
 import { detectJava } from "../JavaDetector.js";
 import {
   findVariantByVersionAndLoader,
@@ -102,7 +103,7 @@ export async function resolveArtifact(
   cwd: string,
   variant: ModVariant,
   cacheManager: CacheManager,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = proxyAwareFetch,
 ) {
   const artifactFileName = getModArtifactFileName(variant);
   const gradleModule =
@@ -328,7 +329,7 @@ export async function downloadClientModToDir(
   const loader = options.loader ?? "fabric";
   const cacheManager = dependencies.cacheManager ?? new CacheManager();
   const detectJavaImpl = dependencies.detectJavaImpl ?? detectJava;
-  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const fetchImpl = dependencies.fetchImpl ?? proxyAwareFetch;
   const prepareManagedRuntimeImpl =
     dependencies.prepareManagedRuntimeImpl ?? prepareManagedClientRuntime;
   const catalog = await loadModVariantCatalog();

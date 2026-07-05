@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MctError } from "../util/errors.js";
+import { proxyAwareFetch } from "./HttpClient.js";
 
 export async function copyFileIfMissing(
   sourcePath: string,
@@ -15,7 +16,7 @@ export async function copyFileIfMissing(
 export async function downloadFile(
   url: string,
   targetPath: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = proxyAwareFetch,
 ) {
   const response = await fetchImpl(url);
   if (!response.ok) {

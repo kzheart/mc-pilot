@@ -44,10 +44,17 @@ test("downloadServerJarToCache downloads to cache", async () => {
       {
         cacheManager: new CacheManager(cacheRoot),
         fetchImpl: async (url: string | URL | Request) => {
-          assert.match(
-            String(url),
-            /paper\/versions\/1.20.4\/builds\/496\/downloads/,
-          );
+          const text = String(url);
+          if (/paper\/versions\/1.20.4\/builds\/496$/.test(text)) {
+            return Response.json({
+              downloads: {
+                "server:default": {
+                  url: "https://downloads.example/paper-1.20.4-496.jar",
+                },
+              },
+            });
+          }
+          assert.equal(text, "https://downloads.example/paper-1.20.4-496.jar");
           return new Response(jarBytes, { status: 200 });
         },
       },
