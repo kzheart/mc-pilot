@@ -4,6 +4,7 @@ import static com.mct.core.util.ParamHelper.getInt;
 import static com.mct.core.util.ParamHelper.getRequired;
 import static com.mct.core.util.ParamHelper.getString;
 
+import com.mct.core.network.PacketSender;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
@@ -57,7 +58,7 @@ public final class ContainerCraftHandler extends ActionHandler {
         int index = getInt(params, "index");
         handler.setRecipeIndex(index);
         handler.switchTo(index);
-        requirePlayer().networkHandler.sendPacket(new SelectMerchantTradeC2SPacket(index));
+        PacketSender.send(requirePlayer().networkHandler, new SelectMerchantTradeC2SPacket(index));
         safeSleep(150L);
         ItemStack preview = handler.getSlot(2).getStack().copy();
         if (preview.isEmpty()) {
@@ -74,7 +75,7 @@ public final class ContainerCraftHandler extends ActionHandler {
         runOnClientThread(() -> {
             AnvilScreenHandler handler = requireScreenHandler(AnvilScreenHandler.class);
             quickMoveSlot(handler, normalizeContainerInputSlot(handler, inputSlot), 0);
-            requirePlayer().networkHandler.sendPacket(new RenameItemC2SPacket(rename));
+            PacketSender.send(requirePlayer().networkHandler, new RenameItemC2SPacket(rename));
             return true;
         });
         ItemStack preview = pollOnClientThread(

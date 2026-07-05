@@ -40,4 +40,15 @@ gradle.beforeProject {
         extensions.extraProperties["forgeVersion"] = it.toString()
         extensions.extraProperties["loom.platform"] = "forge"
     }
+    variant["yarnForgePatch"]?.let {
+        extensions.extraProperties["yarnForgePatch"] = it.toString()
+    }
+    variant["neoforgeVersion"]?.let {
+        extensions.extraProperties["neoforgeVersion"] = it.toString()
+        extensions.extraProperties["loom.platform"] =
+            variant["loomPlatform"]?.toString() ?: "neoforge"
+    }
+    variant["yarnNeoforgePatch"]?.let {
+        extensions.extraProperties["yarnNeoforgePatch"] = it.toString()
+    }
 }

@@ -1,5 +1,6 @@
 package com.mct.version.impl;
 
+import com.mct.core.network.PacketSender;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.mixin.AbstractSignEditScreenAccessor;
@@ -189,7 +190,7 @@ public final class VersionAdaptersImpl {
 
             @Override
             public void sendSignUpdate(ClientPlayerEntity player, BlockPos pos, String[] lines) {
-                player.networkHandler.sendPacket(new UpdateSignC2SPacket(pos, true, lines[0], lines[1], lines[2], lines[3]));
+                PacketSender.send(player.networkHandler, new UpdateSignC2SPacket(pos, true, lines[0], lines[1], lines[2], lines[3]));
             }
         };
     }
@@ -248,7 +249,7 @@ public final class VersionAdaptersImpl {
 
     private static NetworkAdapter createNetworkAdapter() {
         return (player, yaw, pitch) ->
-            player.networkHandler.sendPacket(
+            PacketSender.send(player.networkHandler,
                 new PlayerMoveC2SPacket.LookAndOnGround(yaw, pitch, player.isOnGround(), player.horizontalCollision));
     }
 

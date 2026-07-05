@@ -1,7 +1,15 @@
 {
   "defaultVariant": "1.20.4-fabric",
   "buildSystem": "multi-module",
-  "versions": ["1.18.2", "1.20.1", "1.20.2", "1.20.4", "1.21.1", "1.21.4", "1.21.11"],
+  "versions": [
+    "1.18.2",
+    "1.20.1",
+    "1.20.2",
+    "1.20.4",
+    "1.21.1",
+    "1.21.4",
+    "1.21.11"
+  ],
   "variants": [
     {
       "id": "1.18.2-fabric",
@@ -14,6 +22,17 @@
       "yarnMappings": "1.18.2+build.4",
       "javaVersion": 17,
       "gradleModule": "version-1.18.2"
+    },
+    {
+      "id": "1.18.2-forge",
+      "minecraftVersion": "1.18.2",
+      "loader": "forge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "forgeVersion": "40.3.12",
+      "javaVersion": 17,
+      "gradleModule": "version-1.18.2-forge"
     },
     {
       "id": "1.20.1-fabric",
@@ -39,6 +58,18 @@
       "gradleModule": "version-1.20.1-forge"
     },
     {
+      "id": "1.20.1-neoforge",
+      "minecraftVersion": "1.20.1",
+      "loader": "neoforge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "neoforgeVersion": "47.1.106",
+      "loomPlatform": "forge",
+      "javaVersion": 17,
+      "gradleModule": "version-1.20.1-neoforge"
+    },
+    {
       "id": "1.20.2-fabric",
       "minecraftVersion": "1.20.2",
       "loader": "fabric",
@@ -60,6 +91,17 @@
       "forgeVersion": "48.1.0",
       "javaVersion": 17,
       "gradleModule": "version-1.20.2-forge"
+    },
+    {
+      "id": "1.20.2-neoforge",
+      "minecraftVersion": "1.20.2",
+      "loader": "neoforge",
+      "support": "configured",
+      "validation": "limited",
+      "modVersion": "0.9.1",
+      "neoforgeVersion": "20.2.93",
+      "javaVersion": 17,
+      "gradleModule": "version-1.20.2-neoforge"
     },
     {
       "id": "1.20.4-fabric",
@@ -88,11 +130,12 @@
       "id": "1.20.4-neoforge",
       "minecraftVersion": "1.20.4",
       "loader": "neoforge",
-      "support": "planned",
-      "validation": "planned",
+      "support": "ready",
+      "validation": "verified",
       "modVersion": "0.9.1",
-      "neoforgeVersion": "20.4.237",
-      "javaVersion": 17
+      "neoforgeVersion": "20.4.251",
+      "javaVersion": 17,
+      "gradleModule": "version-1.20.4-neoforge"
     },
     {
       "id": "1.21.1-fabric",
@@ -107,14 +150,27 @@
       "gradleModule": "version-1.21.1"
     },
     {
+      "id": "1.21.1-forge",
+      "minecraftVersion": "1.21.1",
+      "loader": "forge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "forgeVersion": "52.1.14",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.1-forge"
+    },
+    {
       "id": "1.21.1-neoforge",
       "minecraftVersion": "1.21.1",
       "loader": "neoforge",
-      "support": "planned",
-      "validation": "planned",
+      "support": "ready",
+      "validation": "verified",
       "modVersion": "0.9.1",
-      "neoforgeVersion": "21.1.77",
-      "javaVersion": 21
+      "neoforgeVersion": "21.1.235",
+      "yarnNeoforgePatch": "1.21+build.6",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.1-neoforge"
     },
     {
       "id": "1.21.4-fabric",
@@ -129,14 +185,27 @@
       "gradleModule": "version-1.21.4"
     },
     {
+      "id": "1.21.4-forge",
+      "minecraftVersion": "1.21.4",
+      "loader": "forge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "forgeVersion": "54.1.16",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.4-forge"
+    },
+    {
       "id": "1.21.4-neoforge",
       "minecraftVersion": "1.21.4",
       "loader": "neoforge",
-      "support": "planned",
-      "validation": "planned",
+      "support": "configured",
+      "validation": "limited",
       "modVersion": "0.9.1",
-      "neoforgeVersion": "21.4.75",
-      "javaVersion": 21
+      "neoforgeVersion": "21.4.157",
+      "yarnNeoforgePatch": "1.21+build.6",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.4-neoforge"
     },
     {
       "id": "1.21.11-fabric",
@@ -149,6 +218,30 @@
       "yarnMappings": "1.21.11+build.5",
       "javaVersion": 21,
       "gradleModule": "version-1.21.11"
+    },
+    {
+      "id": "1.21.11-forge",
+      "minecraftVersion": "1.21.11",
+      "loader": "forge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "forgeVersion": "61.1.8",
+      "yarnForgePatch": "1.21.9+build.6",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.11-forge"
+    },
+    {
+      "id": "1.21.11-neoforge",
+      "minecraftVersion": "1.21.11",
+      "loader": "neoforge",
+      "support": "configured",
+      "validation": "limited",
+      "modVersion": "0.9.1",
+      "neoforgeVersion": "21.11.42",
+      "yarnNeoforgePatch": "1.21+build.6",
+      "javaVersion": 21,
+      "gradleModule": "version-1.21.11-neoforge"
     }
   ]
 }

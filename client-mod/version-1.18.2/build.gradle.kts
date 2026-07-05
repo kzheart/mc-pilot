@@ -4,6 +4,7 @@ plugins {
 
 sourceSets.main {
     java.srcDir(rootProject.file("shared/java"))
+    java.srcDir(rootProject.file("shared/network-legacy"))
     java.srcDir(rootProject.file("shared/mixin-common"))
     java.srcDir(rootProject.file("shared/mixin-chat-legacy"))
     java.srcDir(rootProject.file("shared/mixin-hud-legacy"))

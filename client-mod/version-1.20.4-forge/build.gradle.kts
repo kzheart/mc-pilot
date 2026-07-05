@@ -5,6 +5,7 @@ plugins {
 sourceSets.main {
     java.srcDir(rootProject.file("version-1.20.4/src/main/java"))
     java.srcDir(rootProject.file("shared/java"))
+    java.srcDir(rootProject.file("shared/network-common"))
     java.srcDir(rootProject.file("shared/forge/java"))
     java.srcDir(rootProject.file("shared/mixin-common"))
     java.srcDir(rootProject.file("shared/mixin-chat-modern"))

@@ -14,17 +14,34 @@ repositories {
     maven("https://maven.architectury.dev/")
     maven("https://maven.fabricmc.net/")
     maven("https://maven.minecraftforge.net/")
+    maven("https://maven.neoforged.net/releases/")
 }
 
 dependencies {
     minecraft("com.mojang:minecraft:$targetMcVersion")
-    mappings("net.fabricmc:yarn:$yarnMappings:v2")
+    if (project.hasProperty("yarnForgePatch")) {
+        mappings(loom.layered {
+            mappings("net.fabricmc:yarn:$yarnMappings:v2")
+            mappings("dev.architectury:yarn-mappings-patch-forge:${project.property("yarnForgePatch")}")
+        })
+    } else if (project.hasProperty("yarnNeoforgePatch")) {
+        mappings(loom.layered {
+            mappings("net.fabricmc:yarn:$yarnMappings:v2")
+            mappings("dev.architectury:yarn-mappings-patch-neoforge:${project.property("yarnNeoforgePatch")}")
+        })
+    } else {
+        mappings("net.fabricmc:yarn:$yarnMappings:v2")
+    }
     implementation("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
     include("org.java-websocket:Java-WebSocket:${rootProject.property("java_websocket_version")}")
 }
 
 loom {
     mixin {
+        // neoforge 平台上 Loom 默认关闭 legacy Mixin AP,需显式开启才能配置 refmap
+        if ((project.findProperty("loom.platform") as? String) == "neoforge") {
+            useLegacyMixinAp.set(true)
+        }
         defaultRefmapName.set("mct.refmap.json")
     }
 }

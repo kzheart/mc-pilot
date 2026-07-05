@@ -1,0 +1,26 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
+
+[[mods]]
+modId = "mct"
+version = "${version}"
+displayName = "Minecraft Auto Test Client Mod"
+description = "Real client bridge for Minecraft Auto Test."
+
+[[mixins]]
+config = "mct.mixins.json"
+
+[[dependencies.mct]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neoforge_major},)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.mct]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${mc_version}]"
+ordering = "NONE"
+side = "CLIENT"

@@ -3,6 +3,7 @@ package com.mct.core.handler;
 import static com.mct.core.util.ParamHelper.getList;
 import static com.mct.core.util.ParamHelper.getString;
 
+import com.mct.core.network.PacketSender;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
@@ -121,7 +122,7 @@ public final class SignBookHandler extends ActionHandler {
         Map<String, Object> result = runOnClientThread(() -> {
             ClientPlayerEntity player = requirePlayer();
             ItemStack stack = requireWritableBook(player.getMainHandStack());
-            player.networkHandler.sendPacket(new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.empty()));
+            PacketSender.send(player.networkHandler, new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.empty()));
             lastBookUpdateAt = System.currentTimeMillis();
             return com.mct.core.util.MctMaps.mapOf("written", true, "pages", pages, "item", ClientDataHelper.itemToMap(stack));
         });
@@ -136,7 +137,7 @@ public final class SignBookHandler extends ActionHandler {
             ClientPlayerEntity player = requirePlayer();
             ItemStack stack = requireWritableBook(player.getMainHandStack());
             List<String> pages = ClientVersionModulesHolder.get().book().readPages(stack);
-            player.networkHandler.sendPacket(new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.of(title)));
+            PacketSender.send(player.networkHandler, new BookUpdateC2SPacket(ClientVersionModulesHolder.get().compatibility().getSelectedSlot(player.getInventory()), pages, Optional.of(title)));
             lastBookUpdateAt = System.currentTimeMillis();
             return com.mct.core.util.MctMaps.mapOf("signed", true, "title", title, "author", getString(params, "author", player.getName().getString()));
         });

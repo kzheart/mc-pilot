@@ -2,6 +2,7 @@ package com.mct.core.handler;
 
 import static com.mct.core.util.ParamHelper.*;
 
+import com.mct.core.network.PacketSender;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
 import com.mct.core.util.ClientDataHelper;
@@ -105,7 +106,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         }
         ClientPlayerEntity player = requirePlayer();
         ClientVersionModulesHolder.get().compatibility().setSelectedSlot(player.getInventory(), slot);
-        player.networkHandler.sendPacket(new UpdateSelectedSlotC2SPacket(slot));
+        PacketSender.send(player.networkHandler, new UpdateSelectedSlotC2SPacket(slot));
         return com.mct.core.util.MctMaps.mapOf("selectedSlot", slot, "item", ClientDataHelper.itemToMap(player.getMainHandStack()));
     }
 
@@ -163,7 +164,8 @@ public final class GuiInventoryHandler extends ActionHandler {
 
         runOnClientThread(() -> {
             ClientPlayerEntity player = requirePlayer();
-            player.networkHandler.sendPacket(
+            PacketSender.send(
+                player.networkHandler,
                 new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN)
             );
             return true;

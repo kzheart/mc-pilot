@@ -13,6 +13,7 @@ val copyFilteredMixinCommon by tasks.registering(Sync::class) {
 
 sourceSets.main {
     java.srcDir(rootProject.file("shared/java"))
+    java.srcDir(rootProject.file("shared/network-common"))
     java.srcDir(filteredMixinCommonDir)
     java.srcDir(rootProject.file("shared/mixin-chat-modern"))
     java.srcDir(rootProject.file("shared/mixin-hud-modern"))
