@@ -8,6 +8,7 @@ import {
   installDependencies,
   installFabric,
   installForge,
+  installNeoForged,
   installVersion,
 } from "@xmcl/installer";
 import { MctError } from "../../util/errors.js";
@@ -189,14 +190,20 @@ async function prepareManagedRuntime(
 
   try {
     await access(readyMarker);
-    // Runtime already prepared, skip download
-    return { runtimeRootDir, gameDir, versionId: expectedVersionId };
+    // Runtime already prepared, skip download. Marker content records the
+    // actual installed version id (older markers held a timestamp instead).
+    const markerContent = (await readFile(readyMarker, "utf8")).trim();
+    const versionId =
+      markerContent && !/^\d{4}-\d{2}-\d{2}T/.test(markerContent)
+        ? markerContent
+        : expectedVersionId;
+    return { runtimeRootDir, gameDir, versionId };
   } catch {
     // Not ready, proceed with download
   }
 
   if (await isManagedRuntimeComplete(runtimeRootDir, expectedVersionId)) {
-    await writeFile(readyMarker, new Date().toISOString(), "utf8");
+    await writeFile(readyMarker, expectedVersionId, "utf8");
     return { runtimeRootDir, gameDir, versionId: expectedVersionId };
   }
 
@@ -232,7 +239,7 @@ async function prepareManagedRuntime(
   await mkdir(minecraft.getNativesRoot(installedVersionId), {
     recursive: true,
   });
-  await writeFile(readyMarker, new Date().toISOString(), "utf8");
+  await writeFile(readyMarker, installedVersionId, "utf8");
 
   return {
     runtimeRootDir,
@@ -309,6 +316,45 @@ export async function prepareManagedForgeRuntime(
   );
 }
 
+export async function prepareManagedNeoForgeRuntime(
+  variant: ModVariant,
+  runtimeOptions: PrepareFabricRuntimeOptions,
+  dependencies: PrepareFabricRuntimeDependencies = {},
+): Promise<PreparedFabricRuntime> {
+  const neoforgeVersion = variant.neoforgeVersion;
+  if (!neoforgeVersion) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} does not define a NeoForge version`,
+      },
+      4,
+    );
+  }
+
+  // 1.20.1 时代 NeoForge 以 forge 工程名发布(版本号带 MC 前缀),之后是独立的 neoforge 工程
+  const forgeCompat = variant.loomPlatform === "forge";
+  const project = forgeCompat ? ("forge" as const) : ("neoforge" as const);
+  const installerVersion = forgeCompat
+    ? `${variant.minecraftVersion}-${neoforgeVersion}`
+    : neoforgeVersion;
+  const expectedVersionId = forgeCompat
+    ? `${variant.minecraftVersion}-forge-${neoforgeVersion}`
+    : `neoforge-${neoforgeVersion}`;
+
+  return prepareManagedRuntime(
+    variant,
+    runtimeOptions,
+    dependencies,
+    expectedVersionId,
+    (minecraft) =>
+      installNeoForged(project, installerVersion, minecraft, {
+        side: "client",
+        dispatcher: DOWNLOAD_DISPATCHER,
+      }),
+  );
+}
+
 export async function prepareManagedClientRuntime(
   variant: ModVariant,
   runtimeOptions: PrepareFabricRuntimeOptions,
@@ -319,6 +365,9 @@ export async function prepareManagedClientRuntime(
   }
   if (variant.loader === "forge") {
     return prepareManagedForgeRuntime(variant, runtimeOptions, dependencies);
+  }
+  if (variant.loader === "neoforge") {
+    return prepareManagedNeoForgeRuntime(variant, runtimeOptions, dependencies);
   }
 
   throw new MctError(

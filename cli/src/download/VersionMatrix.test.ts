@@ -32,8 +32,10 @@ test("getVersionMatrix exposes documented server and client support entries", ()
   assert.equal(latest.servers.purpur.latestBuild, 2568);
   assert.equal(latest.clients.fabric.supported, true);
   assert.equal(latest.clients.fabric.loaderVersion, "0.19.2");
-  assert.equal(latest.clients.forge.supported, false);
-  assert.equal(latest.clients.neoforge.supported, false);
+  assert.equal(latest.clients.forge.supported, true);
+  assert.equal(latest.clients.forge.loaderVersion, "61.1.8");
+  assert.equal(latest.clients.neoforge.supported, true);
+  assert.equal(latest.clients.neoforge.loaderVersion, "21.11.42");
 });
 
 test("searchServerVersions can filter by type and version", () => {
@@ -50,7 +52,7 @@ test("searchServerVersions can filter by type and version", () => {
   ]);
 });
 
-test("searchClientVersions preserves unsupported loaders and java requirements", () => {
+test("searchClientVersions exposes all loaders and java requirements", () => {
   const results = searchClientVersions({ version: "1.21.4" });
 
   assert.equal(results.length, 3);
@@ -66,16 +68,16 @@ test("searchClientVersions preserves unsupported loaders and java requirements",
   assert.equal(fabric?.notes, undefined);
   assert.equal(fabric?.javaVersion, "21+");
 
-  assert.equal(forge?.supported, false);
-  assert.equal(forge?.loaderVersion, undefined);
-  assert.equal(forge?.modVersion, undefined);
-  assert.equal(forge?.notes, "不支持此版本");
+  assert.equal(forge?.supported, true);
+  assert.equal(forge?.loaderVersion, "54.1.16");
+  assert.equal(forge?.modVersion, "0.9.1");
+  assert.equal(forge?.validation, "verified");
   assert.equal(forge?.javaVersion, "21+");
 
-  assert.equal(neoforge?.supported, false);
-  assert.equal(neoforge?.loaderVersion, "21.4.75");
+  assert.equal(neoforge?.supported, true);
+  assert.equal(neoforge?.loaderVersion, "21.4.157");
   assert.equal(neoforge?.modVersion, "0.9.1");
-  assert.equal(neoforge?.validation, "planned");
+  assert.equal(neoforge?.validation, "limited");
   assert.equal(neoforge?.javaVersion, "21+");
 });
 

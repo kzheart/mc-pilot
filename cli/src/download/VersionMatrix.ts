@@ -139,7 +139,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
         modVersion: "0.9.1",
         validation: "limited",
       },
-      neoforge: { supported: false, notes: "不支持此版本" },
+      neoforge: { supported: false, validation: "planned", notes: "计划中" },
     },
   },
   {
@@ -183,7 +183,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
         modVersion: "0.9.1",
       },
       forge: { supported: false, notes: "当前未接入此 loader" },
-      neoforge: { supported: false, notes: "不支持此版本" },
+      neoforge: { supported: false, validation: "planned", notes: "计划中" },
     },
   },
   {
@@ -207,7 +207,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
         modVersion: "0.9.1",
         validation: "limited",
       },
-      neoforge: { supported: false, notes: "不支持此版本" },
+      neoforge: { supported: false, validation: "planned", notes: "计划中" },
     },
   },
   {

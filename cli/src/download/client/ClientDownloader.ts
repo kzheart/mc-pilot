@@ -88,7 +88,25 @@ function ensureSupportedVariant(variant: ModVariant) {
     );
   }
 
-  if (variant.loader !== "fabric" && variant.loader !== "forge") {
+  if (variant.loader === "neoforge" && !variant.neoforgeVersion) {
+    throw new MctError(
+      {
+        code: "VARIANT_NOT_BUILDABLE",
+        message: `Variant ${variant.id} is not buildable yet`,
+        details: {
+          support: variant.support,
+          validation: variant.validation,
+        },
+      },
+      4,
+    );
+  }
+
+  if (
+    variant.loader !== "fabric" &&
+    variant.loader !== "forge" &&
+    variant.loader !== "neoforge"
+  ) {
     throw new MctError(
       {
         code: "UNSUPPORTED_LOADER",
@@ -107,7 +125,7 @@ export async function resolveArtifact(
 ) {
   const artifactFileName = getModArtifactFileName(variant);
   const gradleModule =
-    (variant as any).gradleModule ?? `version-${variant.minecraftVersion}`;
+    variant.gradleModule ?? `version-${variant.minecraftVersion}`;
   const buildArtifactPath = path.join(
     cwd,
     "client-mod",

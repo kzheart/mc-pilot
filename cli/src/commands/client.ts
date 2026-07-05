@@ -71,7 +71,7 @@ export function createClientCommand() {
     .option("--version <version>", "Minecraft version (default: 1.21.4)")
     .option(
       "--loader <loader>",
-      "Client loader: fabric|forge (default: fabric)",
+      "Client loader: fabric|forge|neoforge (default: fabric)",
     )
     .option(
       "--ws-port <port>",
