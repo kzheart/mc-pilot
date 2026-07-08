@@ -1,7 +1,10 @@
 import {
+  isProxyType,
+  PROXY_MATRIX,
   searchClientVersions,
   searchServerVersions,
   type ClientLoader,
+  type ProxyType,
   type ServerType,
 } from "./VersionMatrix.js";
 
@@ -27,13 +30,44 @@ export interface ClientSearchCommandResult {
   }>;
 }
 
+function buildProxySearchResult(
+  proxyType: ProxyType,
+): ServerSearchCommandResult {
+  const info = PROXY_MATRIX[proxyType];
+  return {
+    type: proxyType,
+    versions: [
+      {
+        version: info.defaultVersion,
+        ...(info.latestBuild != null
+          ? { build: String(info.latestBuild) }
+          : {}),
+      },
+    ],
+  };
+}
+
 export function buildServerSearchResults(filter?: {
   type?: ServerType;
   version?: string;
 }): ServerSearchCommandResult[] {
+  if (filter?.type && isProxyType(filter.type)) {
+    return [buildProxySearchResult(filter.type)];
+  }
+
   const grouped = new Map<ServerType, ServerSearchCommandResult>();
 
-  for (const entry of searchServerVersions(filter).filter(
+  const gameFilter: Parameters<typeof searchServerVersions>[0] =
+    filter?.type !== undefined
+      ? {
+          type: filter.type as Exclude<ServerType, ProxyType>,
+          version: filter.version,
+        }
+      : filter?.version !== undefined
+        ? { version: filter.version }
+        : undefined;
+
+  for (const entry of searchServerVersions(gameFilter).filter(
     (item) => item.supported,
   )) {
     const current = grouped.get(entry.type) ?? {
@@ -51,7 +85,16 @@ export function buildServerSearchResults(filter?: {
     grouped.set(entry.type, current);
   }
 
-  return [...grouped.values()];
+  const results = [...grouped.values()];
+
+  if (!filter?.type && !filter?.version) {
+    results.push(
+      buildProxySearchResult("velocity"),
+      buildProxySearchResult("bungeecord"),
+    );
+  }
+
+  return results;
 }
 
 export function buildClientSearchResults(filter?: {

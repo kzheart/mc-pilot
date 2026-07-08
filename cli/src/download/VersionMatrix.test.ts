@@ -5,6 +5,8 @@ import {
   getMinecraftSupport,
   getSupportedMinecraftVersions,
   getVersionMatrix,
+  isProxyType,
+  PROXY_MATRIX,
   searchClientVersions,
   searchServerVersions,
 } from "./VersionMatrix.js";
@@ -147,4 +149,19 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       javaVersion: "17+",
     },
   ]);
+});
+
+test("isProxyType returns true only for proxy types", () => {
+  assert.equal(isProxyType("velocity"), true);
+  assert.equal(isProxyType("bungeecord"), true);
+  assert.equal(isProxyType("paper"), false);
+  assert.equal(isProxyType("purpur"), false);
+  assert.equal(isProxyType("spigot"), false);
+  assert.equal(isProxyType("vanilla"), false);
+});
+
+test("PROXY_MATRIX has pinned velocity build", () => {
+  assert.equal(PROXY_MATRIX.velocity.defaultVersion, "3.4.0");
+  assert.equal(PROXY_MATRIX.velocity.latestBuild, 566);
+  assert.equal(PROXY_MATRIX.bungeecord.defaultVersion, "latest");
 });

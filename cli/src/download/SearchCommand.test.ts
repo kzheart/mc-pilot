@@ -108,3 +108,37 @@ test("buildProgram registers discovery-oriented CLI commands", () => {
   assert.ok(leaves.includes("client create"));
   assert.ok(leaves.includes("schema"));
 });
+
+test("server search without filter includes proxy entries", () => {
+  const results = buildServerSearchResults();
+
+  const velocity = results.find((entry) => entry.type === "velocity");
+  const bungeecord = results.find((entry) => entry.type === "bungeecord");
+
+  assert.ok(velocity);
+  assert.ok(bungeecord);
+  assert.deepEqual(velocity?.versions[0], {
+    version: "3.4.0",
+    build: "566",
+  });
+});
+
+test("server search with proxy type returns single entry", () => {
+  const results = buildServerSearchResults({ type: "velocity" });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.type, "velocity");
+});
+
+test("server search with version filter excludes proxies", () => {
+  const results = buildServerSearchResults({ version: "1.21.4" });
+
+  assert.equal(
+    results.some((entry) => entry.type === "velocity"),
+    false,
+  );
+  assert.equal(
+    results.some((entry) => entry.type === "bungeecord"),
+    false,
+  );
+});

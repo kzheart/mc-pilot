@@ -1,4 +1,10 @@
-export type ServerType = "paper" | "purpur" | "vanilla" | "spigot";
+export type ServerType =
+  | "paper"
+  | "purpur"
+  | "spigot"
+  | "vanilla"
+  | "velocity"
+  | "bungeecord";
 export type LoaderType = "fabric" | "forge" | "neoforge";
 
 export interface ServerInstanceMeta {
@@ -12,6 +18,13 @@ export interface ServerInstanceMeta {
   javaVersion?: number;
   /** Synced to server.properties on start. Defaults to false (offline test clients). */
   onlineMode?: boolean;
+  /** Proxy topology (only present on velocity/bungeecord instances). */
+  proxy?: {
+    /** backend name -> "host:port" */
+    servers: Record<string, string>;
+    try: string[];
+    forwarding: "modern" | "legacy";
+  };
   createdAt: string;
 }
 

@@ -1,12 +1,36 @@
 import { loadModVariantCatalogSync } from "./ModVariantCatalog.js";
 
-export type ServerType = "paper" | "purpur" | "spigot" | "vanilla";
+export type ServerType =
+  | "paper"
+  | "purpur"
+  | "spigot"
+  | "vanilla"
+  | "velocity"
+  | "bungeecord";
 export type ClientLoader = "fabric" | "forge" | "neoforge";
 
 export interface ServerSupportInfo {
   supported: boolean;
   latestBuild?: number;
   requiresBuildTools?: boolean;
+}
+
+export type ProxyType = "velocity" | "bungeecord";
+
+export interface ProxySupportInfo {
+  defaultVersion: string;
+  latestBuild?: number;
+  javaVersion: string;
+}
+
+// Proxy 软件独立于 MC 版本矩阵:一个 jar 兼容全部后端版本
+export const PROXY_MATRIX: Record<ProxyType, ProxySupportInfo> = {
+  velocity: { defaultVersion: "3.4.0", latestBuild: 566, javaVersion: "17+" },
+  bungeecord: { defaultVersion: "latest", javaVersion: "8+" },
+};
+
+export function isProxyType(type: ServerType): type is ProxyType {
+  return type === "velocity" || type === "bungeecord";
 }
 
 export interface ClientLoaderSupportInfo {
@@ -20,9 +44,18 @@ export interface ClientLoaderSupportInfo {
 export interface MinecraftSupportEntry {
   minecraftVersion: string;
   javaVersion: string;
+  servers: Record<Exclude<ServerType, ProxyType>, ServerSupportInfo>;
+  clients: Record<ClientLoader, ClientLoaderSupportInfo>;
+}
+
+interface ResolvedMinecraftSupportEntry {
+  minecraftVersion: string;
+  javaVersion: string;
   servers: Record<ServerType, ServerSupportInfo>;
   clients: Record<ClientLoader, ClientLoaderSupportInfo>;
 }
+
+const UNSUPPORTED_PROXY_SERVER: ServerSupportInfo = { supported: false };
 
 export interface ServerSearchResult {
   type: ServerType;
@@ -291,11 +324,15 @@ function overlayClientSupport(
 
 function overlayMinecraftSupport(
   entry: MinecraftSupportEntry,
-): MinecraftSupportEntry {
+): ResolvedMinecraftSupportEntry {
   return {
     minecraftVersion: entry.minecraftVersion,
     javaVersion: entry.javaVersion,
-    servers: { ...entry.servers },
+    servers: {
+      ...entry.servers,
+      velocity: UNSUPPORTED_PROXY_SERVER,
+      bungeecord: UNSUPPORTED_PROXY_SERVER,
+    },
     clients: {
       fabric: overlayClientSupport(entry, "fabric"),
       forge: overlayClientSupport(entry, "forge"),
@@ -304,7 +341,7 @@ function overlayMinecraftSupport(
   };
 }
 
-export function getVersionMatrix() {
+export function getVersionMatrix(): ResolvedMinecraftSupportEntry[] {
   return VERSION_MATRIX.map((entry) => overlayMinecraftSupport(entry));
 }
 
@@ -312,7 +349,9 @@ export function getSupportedMinecraftVersions() {
   return VERSION_MATRIX.map((entry) => entry.minecraftVersion);
 }
 
-export function getMinecraftSupport(version: string) {
+export function getMinecraftSupport(
+  version: string,
+): ResolvedMinecraftSupportEntry | undefined {
   const entry = VERSION_MATRIX.find(
     (candidate) => candidate.minecraftVersion === version,
   );
@@ -320,7 +359,7 @@ export function getMinecraftSupport(version: string) {
 }
 
 export function searchServerVersions(filter?: {
-  type?: ServerType;
+  type?: Exclude<ServerType, ProxyType>;
   version?: string;
 }) {
   const types = filter?.type ? [filter.type] : getServerTypes();
@@ -380,10 +419,12 @@ export function getClientVersionMatrix() {
 }
 
 export function getServerVersionCatalog(): Record<
-  ServerType,
+  Exclude<ServerType, ProxyType>,
   ServerCatalogEntry[]
 > {
-  return getServerTypes().reduce<Record<ServerType, ServerCatalogEntry[]>>(
+  return getServerTypes().reduce<
+    Record<Exclude<ServerType, ProxyType>, ServerCatalogEntry[]>
+  >(
     (catalog, type) => {
       catalog[type] = VERSION_MATRIX.filter(
         (entry) => entry.servers[type].supported,
@@ -406,7 +447,7 @@ export function getServerVersionCatalog(): Record<
   );
 }
 
-export function getServerTypes(): ServerType[] {
+export function getServerTypes(): Exclude<ServerType, ProxyType>[] {
   return ["vanilla", "paper", "purpur", "spigot"];
 }
 
