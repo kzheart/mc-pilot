@@ -2,7 +2,11 @@ import { Command } from "commander";
 
 import { buildServerSearchResults } from "../download/SearchCommand.js";
 import { downloadServerJarToCache } from "../download/server/ServerDownloader.js";
-import type { ServerType } from "../download/VersionMatrix.js";
+import {
+  isProxyType,
+  PROXY_MATRIX,
+  type ServerType,
+} from "../download/VersionMatrix.js";
 import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
 import { invalidParams, noProject } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
@@ -37,7 +41,10 @@ export function createServerCommand() {
   command
     .command("search")
     .description("Search available server versions")
-    .option("--type <type>", "Server type: vanilla|paper|purpur|spigot")
+    .option(
+      "--type <type>",
+      "Server type: vanilla|paper|purpur|spigot|velocity|bungeecord",
+    )
     .option("--version <version>", "Minecraft version")
     .action(
       wrapCommand(
@@ -61,9 +68,12 @@ export function createServerCommand() {
     .argument("<name>", "Server instance name (e.g. paper-1.20.4)")
     .option(
       "--type <type>",
-      "Server type: vanilla|paper|purpur|spigot (default: paper)",
+      "Server type: vanilla|paper|purpur|spigot|velocity|bungeecord (default: paper)",
     )
-    .option("--version <version>", "Minecraft version (default: 1.21.4)")
+    .option(
+      "--version <version>",
+      "Minecraft version (default: 1.21.4); for proxy types this is the proxy version",
+    )
     .option("--build <build>", "Specific build number")
     .option("--port <number>", "Server port (auto-assigned if omitted)", Number)
     .option("--jvm-args <args>", "JVM arguments (comma-separated)")
@@ -94,7 +104,11 @@ export function createServerCommand() {
         ) => {
           const project = requireProject(context);
           const serverType = (options.type ?? "paper") as InstanceServerType;
-          const version = options.version ?? "1.21.4";
+          const version =
+            options.version ??
+            (isProxyType(serverType)
+              ? PROXY_MATRIX[serverType].defaultVersion
+              : "1.21.4");
 
           const downloadResult = await downloadServerJarToCache({
             type: serverType,
@@ -106,7 +120,7 @@ export function createServerCommand() {
             context.globalState,
             project,
           );
-          return manager.create({
+          const created = await manager.create({
             name: args[0]!,
             project,
             type: serverType,
@@ -117,6 +131,10 @@ export function createServerCommand() {
             onlineMode: options.onlineMode,
             cachedJarPath: downloadResult.cachePath,
           });
+          if (options.eula && isProxyType(serverType)) {
+            return { ...created, eulaIgnored: true };
+          }
+          return created;
         },
       ),
     );
@@ -171,9 +189,11 @@ export function createServerCommand() {
     .description("Update server instance settings (server must be stopped)")
     .argument("[name]", "Server instance name (default: from active profile)")
     .option("--port <number>", "New server port", Number)
-    .option("--online-mode <bool>", "Enable or disable Mojang authentication", (
-      value,
-    ) => value === "true")
+    .option(
+      "--online-mode <bool>",
+      "Enable or disable Mojang authentication (for proxies this is written to the proxy config)",
+      (value) => value === "true",
+    )
     .action(
       wrapCommand(
         async (

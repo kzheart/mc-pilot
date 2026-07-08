@@ -975,3 +975,30 @@ test("CLI request commands honor explicit timeout overrides", async () => {
     await harness.cleanup();
   }
 });
+
+test("server search with velocity type lists proxy entry", async () => {
+  const harness = await createRequestTestHarness();
+
+  try {
+    const result = await harness.runCli([
+      "server",
+      "search",
+      "--type",
+      "velocity",
+    ]);
+    assert.equal(result.success, true);
+    const results = (
+      result.data as {
+        results: Array<{
+          type: string;
+          versions: Array<{ version: string }>;
+        }>;
+      }
+    ).results;
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.type, "velocity");
+    assert.equal(results[0]?.versions[0]?.version, "3.4.0");
+  } finally {
+    await harness.cleanup();
+  }
+});
