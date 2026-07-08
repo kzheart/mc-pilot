@@ -1,0 +1,25 @@
+{
+  "required": false,
+  "package": "com.mct.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [],
+  "client": [
+    "AbstractSignEditScreenAccessor",
+    "BossBarHudMixin",
+    "ChatHudMixin",
+    "DeathScreenMixin",
+    "HandledScreenAccessor",
+    "InGameHudAccessor",
+    "InGameHudStateMixin",
+    "KeyboardInvokerBridge",
+    "KeyBindingAccessor",
+    "MinecraftClientFocusMixin",
+    "MinecraftClientTickMixin",
+    "MouseInvokerBridge",
+    "PlayerListHudMixin",
+    "ServerResourcePackManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
