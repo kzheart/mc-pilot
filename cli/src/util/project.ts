@@ -8,9 +8,16 @@ import {
 } from "./paths.js";
 
 export interface MctProfile {
-  server: string;
+  /** Single backend server (legacy field, still supported). */
+  server?: string;
+  /** Backend servers; takes precedence over `server` when non-empty. */
+  servers?: string[];
+  /** Proxy instance name (velocity/bungeecord) fronting the backends. */
+  proxy?: string;
   clients: string[];
   deployPlugins?: string[];
+  /** Plugin JARs deployed to the proxy instance instead of backends. */
+  proxyPlugins?: string[];
 }
 
 export interface MctProjectFile {
@@ -148,4 +155,11 @@ export function resolveProfile(
   }
 
   return projectFile.profiles[name] ?? null;
+}
+
+export function resolveBackendNames(profile: MctProfile): string[] {
+  if (profile.servers && profile.servers.length > 0) {
+    return profile.servers;
+  }
+  return profile.server ? [profile.server] : [];
 }

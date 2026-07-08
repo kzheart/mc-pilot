@@ -6,6 +6,7 @@ import { WebSocketClient } from "../client/WebSocketClient.js";
 import { appendTimelineEntry } from "../record/recording-state.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
 import { ERROR_MESSAGES, invalidParams } from "../util/errors.js";
+import { resolveBackendNames, type MctProfile } from "../util/project.js";
 import { wrapCommand } from "../util/command.js";
 
 export interface RequestPayload<TOptions> {
@@ -61,10 +62,7 @@ export function resolvePreferredClientName(
 }
 
 type InstanceNameContext = {
-  activeProfile: {
-    server?: string;
-    clients?: string[];
-  } | null;
+  activeProfile: MctProfile | null;
 };
 
 export function resolveInstanceName(
@@ -75,7 +73,9 @@ export function resolveInstanceName(
   const profileName =
     kind === "client"
       ? context.activeProfile?.clients?.[0]
-      : context.activeProfile?.server;
+      : context.activeProfile
+        ? resolveBackendNames(context.activeProfile)[0]
+        : undefined;
   const instanceName = explicitName ?? profileName;
   if (!instanceName) {
     throw invalidParams(

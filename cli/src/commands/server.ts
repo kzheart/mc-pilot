@@ -7,6 +7,7 @@ import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
 import { invalidParams, noProject } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import type { ServerType as InstanceServerType } from "../util/instance-types.js";
+import type { MctProfile } from "../util/project.js";
 import { resolveInstanceName } from "./request-helpers.js";
 
 function requireProject(context: { projectId: string | null }): string {
@@ -21,7 +22,7 @@ function requireProject(context: { projectId: string | null }): string {
 function resolveServerName(
   context: {
     projectId: string | null;
-    activeProfile: { server: string } | null;
+    activeProfile: MctProfile | null;
   },
   explicit?: string,
 ): string {

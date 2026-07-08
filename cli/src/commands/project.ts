@@ -9,6 +9,7 @@ import {
   createDefaultProjectFile,
   loadProjectFileForCwd,
   resolveProjectFilePath,
+  resolveBackendNames,
   resolveProfile,
   writeProjectFile,
 } from "../util/project.js";
@@ -74,6 +75,18 @@ export function createDeployCommand() {
             );
           }
 
+          const backendName = resolveBackendNames(profile)[0];
+          if (!backendName) {
+            throw new MctError(
+              {
+                code: "NO_PROFILE",
+                message:
+                  "Profile has no backend server configured (set 'server' or 'servers')",
+              },
+              4,
+            );
+          }
+
           if (!profile.deployPlugins || profile.deployPlugins.length === 0) {
             return {
               deployed: [],
@@ -86,12 +99,12 @@ export function createDeployCommand() {
             projectId,
           );
           const deployed = await manager.deploy(
-            profile.server,
+            backendName,
             profile.deployPlugins,
             projectRootDir,
           );
 
-          return { deployed, server: profile.server };
+          return { deployed, server: backendName };
         },
       ),
     );
@@ -151,24 +164,36 @@ export function createUpCommand() {
           const clientManager = new ClientInstanceManager(context.globalState);
           const results: Record<string, unknown> = {};
 
+          const backendName = resolveBackendNames(profile)[0];
+          if (!backendName) {
+            throw new MctError(
+              {
+                code: "NO_PROFILE",
+                message:
+                  "Profile has no backend server configured (set 'server' or 'servers')",
+              },
+              4,
+            );
+          }
+
           // 1. Deploy plugins
           if (profile.deployPlugins && profile.deployPlugins.length > 0) {
             results.deployed = await serverManager.deploy(
-              profile.server,
+              backendName,
               profile.deployPlugins,
               projectRootDir,
             );
           }
 
           // 2. Start server
-          results.server = await serverManager.start(profile.server, {
+          results.server = await serverManager.start(backendName, {
             eula: options.eula,
           });
 
           // 3. Wait for server
-          const serverMeta = await serverManager.loadMeta(profile.server);
+          const serverMeta = await serverManager.loadMeta(backendName);
           results.serverReady = await serverManager.waitReady(
-            profile.server,
+            backendName,
             context.timeout("serverReady"),
           );
 
@@ -267,7 +292,18 @@ export function createDownCommand() {
           results.clients = clientResults;
 
           // Stop server
-          const serverResult = await serverManager.stop(profile.server);
+          const backendName = resolveBackendNames(profile)[0];
+          if (!backendName) {
+            throw new MctError(
+              {
+                code: "NO_PROFILE",
+                message:
+                  "Profile has no backend server configured (set 'server' or 'servers')",
+              },
+              4,
+            );
+          }
+          const serverResult = await serverManager.stop(backendName);
           results.server = serverResult;
 
           const everythingAccountedFor =
