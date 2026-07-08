@@ -8,7 +8,8 @@
     "1.20.4",
     "1.21.1",
     "1.21.4",
-    "1.21.11"
+    "1.21.11",
+    "26.2"
   ],
   "variants": [
     {
@@ -242,6 +243,45 @@
       "yarnNeoforgePatch": "1.21+build.6",
       "javaVersion": 21,
       "gradleModule": "version-1.21.11-neoforge"
+    },
+    {
+      "id": "26.2-fabric",
+      "minecraftVersion": "26.2",
+      "loader": "fabric",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "fabricLoaderVersion": "0.19.3",
+      "mappings": "mojang",
+      "gradleBuild": "mc26",
+      "javaVersion": 25,
+      "gradleModule": "version-26.2"
+    },
+    {
+      "id": "26.2-forge",
+      "minecraftVersion": "26.2",
+      "loader": "forge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "forgeVersion": "65.0.3",
+      "mappings": "mojang",
+      "gradleBuild": "mc26",
+      "javaVersion": 25,
+      "gradleModule": "version-26.2-forge"
+    },
+    {
+      "id": "26.2-neoforge",
+      "minecraftVersion": "26.2",
+      "loader": "neoforge",
+      "support": "ready",
+      "validation": "verified",
+      "modVersion": "0.9.1",
+      "neoforgeVersion": "26.2.0.8-beta",
+      "mappings": "mojang",
+      "gradleBuild": "mc26",
+      "javaVersion": 25,
+      "gradleModule": "version-26.2-neoforge"
     }
   ]
 }

@@ -16,6 +16,7 @@ val variantCatalog = JsonSlurper().parse(file("variants.json")) as Map<*, *>
 val buildableVariants = (variantCatalog["variants"] as List<*>)
     .filterIsInstance<Map<*, *>>()
     .filter { it["gradleModule"] != null }
+    .filter { it["gradleBuild"] == null }
 val includedVariants = buildableVariants
     .filter { (it["javaVersion"] as Number).toInt() <= javaVersionMajor }
 val variantsByModule = includedVariants.associateBy { it["gradleModule"].toString() }
