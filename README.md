@@ -7,7 +7,7 @@ Automated testing framework for Minecraft plugins and mods. Control a real Minec
 - **Real client** — Controls a real Minecraft client via Fabric/Forge Mod, natively compatible with all server features
 - **AI-driven** — All operations exposed as CLI commands, designed for AI agents (e.g. Claude Code) to call
 - **Zero intrusion** — Test plugins as-is, no modifications needed
-- **Multi-version** — Supports Minecraft 1.18.2 ~ 1.21.4 (Fabric), plus Forge for 1.20.1/1.20.2/1.20.4
+- **Multi-version** — Supports Minecraft 1.18.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (23 variants)
 - **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
 - **Proxy networks** — Velocity/BungeeCord topologies with automatic forwarding configuration for cross-server testing
 
@@ -323,14 +323,28 @@ mct block get 200 64 200              # confirm block WAS broken
 | Version | Loader | Status |
 |---|---|---|
 | 1.18.2 | Fabric | Supported |
+| 1.18.2 | Forge | Supported |
 | 1.20.1 | Fabric | Supported |
 | 1.20.1 | Forge | Supported (limited validation) |
+| 1.20.1 | NeoForge | Supported |
 | 1.20.2 | Fabric | Supported |
 | 1.20.2 | Forge | Supported (limited validation) |
+| 1.20.2 | NeoForge | Supported (limited validation) |
 | 1.20.4 | Fabric | Supported (default) |
 | 1.20.4 | Forge | Supported (limited validation) |
+| 1.20.4 | NeoForge | Supported |
 | 1.21.1 | Fabric | Supported |
+| 1.21.1 | Forge | Supported |
+| 1.21.1 | NeoForge | Supported |
 | 1.21.4 | Fabric | Supported |
+| 1.21.4 | Forge | Supported |
+| 1.21.4 | NeoForge | Supported (limited validation) |
+| 1.21.11 | Fabric | Supported |
+| 1.21.11 | Forge | Supported |
+| 1.21.11 | NeoForge | Supported (limited validation) |
+| 26.2 | Fabric | Supported |
+| 26.2 | Forge | Supported |
+| 26.2 | NeoForge | Supported |
 
 ## Project Structure
 

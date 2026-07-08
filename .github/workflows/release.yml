@@ -20,6 +20,7 @@ jobs:
           java-version: |
             17
             21
+            25
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -27,10 +28,17 @@ jobs:
         run: ./gradlew build -q
         working-directory: client-mod
 
+      - name: Build mc26 mod variants
+        run: ./gradlew build -q
+        working-directory: client-mod/mc26
+
       - name: Collect mod JARs
         run: |
           mkdir -p release-artifacts
           for dir in client-mod/version-*/build/libs; do
+            cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
+          done
+          for dir in client-mod/mc26/version-*/build/libs; do
             cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
           done
           ls -la release-artifacts/
