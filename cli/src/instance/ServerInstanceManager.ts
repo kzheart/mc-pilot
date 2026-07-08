@@ -31,6 +31,7 @@ import {
   killProcessTree,
 } from "../util/process.js";
 import { copyFileIfMissing } from "../download/DownloadUtils.js";
+import { getServerFlavor } from "./server-flavor.js";
 import { ServerCommandPipe } from "./ServerCommandPipe.js";
 import {
   ServerLogManager,
@@ -146,7 +147,7 @@ export class ServerInstanceManager {
       await copyFileIfMissing(jarPath, targetJar);
     }
 
-    if (options.eula) {
+    if (options.eula && getServerFlavor(options.type).supportsEula) {
       await writeFile(
         path.join(instanceDir, "eula.txt"),
         "eula=true\n",
@@ -156,10 +157,6 @@ export class ServerInstanceManager {
 
     const onlineMode = options.onlineMode ?? false;
     await mkdir(path.join(instanceDir, "plugins"), { recursive: true });
-    await ensureServerProperties(instanceDir, {
-      "server-port": String(port),
-      "online-mode": String(onlineMode),
-    });
 
     const meta: ServerInstanceMeta = {
       name: options.name,
@@ -173,6 +170,8 @@ export class ServerInstanceManager {
       onlineMode,
       createdAt: new Date().toISOString(),
     };
+
+    await getServerFlavor(options.type).syncConfig({ instanceDir, meta });
 
     await writeFile(
       path.join(instanceDir, INSTANCE_FILE),
@@ -202,6 +201,7 @@ export class ServerInstanceManager {
     }
 
     const meta = await this.loadMeta(serverName);
+    const flavor = getServerFlavor(meta.type);
     await this.waitPortReleased(meta.port, START_PORT_GRACE_MS);
     await this.assertPortFree(meta.port);
     const instanceDir = resolveServerInstanceDir(this.project, serverName);
@@ -217,17 +217,14 @@ export class ServerInstanceManager {
       );
     }
 
-    if (options.eula) {
+    if (options.eula && flavor.supportsEula) {
       await writeFile(
         path.join(instanceDir, "eula.txt"),
         "eula=true\n",
         "utf8",
       );
     }
-    await ensureServerProperties(instanceDir, {
-      "server-port": String(meta.port),
-      "online-mode": String(meta.onlineMode ?? false),
-    });
+    await flavor.syncConfig({ instanceDir, meta });
 
     const mctHome = resolveMctHome();
     const logsDir = path.join(mctHome, "logs");
@@ -262,10 +259,7 @@ export class ServerInstanceManager {
         "-c",
         'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
         "mct-server",
-        ...jvmArgs,
-        "-jar",
-        jarFile,
-        "nogui",
+        ...flavor.buildLaunchArgs(jvmArgs, jarFile),
       ],
       {
         cwd: instanceDir,
@@ -790,15 +784,13 @@ export class ServerInstanceManager {
     if (updates.port !== undefined) {
       await this.assertPortFree(updates.port);
       meta.port = updates.port;
-      await ensureServerPortProperty(instanceDir, updates.port);
     }
 
     if (updates.onlineMode !== undefined) {
       meta.onlineMode = updates.onlineMode;
-      await ensureServerProperties(instanceDir, {
-        "online-mode": String(updates.onlineMode),
-      });
     }
+
+    await getServerFlavor(meta.type).syncConfig({ instanceDir, meta });
 
     await writeFile(
       path.join(instanceDir, INSTANCE_FILE),

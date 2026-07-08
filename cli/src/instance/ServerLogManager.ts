@@ -195,9 +195,13 @@ export class ServerLogManager {
   }
 }
 
-function detectServerStartupPhase(lines: string[]) {
+export function detectServerStartupPhase(lines: string[]) {
   const joined = lines.join("\n");
-  if (/Done \(.+\)! For help, type "help"/.test(joined)) {
+  if (
+    /Done \(.+\)! For help, type "help"/.test(joined) ||
+    /Done \(\d+\.\d+s?\)!/.test(joined) ||
+    /Listening on \//.test(joined)
+  ) {
     return "ready";
   }
   if (/Preparing start region|Preparing level/.test(joined)) {
@@ -207,7 +211,7 @@ function detectServerStartupPhase(lines: string[]) {
     return "binding-port";
   }
   if (
-    /Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version/.test(
+    /Loading libraries, please wait|Starting org\.bukkit\.craftbukkit\.Main|Starting minecraft server version|Booting up|Enabled BungeeCord/.test(
       joined,
     )
   ) {
