@@ -211,6 +211,19 @@ export async function ensureYamlSection(
   await writeFile(filePath, `${lines.join("\n")}\n`, "utf8");
 }
 
+async function ensureYamlSectionIfExists(
+  filePath: string,
+  sectionPath: string[],
+  entries: Record<string, string | number | boolean>,
+): Promise<void> {
+  try {
+    await readFile(filePath, "utf8");
+  } catch {
+    return;
+  }
+  await ensureYamlSection(filePath, sectionPath, entries);
+}
+
 export async function ensureBackendForwarding(
   instanceDir: string,
   backendType: ServerType,
@@ -244,33 +257,32 @@ export async function ensureBackendForwarding(
     effectiveMode = "legacy";
   }
 
+  const paperGlobalPath = path.join(instanceDir, "config", "paper-global.yml");
+  const paperYmlPath = path.join(instanceDir, "paper.yml");
+  const spigotYmlPath = path.join(instanceDir, "spigot.yml");
+
   if (
     effectiveMode === "modern" &&
     (backendType === "paper" || backendType === "purpur")
   ) {
     if (compareMcVersions(mcVersion, "1.19") >= 0) {
-      const configDir = path.join(instanceDir, "config");
-      await mkdir(configDir, { recursive: true });
-      await ensureYamlSection(
-        path.join(configDir, "paper-global.yml"),
-        ["proxies", "velocity"],
-        {
-          enabled: true,
-          "online-mode": false,
-          secret,
-        },
-      );
+      await mkdir(path.join(instanceDir, "config"), { recursive: true });
+      await ensureYamlSection(paperGlobalPath, ["proxies", "velocity"], {
+        enabled: true,
+        "online-mode": false,
+        secret,
+      });
     } else if (compareMcVersions(mcVersion, "1.13") >= 0) {
-      await ensureYamlSection(
-        path.join(instanceDir, "paper.yml"),
-        ["settings", "velocity-support"],
-        {
-          enabled: true,
-          "online-mode": false,
-          secret,
-        },
-      );
+      await ensureYamlSection(paperYmlPath, ["settings", "velocity-support"], {
+        enabled: true,
+        "online-mode": false,
+        secret,
+      });
     }
+    // 关掉残留的 legacy 转发,两种模式同时开启会让 Paper 行为不可预期
+    await ensureYamlSectionIfExists(spigotYmlPath, ["settings"], {
+      bungeecord: false,
+    });
   }
 
   if (
@@ -279,11 +291,19 @@ export async function ensureBackendForwarding(
       backendType === "purpur" ||
       backendType === "spigot")
   ) {
-    await ensureYamlSection(
-      path.join(instanceDir, "spigot.yml"),
-      ["settings"],
+    await ensureYamlSection(spigotYmlPath, ["settings"], {
+      bungeecord: true,
+    });
+    // 关掉残留的 velocity modern 转发,否则 Paper 拒绝 legacy 握手
+    // ("This server requires you to connect with Velocity")
+    await ensureYamlSectionIfExists(paperGlobalPath, ["proxies", "velocity"], {
+      enabled: false,
+    });
+    await ensureYamlSectionIfExists(
+      paperYmlPath,
+      ["settings", "velocity-support"],
       {
-        bungeecord: true,
+        enabled: false,
       },
     );
   }

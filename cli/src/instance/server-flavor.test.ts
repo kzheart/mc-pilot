@@ -79,6 +79,7 @@ test("renderVelocityToml modern with servers", () => {
   assert.match(output, /player-info-forwarding-mode = "modern"/);
   assert.match(output, /b1 = "127\.0\.0\.1:25566"/);
   assert.match(output, /try = \["b1"\]/);
+  assert.match(output, /\[forced-hosts\]/);
 });
 
 test("renderVelocityToml legacy mode", () => {

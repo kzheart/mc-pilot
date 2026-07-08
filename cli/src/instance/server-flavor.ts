@@ -97,6 +97,10 @@ export function renderVelocityToml(meta: ServerInstanceMeta): string {
     ...serverLines,
     `try = [${tryEntries}]`,
     "",
+    // 必须显式写空段:缺失时 Velocity 会套用带 lobby.example.com 示例的
+    // 内置默认 forced-hosts,引用不存在的服务器导致启动校验失败
+    "[forced-hosts]",
+    "",
   ];
 
   return lines.join("\n");

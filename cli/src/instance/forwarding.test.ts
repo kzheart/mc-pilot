@@ -249,3 +249,32 @@ test("ensureBackendForwarding_vanilla_warns", async () => {
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("ensureBackendForwarding_mode_switch_disables_stale_config", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-forwarding-"));
+
+  try {
+    // modern first: paper-global.yml gets velocity enabled
+    await ensureBackendForwarding(tempDir, "paper", "1.21.4", "modern", "s1");
+    const paperGlobal = path.join(tempDir, "config", "paper-global.yml");
+    assert.match(await readFile(paperGlobal, "utf8"), /enabled: true/);
+
+    // switch to legacy: spigot.yml on, stale velocity config off
+    await ensureBackendForwarding(tempDir, "paper", "1.21.4", "legacy", "");
+    assert.match(
+      await readFile(path.join(tempDir, "spigot.yml"), "utf8"),
+      /bungeecord: true/,
+    );
+    assert.match(await readFile(paperGlobal, "utf8"), /enabled: false/);
+
+    // switch back to modern: velocity re-enabled, bungeecord off
+    await ensureBackendForwarding(tempDir, "paper", "1.21.4", "modern", "s2");
+    assert.match(await readFile(paperGlobal, "utf8"), /enabled: true/);
+    assert.match(
+      await readFile(path.join(tempDir, "spigot.yml"), "utf8"),
+      /bungeecord: false/,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
