@@ -59,7 +59,8 @@ function ensureSupportedVariant(variant: ModVariant) {
 
   if (
     variant.loader === "fabric" &&
-    (!variant.fabricLoaderVersion || !variant.yarnMappings)
+    (!variant.fabricLoaderVersion ||
+      (!variant.yarnMappings && variant.mappings !== "mojang"))
   ) {
     throw new MctError(
       {
@@ -126,14 +127,17 @@ export async function resolveArtifact(
   const artifactFileName = getModArtifactFileName(variant);
   const gradleModule =
     variant.gradleModule ?? `version-${variant.minecraftVersion}`;
-  const buildArtifactPath = path.join(
-    cwd,
-    "client-mod",
-    gradleModule,
-    "build",
-    "libs",
-    artifactFileName,
-  );
+  const buildArtifactPath = variant.gradleBuild
+    ? path.join(
+        cwd,
+        "client-mod",
+        variant.gradleBuild,
+        gradleModule,
+        "build",
+        "libs",
+        artifactFileName,
+      )
+    : path.join(cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   // 1. Check local build artifact

@@ -18,6 +18,7 @@ export interface ModVariant {
   modVersion?: string;
   fabricLoaderVersion?: string;
   yarnMappings?: string;
+  mappings?: string;
   forgeVersion?: string;
   neoforgeVersion?: string;
   loomPlatform?: string;
@@ -25,6 +26,7 @@ export interface ModVariant {
   yarnNeoforgePatch?: string;
   javaVersion?: number;
   gradleModule?: string;
+  gradleBuild?: string;
   notes?: string;
 }
 

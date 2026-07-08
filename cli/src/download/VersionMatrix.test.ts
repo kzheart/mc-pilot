@@ -14,8 +14,9 @@ import {
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
-  assert.equal(matrix.length, 10);
+  assert.equal(matrix.length, 11);
   assert.deepEqual(getSupportedMinecraftVersions(), [
+    "26.2",
     "1.21.11",
     "1.21.4",
     "1.21.1",
