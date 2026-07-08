@@ -8,7 +8,12 @@ import { MctError } from "../../util/errors.js";
 import { CacheManager } from "../CacheManager.js";
 import { copyFileIfMissing, downloadFile } from "../DownloadUtils.js";
 import { proxyAwareFetch } from "../HttpClient.js";
-import { getMinecraftSupport, type ServerType } from "../VersionMatrix.js";
+import {
+  getMinecraftSupport,
+  isProxyType,
+  PROXY_MATRIX,
+  type ServerType,
+} from "../VersionMatrix.js";
 
 const SERVER_DOWNLOAD_BASE_URLS: Record<
   Extract<ServerType, "paper" | "purpur">,
@@ -16,8 +21,7 @@ const SERVER_DOWNLOAD_BASE_URLS: Record<
 > = {
   // PaperMC 旧版 v2 API 已于 2025 年下线(410 sunset),现用 Fill v3
   paper:
-    process.env.MCT_PAPER_API_BASE_URL ||
-    "https://fill.papermc.io/v3/projects",
+    process.env.MCT_PAPER_API_BASE_URL || "https://fill.papermc.io/v3/projects",
   purpur: process.env.MCT_PURPUR_API_BASE_URL || "https://api.purpurmc.org/v2",
 };
 
@@ -27,6 +31,8 @@ const MOJANG_VERSION_MANIFEST_URL =
 const SPIGOT_BUILD_TOOLS_URL =
   process.env.MCT_SPIGOT_BUILDTOOLS_URL ||
   "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar";
+const BUNGEE_JENKINS_BASE =
+  process.env.MCT_BUNGEE_JENKINS_URL || "https://ci.md-5.net/job/BungeeCord";
 
 const execFileAsync = promisify(execFile);
 type ExecFileLike = (
@@ -132,7 +138,8 @@ async function resolveVanillaDownloadSpec(
   };
 }
 
-async function resolvePaperDownloadUrl(
+async function resolveFillDownloadUrl(
+  project: "paper" | "velocity",
   version: string,
   build: string,
   fetchImpl: typeof fetch,
@@ -140,7 +147,7 @@ async function resolvePaperDownloadUrl(
   const buildInfo = await fetchJsonWithRetry<{
     downloads?: Record<string, { url?: string }>;
   }>(
-    `${SERVER_DOWNLOAD_BASE_URLS.paper}/paper/versions/${version}/builds/${build}`,
+    `${SERVER_DOWNLOAD_BASE_URLS.paper}/${project}/versions/${version}/builds/${build}`,
     fetchImpl,
   );
   const serverDownload = buildInfo.downloads?.["server:default"];
@@ -148,7 +155,7 @@ async function resolvePaperDownloadUrl(
     throw new MctError(
       {
         code: "DOWNLOAD_FAILED",
-        message: `Paper ${version} build ${build} has no server download`,
+        message: `${project} ${version} build ${build} has no server download`,
         details: {
           version,
           build,
@@ -159,6 +166,33 @@ async function resolvePaperDownloadUrl(
   }
 
   return serverDownload.url;
+}
+
+async function resolveBungeeBuild(
+  build: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<string> {
+  if (build && build !== "lastSuccessful") {
+    return build;
+  }
+  const info = await fetchJsonWithRetry<{ number?: number }>(
+    `${BUNGEE_JENKINS_BASE}/lastSuccessfulBuild/api/json`,
+    fetchImpl,
+  );
+  if (!info.number) {
+    throw new MctError(
+      {
+        code: "DOWNLOAD_FAILED",
+        message: "Failed to resolve latest BungeeCord build from Jenkins",
+      },
+      2,
+    );
+  }
+  return String(info.number);
+}
+
+function bungeeDownloadUrl(build: string): string {
+  return `${BUNGEE_JENKINS_BASE}/${build}/artifact/bootstrap/target/BungeeCord.jar`;
 }
 
 async function buildSpigotServerJar(
@@ -244,6 +278,42 @@ async function buildSpigotServerJar(
 
 export function resolveServerDownloadSpec(options: DownloadServerOptions) {
   const type = options.type ?? "paper";
+
+  if (isProxyType(type)) {
+    if (type === "velocity") {
+      const version = options.version ?? PROXY_MATRIX.velocity.defaultVersion;
+      const build =
+        options.build ?? String(PROXY_MATRIX.velocity.latestBuild ?? "");
+      if (!build) {
+        throw new MctError(
+          {
+            code: "INVALID_PARAMS",
+            message: `velocity ${version} requires an explicit build`,
+          },
+          4,
+        );
+      }
+      return {
+        type,
+        version,
+        build,
+        fileName: `velocity-${version}-${build}.jar`,
+        // 实际下载地址需异步查询 Fill API,在下载时解析
+        downloadUrl: "",
+      };
+    }
+
+    const build = options.build ?? "lastSuccessful";
+    return {
+      type,
+      version: "latest",
+      build,
+      fileName: `bungeecord-${build}.jar`,
+      // 实际 build 号与下载地址在下载时经 Jenkins API 解析
+      downloadUrl: "",
+    };
+  }
+
   const resolvedVersion = options.version ?? "1.21.4";
   const versionEntry = getMinecraftSupport(resolvedVersion);
 
@@ -311,40 +381,70 @@ export async function downloadServerJarToCache(
   const execFileImpl = (dependencies.execFileImpl ??
     execFileAsync) as ExecFileLike;
   const spec = resolveServerDownloadSpec(options);
+
+  // bungeecord 缺省 build 需先经 Jenkins 解析出真实 build 号,保证缓存 key 稳定
+  let resolvedSpec = spec;
+  if (spec.type === "bungeecord" && spec.build === "lastSuccessful") {
+    const realBuild = await resolveBungeeBuild(undefined, fetchImpl);
+    resolvedSpec = {
+      ...spec,
+      build: realBuild,
+      fileName: `bungeecord-${realBuild}.jar`,
+    };
+  }
+
   const cachePath =
-    spec.type === "spigot"
+    resolvedSpec.type === "spigot"
       ? (
           await buildSpigotServerJar(
-            spec.version,
+            resolvedSpec.version,
             cacheManager,
             fetchImpl,
             execFileImpl,
           )
         ).cachePath
-      : cacheManager.getServerJarPath(spec.type, spec.version, spec.build);
+      : cacheManager.getServerJarPath(
+          resolvedSpec.type,
+          resolvedSpec.version,
+          resolvedSpec.build,
+        );
 
-  if (spec.type !== "spigot") {
+  if (resolvedSpec.type !== "spigot") {
     try {
       await access(cachePath);
     } catch {
       // 缓存命中时不发起网络请求,仅在需要下载时解析实际地址
       const downloadUrl =
-        spec.type === "vanilla"
-          ? (await resolveVanillaDownloadSpec(spec.version, fetchImpl))
+        resolvedSpec.type === "vanilla"
+          ? (await resolveVanillaDownloadSpec(resolvedSpec.version, fetchImpl))
               .downloadUrl
-          : spec.type === "paper"
-            ? await resolvePaperDownloadUrl(spec.version, spec.build, fetchImpl)
-            : spec.downloadUrl;
+          : resolvedSpec.type === "paper"
+            ? await resolveFillDownloadUrl(
+                "paper",
+                resolvedSpec.version,
+                resolvedSpec.build,
+                fetchImpl,
+              )
+            : resolvedSpec.type === "velocity"
+              ? await resolveFillDownloadUrl(
+                  "velocity",
+                  resolvedSpec.version,
+                  resolvedSpec.build,
+                  fetchImpl,
+                )
+              : resolvedSpec.type === "bungeecord"
+                ? bungeeDownloadUrl(resolvedSpec.build)
+                : resolvedSpec.downloadUrl;
       await downloadFile(downloadUrl, cachePath, fetchImpl);
     }
   }
 
   return {
     downloaded: true,
-    type: spec.type,
-    version: spec.version,
-    build: spec.build,
+    type: resolvedSpec.type,
+    version: resolvedSpec.version,
+    build: resolvedSpec.build,
     cachePath,
-    fileName: spec.fileName,
+    fileName: resolvedSpec.fileName,
   };
 }

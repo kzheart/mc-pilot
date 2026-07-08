@@ -111,6 +111,170 @@ test("downloadServerJarToCache can resolve vanilla server metadata", async () =>
   }
 });
 
+test("velocity spec uses PROXY_MATRIX defaults", () => {
+  const spec = resolveServerDownloadSpec({ type: "velocity" });
+
+  assert.equal(spec.version, "3.4.0");
+  assert.equal(spec.build, "566");
+  assert.equal(spec.fileName, "velocity-3.4.0-566.jar");
+});
+
+test("velocity download hits Fill v3 with server:default key", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
+  const cacheRoot = path.join(tempDir, "cache");
+  const jarBytes = Buffer.from("velocity-jar");
+  const requests: string[] = [];
+
+  try {
+    const result = await downloadServerJarToCache(
+      { type: "velocity" },
+      {
+        cacheManager: new CacheManager(cacheRoot),
+        fetchImpl: async (url: string | URL | Request) => {
+          const text = String(url);
+          requests.push(text);
+          if (/velocity\/versions\/3\.4\.0\/builds\/566$/.test(text)) {
+            return Response.json({
+              downloads: {
+                "server:default": {
+                  url: "https://downloads.example/velocity-3.4.0-566.jar",
+                },
+              },
+            });
+          }
+          assert.equal(
+            text,
+            "https://downloads.example/velocity-3.4.0-566.jar",
+          );
+          return new Response(jarBytes, { status: 200 });
+        },
+      },
+    );
+
+    assert.equal(requests.length, 2);
+    assert.match(requests[0], /velocity\/versions\/3\.4\.0\/builds\/566$/);
+    assert.equal(
+      requests[1],
+      "https://downloads.example/velocity-3.4.0-566.jar",
+    );
+    assert.equal(await readFile(result.cachePath, "utf8"), "velocity-jar");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("bungeecord default build resolves via Jenkins API", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
+  const cacheRoot = path.join(tempDir, "cache");
+  const jarBytes = Buffer.from("bungeecord-jar");
+  const requests: string[] = [];
+
+  try {
+    const result = await downloadServerJarToCache(
+      { type: "bungeecord" },
+      {
+        cacheManager: new CacheManager(cacheRoot),
+        fetchImpl: async (url: string | URL | Request) => {
+          const text = String(url);
+          requests.push(text);
+          if (text.includes("lastSuccessfulBuild/api/json")) {
+            return Response.json({ number: 1234 });
+          }
+          assert.match(
+            text,
+            /\/1234\/artifact\/bootstrap\/target\/BungeeCord\.jar$/,
+          );
+          return new Response(jarBytes, { status: 200 });
+        },
+      },
+    );
+
+    assert.equal(result.build, "1234");
+    assert.equal(result.fileName, "bungeecord-1234.jar");
+    assert.equal(requests.length, 2);
+    assert.match(requests[0], /lastSuccessfulBuild\/api\/json$/);
+    assert.match(
+      requests[1],
+      /\/1234\/artifact\/bootstrap\/target\/BungeeCord\.jar$/,
+    );
+    assert.equal(await readFile(result.cachePath, "utf8"), "bungeecord-jar");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("bungeecord explicit build skips Jenkins API", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
+  const cacheRoot = path.join(tempDir, "cache");
+  const jarBytes = Buffer.from("bungeecord-jar");
+  const requests: string[] = [];
+
+  try {
+    const result = await downloadServerJarToCache(
+      { type: "bungeecord", build: "999" },
+      {
+        cacheManager: new CacheManager(cacheRoot),
+        fetchImpl: async (url: string | URL | Request) => {
+          const text = String(url);
+          requests.push(text);
+          assert.match(
+            text,
+            /\/999\/artifact\/bootstrap\/target\/BungeeCord\.jar$/,
+          );
+          return new Response(jarBytes, { status: 200 });
+        },
+      },
+    );
+
+    assert.equal(result.build, "999");
+    assert.equal(requests.length, 1);
+    assert.match(
+      requests[0],
+      /\/999\/artifact\/bootstrap\/target\/BungeeCord\.jar$/,
+    );
+    assert.equal(await readFile(result.cachePath, "utf8"), "bungeecord-jar");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("bungeecord explicit build cache hit performs zero fetches", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
+  const cacheRoot = path.join(tempDir, "cache");
+  const cacheManager = new CacheManager(cacheRoot);
+  const cachePath = cacheManager.getServerJarPath(
+    "bungeecord",
+    "latest",
+    "999",
+  );
+  let fetchCount = 0;
+
+  try {
+    await mkdir(path.dirname(cachePath), { recursive: true });
+    await writeFile(cachePath, "cached-bungeecord-jar", "utf8");
+
+    const result = await downloadServerJarToCache(
+      { type: "bungeecord", build: "999" },
+      {
+        cacheManager,
+        fetchImpl: async () => {
+          fetchCount += 1;
+          throw new Error("fetch should not be called on cache hit");
+        },
+      },
+    );
+
+    assert.equal(fetchCount, 0);
+    assert.equal(result.cachePath, cachePath);
+    assert.equal(
+      await readFile(result.cachePath, "utf8"),
+      "cached-bungeecord-jar",
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadServerJarToCache can build spigot via BuildTools", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
   const cacheRoot = path.join(tempDir, "cache");
