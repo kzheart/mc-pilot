@@ -9,6 +9,7 @@ Automated testing framework for Minecraft plugins and mods. Control a real Minec
 - **Zero intrusion** — Test plugins as-is, no modifications needed
 - **Multi-version** — Supports Minecraft 1.18.2 ~ 1.21.4 (Fabric), plus Forge for 1.20.1/1.20.2/1.20.4
 - **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
+- **Proxy networks** — Velocity/BungeeCord topologies with automatic forwarding configuration for cross-server testing
 
 ## Architecture
 
