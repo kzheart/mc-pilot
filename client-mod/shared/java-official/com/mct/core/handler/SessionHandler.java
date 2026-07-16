@@ -55,7 +55,7 @@ public final class SessionHandler extends ActionHandler {
             players.add(
                 ClientDataHelper.playerListEntryToMap(
                     entry,
-                    client.gui.hud.getTabList().getNameForDisplay(entry),
+                    ClientVersionModulesHolder.get().compatibility().getTabList(client).getNameForDisplay(entry),
                     entry.getTeam()
                 )
             );
@@ -87,7 +87,7 @@ public final class SessionHandler extends ActionHandler {
         }
         PlayerTeam team = entry.get().getTeam();
         return com.mct.core.util.MctMaps.mapOf(
-            "displayName", client.gui.hud.getTabList().getNameForDisplay(entry.get()).getString(),
+            "displayName", ClientVersionModulesHolder.get().compatibility().getTabList(client).getNameForDisplay(entry.get()).getString(),
             "prefix", team != null ? team.getPlayerPrefix().getString() : "",
             "suffix", team != null ? team.getPlayerSuffix().getString() : ""
         );
@@ -100,10 +100,10 @@ public final class SessionHandler extends ActionHandler {
     private Map<String, Object> respawnPlayer() {
         LocalPlayer player = requirePlayer();
         boolean wasDead = player.isDeadOrDying() || player.getHealth() <= 0.0F;
-        boolean wasOnDeathScreen = client.gui.screen() instanceof DeathScreen;
+        boolean wasOnDeathScreen = ClientVersionModulesHolder.get().compatibility().getScreen(client) instanceof DeathScreen;
         player.respawn();
         if (wasOnDeathScreen) {
-            client.gui.setScreen(null);
+            ClientVersionModulesHolder.get().compatibility().setScreen(client, null);
         }
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("requested", true);
@@ -121,7 +121,8 @@ public final class SessionHandler extends ActionHandler {
             throw new ActionException("INVALID_PARAMS");
         }
 
-        Screen parent = client.gui.screen() != null ? client.gui.screen() : new TitleScreen();
+        Screen currentScreen = ClientVersionModulesHolder.get().compatibility().getScreen(client);
+        Screen parent = currentScreen != null ? currentScreen : new TitleScreen();
         ServerAddress serverAddress = ServerAddress.parseString(address);
         ClientVersionModulesHolder.get().reconnect().connect(client, parent, serverAddress, address);
         return com.mct.core.util.MctMaps.mapOf("connecting", true, "address", address);

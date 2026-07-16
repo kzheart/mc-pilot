@@ -120,7 +120,7 @@ public abstract class ActionHandler {
     }
 
     protected AbstractContainerScreen<?> requireHandledScreen() {
-        if (!(client.gui.screen() instanceof AbstractContainerScreen<?> handledScreen)) {
+        if (!(ClientVersionModulesHolder.get().compatibility().getScreen(client) instanceof AbstractContainerScreen<?> handledScreen)) {
             throw new ActionException("GUI_NOT_OPEN");
         }
         return handledScreen;

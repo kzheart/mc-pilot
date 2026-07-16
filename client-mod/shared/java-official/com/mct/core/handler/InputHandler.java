@@ -149,7 +149,8 @@ public final class InputHandler extends ActionHandler {
     private Map<String, Object> inputType(Map<String, Object> params) {
         String text = getString(params, "text");
         runOnClientThread(() -> {
-            if (client.gui.screen() == null || client.gui.overlay() != null) {
+            if (ClientVersionModulesHolder.get().compatibility().getScreen(client) == null
+                || ClientVersionModulesHolder.get().compatibility().getOverlay(client) != null) {
                 throw new ActionException("INVALID_STATE");
             }
             long window = client.getWindow().handle();

@@ -32,12 +32,16 @@ export function createSignCommand() {
       'Four lines of text, e.g. --lines "Line 1" "Line 2" "Line 3" "Line 4"',
     )
     .action(
-      createRequestAction("sign.edit", ({ args, options }) => ({
-        x: Number(args[0]),
-        y: Number(args[1]),
-        z: Number(args[2]),
-        lines: options.lines,
-      }), () => 30),
+      createRequestAction(
+        "sign.edit",
+        ({ args, options }) => ({
+          x: Number(args[0]),
+          y: Number(args[1]),
+          z: Number(args[2]),
+          lines: options.lines,
+        }),
+        () => 30,
+      ),
     );
 
   return command;

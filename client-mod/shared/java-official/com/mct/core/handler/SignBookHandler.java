@@ -65,7 +65,7 @@ public final class SignBookHandler extends ActionHandler {
         BlockPos pos = runOnClientThread(() -> {
             SignBlockEntity sign = requireSign(params);
             BlockPos target = sign.getBlockPos();
-            if (!ClientVersionModulesHolder.get().sign().isSignEditScreen(client.gui.screen())) {
+            if (!ClientVersionModulesHolder.get().sign().isSignEditScreen(ClientVersionModulesHolder.get().compatibility().getScreen(client))) {
                 LocalPlayer player = requirePlayer();
                 ClientVersionModulesHolder.get().interaction().interactBlock(
                     requireInteractionManager(), player, InteractionHand.MAIN_HAND,
@@ -75,16 +75,16 @@ public final class SignBookHandler extends ActionHandler {
             return target;
         });
 
-        pollUntil(3.0D, () -> ClientVersionModulesHolder.get().sign().isSignEditScreen(client.gui.screen()), Boolean::booleanValue);
+        pollUntil(3.0D, () -> ClientVersionModulesHolder.get().sign().isSignEditScreen(ClientVersionModulesHolder.get().compatibility().getScreen(client)), Boolean::booleanValue);
 
         runOnClientThread(() -> {
             LocalPlayer player = requirePlayer();
-            if (ClientVersionModulesHolder.get().sign().isSignEditScreen(client.gui.screen())) {
-                Object accessor = client.gui.screen();
+            if (ClientVersionModulesHolder.get().sign().isSignEditScreen(ClientVersionModulesHolder.get().compatibility().getScreen(client))) {
+                Object accessor = ClientVersionModulesHolder.get().compatibility().getScreen(client);
                 for (int index = 0; index < values.length; index++) {
                     ClientVersionModulesHolder.get().sign().editSignLine(accessor, index, values[index]);
                 }
-                client.gui.setScreen(null);
+                ClientVersionModulesHolder.get().compatibility().setScreen(client, null);
             }
             ClientVersionModulesHolder.get().sign().sendSignUpdate(player, pos, values);
             return true;

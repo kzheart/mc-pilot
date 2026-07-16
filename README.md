@@ -7,7 +7,7 @@ Automated testing framework for Minecraft plugins and mods. Control a real Minec
 - **Real client** — Controls a real Minecraft client via Fabric/Forge Mod, natively compatible with all server features
 - **AI-driven** — All operations exposed as CLI commands, designed for AI agents (e.g. Claude Code) to call
 - **Zero intrusion** — Test plugins as-is, no modifications needed
-- **Multi-version** — Supports Minecraft 1.18.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (23 variants)
+- **Multi-version** — Supports Minecraft 1.18.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (26 variants)
 - **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
 - **Proxy networks** — Velocity/BungeeCord topologies with automatic forwarding configuration for cross-server testing
 
@@ -34,7 +34,7 @@ AI / Test Script
 ### Requirements
 
 - Node.js >= 20
-- Java 17+ (to run Minecraft)
+- Java matching the selected Minecraft version (Java 25+ for 26.x; use `--java <command>` when it is not the default `java`)
 
 ### Install
 
@@ -50,6 +50,9 @@ mct init --name my-plugin
 
 # Create a Paper server instance for this project
 mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
+
+# Minecraft 26.x requires Java 25
+mct server create vanilla-26.1 --type vanilla --version 26.1 --java /path/to/java-25 --eula
 
 # Create a Fabric client instance
 mct client create fabric-1.20.4 --version 1.20.4
@@ -342,9 +345,14 @@ mct block get 200 64 200              # confirm block WAS broken
 | 1.21.11 | Fabric | Supported |
 | 1.21.11 | Forge | Supported |
 | 1.21.11 | NeoForge | Supported (limited validation) |
+| 26.1 | Fabric | Supported |
+| 26.1 | Forge | Supported |
+| 26.1 | NeoForge | Supported |
 | 26.2 | Fabric | Supported |
 | 26.2 | Forge | Supported |
 | 26.2 | NeoForge | Supported |
+
+For exact Minecraft 26.1 servers, only Vanilla is available. Paper, Purpur, and Spigot do not publish an exact 26.1 artifact; Spigot's `26.1` BuildTools alias currently resolves to 26.1.2, so it is intentionally rejected instead of being reported as exact support.
 
 ## Project Structure
 

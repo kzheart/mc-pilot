@@ -1,11 +1,10 @@
 package com.mct.mixin;
 
-import net.minecraft.client.gui.Hud;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(Hud.class)
+@Mixin(targets = {"net.minecraft.client.gui.Gui", "net.minecraft.client.gui.Hud"})
 public interface InGameHudAccessor {
 
     @Accessor("overlayMessageString")

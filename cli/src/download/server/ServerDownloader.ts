@@ -51,6 +51,7 @@ export interface DownloadServerOptions {
   type?: ServerType;
   version?: string;
   build?: string;
+  javaCommand?: string;
   dir?: string;
   fixtures?: string;
 }
@@ -197,6 +198,7 @@ function bungeeDownloadUrl(build: string): string {
 
 async function buildSpigotServerJar(
   version: string,
+  javaCommand: string,
   cacheManager: CacheManager,
   fetchImpl: typeof fetch,
   execFileImpl: ExecFileLike,
@@ -236,7 +238,7 @@ async function buildSpigotServerJar(
 
   await mkdir(buildDir, { recursive: true });
   await execFileImpl(
-    "java",
+    javaCommand,
     [
       "-jar",
       buildToolsJarPath,
@@ -327,6 +329,16 @@ export function resolveServerDownloadSpec(options: DownloadServerOptions) {
     );
   }
 
+  if (!versionEntry.servers[type].supported) {
+    throw new MctError(
+      {
+        code: "UNSUPPORTED_VERSION",
+        message: `${type} does not publish an exact ${resolvedVersion} server artifact`,
+      },
+      4,
+    );
+  }
+
   if (type === "vanilla") {
     return {
       type,
@@ -398,6 +410,7 @@ export async function downloadServerJarToCache(
       ? (
           await buildSpigotServerJar(
             resolvedSpec.version,
+            options.javaCommand ?? "java",
             cacheManager,
             fetchImpl,
             execFileImpl,

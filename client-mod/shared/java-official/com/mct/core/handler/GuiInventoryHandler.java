@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
@@ -258,9 +259,10 @@ public final class GuiInventoryHandler extends ActionHandler {
     }
 
     private Map<String, Object> closeGui() {
-        if (client.gui.screen() != null) {
-            client.gui.screen().onClose();
-            client.gui.setScreen(null);
+        Screen screen = currentScreen();
+        if (screen != null) {
+            screen.onClose();
+            ClientVersionModulesHolder.get().compatibility().setScreen(client, null);
             client.mouseHandler.grabMouse();
         }
         return com.mct.core.util.MctMaps.mapOf("success", true);
@@ -271,7 +273,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         Map<String, Object> result = pollOnClientThread(
             timeoutSeconds,
             () -> {
-                if (client.gui.screen() == null) {
+                if (currentScreen() == null) {
                     return com.mct.core.util.MctMaps.mapOf();
                 }
                 return ClientDataHelper.screenToMap(client);
@@ -288,7 +290,7 @@ public final class GuiInventoryHandler extends ActionHandler {
         Map<String, Object> result = pollOnClientThread(
             timeoutSeconds,
             () -> {
-                if (client.gui.screen() == null) {
+                if (currentScreen() == null) {
                     return com.mct.core.util.MctMaps.mapOf();
                 }
                 String current = screenFingerprint();
@@ -356,21 +358,26 @@ public final class GuiInventoryHandler extends ActionHandler {
     }
 
     private String screenFingerprint() {
-        if (client.gui.screen() == null) {
+        Screen screen = currentScreen();
+        if (screen == null) {
             return "none";
         }
-        if (client.gui.screen() instanceof AbstractContainerScreen<?> handledScreen) {
+        if (screen instanceof AbstractContainerScreen<?> handledScreen) {
             StringBuilder builder = new StringBuilder();
-            Component title = client.gui.screen().getTitle();
-            builder.append(client.gui.screen().getClass().getName()).append('|').append(title != null ? title.getString() : "");
+            Component title = screen.getTitle();
+            builder.append(screen.getClass().getName()).append('|').append(title != null ? title.getString() : "");
             for (int slot = 0; slot < handledScreen.getMenu().slots.size(); slot++) {
                 ItemStack stack = handledScreen.getMenu().getSlot(slot).getItem();
                 builder.append('|').append(slot).append(':').append(McRegistries.itemId(stack.getItem())).append('#').append(stack.getCount());
             }
             return builder.toString();
         }
-        Component title = client.gui.screen().getTitle();
-        return client.gui.screen().getClass().getName() + "|" + (title != null ? title.getString() : "");
+        Component title = screen.getTitle();
+        return screen.getClass().getName() + "|" + (title != null ? title.getString() : "");
+    }
+
+    private Screen currentScreen() {
+        return ClientVersionModulesHolder.get().compatibility().getScreen(client);
     }
 
     private ClickPlan clickPlan(String buttonName, int key) {

@@ -114,6 +114,36 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     },
   },
   {
+    minecraftVersion: "26.1",
+    javaVersion: "25+",
+    servers: {
+      vanilla: { supported: true },
+      paper: { supported: false },
+      purpur: { supported: false },
+      spigot: { supported: false },
+    },
+    clients: {
+      fabric: {
+        supported: true,
+        loaderVersion: "0.19.3",
+        modVersion: "0.9.1",
+        validation: "verified",
+      },
+      forge: {
+        supported: true,
+        loaderVersion: "62.0.9",
+        modVersion: "0.9.1",
+        validation: "verified",
+      },
+      neoforge: {
+        supported: true,
+        loaderVersion: "26.1.0.19-beta",
+        modVersion: "0.9.1",
+        validation: "verified",
+      },
+    },
+  },
+  {
     minecraftVersion: "1.21.11",
     javaVersion: "21+",
     servers: {

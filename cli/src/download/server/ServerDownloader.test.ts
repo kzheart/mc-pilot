@@ -30,6 +30,23 @@ test("resolveServerDownloadSpec resolves vanilla without build metadata", () => 
   assert.equal(spec.fileName, "vanilla-1.20.3.jar");
 });
 
+test("resolveServerDownloadSpec rejects unavailable exact server artifacts", () => {
+  for (const type of ["paper", "purpur", "spigot"] as const) {
+    assert.throws(
+      () =>
+        resolveServerDownloadSpec({
+          type,
+          version: "26.1",
+          build: "1",
+        }),
+      (error: unknown) =>
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "UNSUPPORTED_VERSION",
+    );
+  }
+});
+
 test("downloadServerJarToCache downloads to cache", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
   const cacheRoot = path.join(tempDir, "cache");
@@ -284,6 +301,7 @@ test("downloadServerJarToCache can build spigot via BuildTools", async () => {
       {
         type: "spigot",
         version: "1.20.3",
+        javaCommand: "/opt/java-25/bin/java",
       },
       {
         cacheManager: new CacheManager(cacheRoot),
@@ -292,10 +310,11 @@ test("downloadServerJarToCache can build spigot via BuildTools", async () => {
           return new Response(Buffer.from("buildtools"), { status: 200 });
         },
         execFileImpl: async (
-          _command: string,
+          command: string,
           _args: string[],
           options: { cwd?: string },
         ) => {
+          assert.equal(command, "/opt/java-25/bin/java");
           assert.equal(
             options?.cwd,
             path.join(cacheRoot, "server", "spigot", "build", "1.20.3"),

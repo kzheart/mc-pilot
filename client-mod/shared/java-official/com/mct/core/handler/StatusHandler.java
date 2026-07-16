@@ -53,7 +53,7 @@ public final class StatusHandler extends ActionHandler {
 
         long startedAt = System.currentTimeMillis();
         if (getBoolean(params, "untilGuiOpen", false)) {
-            pollOnClientThread(timeoutSeconds, () -> client.gui.screen() != null, Boolean::booleanValue, "TIMEOUT");
+            pollOnClientThread(timeoutSeconds, () -> ClientVersionModulesHolder.get().compatibility().getScreen(client) != null, Boolean::booleanValue, "TIMEOUT");
         }
         if (params != null && params.get("untilHealthAbove") != null) {
             double threshold = getDouble(params, "untilHealthAbove");
@@ -70,14 +70,14 @@ public final class StatusHandler extends ActionHandler {
 
         return com.mct.core.util.MctMaps.mapOf(
             "waitedSeconds", Duration.ofMillis(System.currentTimeMillis() - startedAt + waitMillis).toMillis() / 1000.0D,
-            "guiOpen", runOnClientThread(() -> client.gui.screen() != null),
+            "guiOpen", runOnClientThread(() -> ClientVersionModulesHolder.get().compatibility().getScreen(client) != null),
             "onGround", runOnClientThread(() -> requirePlayer().onGround())
         );
     }
 
     private Map<String, Object> healthStatus() {
         LocalPlayer player = requirePlayer();
-        boolean onDeathScreen = client.gui.screen() instanceof DeathScreen;
+        boolean onDeathScreen = ClientVersionModulesHolder.get().compatibility().getScreen(client) instanceof DeathScreen;
         boolean isDead = player.isDeadOrDying() || player.getHealth() <= 0.0F;
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("health", player.getHealth());

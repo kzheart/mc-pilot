@@ -1,6 +1,7 @@
 package com.mct.mixin;
 
 import com.mct.core.state.ClientStateTracker;
+import com.mct.version.ClientVersionModulesHolder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -40,7 +41,7 @@ public abstract class DeathScreenMixin extends Screen {
             Minecraft client = Minecraft.getInstance();
             if (client.player != null) {
                 client.player.respawn();
-                client.gui.setScreen(null);
+                ClientVersionModulesHolder.get().compatibility().setScreen(client, null);
             }
         }
     }

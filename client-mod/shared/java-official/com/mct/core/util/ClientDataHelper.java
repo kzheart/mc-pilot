@@ -145,7 +145,7 @@ public final class ClientDataHelper {
 
     public static Map<String, Object> screenToMap(Minecraft client) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-        Screen screen = client.gui.screen();
+        Screen screen = ClientVersionModulesHolder.get().compatibility().getScreen(client);
         if (screen == null) {
             result.put("open", false);
             return result;

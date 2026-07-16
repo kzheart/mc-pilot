@@ -137,7 +137,14 @@ export async function resolveArtifact(
         "libs",
         artifactFileName,
       )
-    : path.join(cwd, "client-mod", gradleModule, "build", "libs", artifactFileName);
+    : path.join(
+        cwd,
+        "client-mod",
+        gradleModule,
+        "build",
+        "libs",
+        artifactFileName,
+      );
   const cacheArtifactPath = cacheManager.getModFile(artifactFileName);
 
   // 1. Check local build artifact

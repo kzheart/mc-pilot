@@ -3,7 +3,11 @@ package com.mct.version;
 import com.mct.core.input.KeyboardInputBridge;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.PlayerTabOverlay;
+import net.minecraft.client.gui.screens.Overlay;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
@@ -91,6 +95,32 @@ public interface VersionCompatibility extends ClientWorldAccessor {
         ((KeyboardInputBridge) client.keyboardHandler).mct$onKey(client.getWindow().handle(), keyCode, scancode, action, 0);
     }
 
+    default Screen getScreen(Minecraft client) {
+        Object screen = readField(client, "screen");
+        return (Screen) (screen != null ? screen : invoke(client.gui, "screen"));
+    }
+
+    default void setScreen(Minecraft client, Screen screen) {
+        if (!invokeVoid(client, "setScreen", new Class<?>[] { Screen.class }, new Object[] { screen })) {
+            invokeVoid(client.gui, "setScreen", new Class<?>[] { Screen.class }, new Object[] { screen });
+        }
+    }
+
+    default Overlay getOverlay(Minecraft client) {
+        Object overlay = invoke(client, "getOverlay");
+        return (Overlay) (overlay != null ? overlay : invoke(client.gui, "overlay"));
+    }
+
+    default PlayerTabOverlay getTabList(Minecraft client) {
+        Object hud = readField(client.gui, "hud");
+        return (PlayerTabOverlay) invoke(hud != null ? hud : client.gui, "getTabList");
+    }
+
+    default RenderTarget getMainRenderTarget(Minecraft client) {
+        Object target = invoke(client, "getMainRenderTarget");
+        return (RenderTarget) (target != null ? target : invoke(client.gameRenderer, "mainRenderTarget"));
+    }
+
     static Object readField(Object target, String name) {
         try {
             Field field = target.getClass().getField(name);
@@ -123,6 +153,16 @@ public interface VersionCompatibility extends ClientWorldAccessor {
             return method.invoke(target, args);
         } catch (ReflectiveOperationException ignored) {
             return null;
+        }
+    }
+
+    static boolean invokeVoid(Object target, String name, Class<?>[] parameterTypes, Object[] args) {
+        try {
+            Method method = target.getClass().getMethod(name, parameterTypes);
+            method.invoke(target, args);
+            return true;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
         }
     }
 

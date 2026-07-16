@@ -123,7 +123,7 @@ public final class VersionAdaptersImpl {
     }
 
     private static boolean pressResourcePackPromptButton(Minecraft client, boolean accept) {
-        Screen screen = client.gui.screen();
+        Screen screen = ClientVersionModulesHolder.get().compatibility().getScreen(client);
         if (screen == null || !isResourcePackPrompt(screen)) {
             return false;
         }

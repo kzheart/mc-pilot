@@ -102,9 +102,13 @@ test("ServerInstanceManager.create writes server.properties with the assigned po
       type: "paper",
       version: "1.20.4",
       port: 25569,
+      javaCommand: "/opt/java-25/bin/java",
+      javaVersion: 25,
     });
 
     assert.equal(meta.port, 25569);
+    assert.equal(meta.javaCommand, "/opt/java-25/bin/java");
+    assert.equal(meta.javaVersion, 25);
 
     const propertiesPath = path.join(
       process.env.MCT_HOME!,
@@ -115,6 +119,15 @@ test("ServerInstanceManager.create writes server.properties with the assigned po
     );
     const content = await readFile(propertiesPath, "utf8");
     assert.match(content, /^server-port=25569$/m);
+
+    const instance = JSON.parse(
+      await readFile(
+        path.join(path.dirname(propertiesPath), "instance.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(instance.javaCommand, "/opt/java-25/bin/java");
+    assert.equal(instance.javaVersion, 25);
   } finally {
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
@@ -259,12 +272,7 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
 function spawnFifoReader(fifoPath: string) {
   const reader = spawn(
     "bash",
-    [
-      "-c",
-      'IFS= read -r line < "$1"; printf "%s" "$line"',
-      "reader",
-      fifoPath,
-    ],
+    ["-c", 'IFS= read -r line < "$1"; printf "%s" "$line"', "reader", fifoPath],
     {
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -987,7 +995,11 @@ test("ServerInstanceManager.waitReady rejects a port owned by an unrelated proce
       "server-demo-paper.log",
     );
     await mkdir(path.dirname(logPath), { recursive: true });
-    await writeFile(logPath, 'Starting minecraft server version 1.20.4\n', "utf8");
+    await writeFile(
+      logPath,
+      "Starting minecraft server version 1.20.4\n",
+      "utf8",
+    );
 
     const stateDir = path.join(process.env.MCT_HOME!, "state");
     await mkdir(stateDir, { recursive: true });
@@ -1081,7 +1093,9 @@ test("ServerInstanceManager.configure updates the port and syncs server.properti
 });
 
 test("ServerInstanceManager.configure refuses to change a running server", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-config-run-"));
+  const tempDir = await mkdtemp(
+    path.join(os.tmpdir(), "mct-server-config-run-"),
+  );
   const previousHome = process.env.MCT_HOME;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 

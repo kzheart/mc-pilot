@@ -1,14 +1,16 @@
 import { Command } from "commander";
 
 import { buildServerSearchResults } from "../download/SearchCommand.js";
+import { detectJava } from "../download/JavaDetector.js";
 import { downloadServerJarToCache } from "../download/server/ServerDownloader.js";
 import {
+  getMinecraftSupport,
   isProxyType,
   PROXY_MATRIX,
   type ServerType,
 } from "../download/VersionMatrix.js";
 import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
-import { invalidParams, noProject } from "../util/errors.js";
+import { invalidParams, MctError, noProject } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import type { ServerType as InstanceServerType } from "../util/instance-types.js";
 import type { MctProfile } from "../util/project.js";
@@ -31,6 +33,60 @@ function resolveServerName(
   explicit?: string,
 ): string {
   return resolveInstanceName(context, explicit, "server");
+}
+
+export async function resolveServerJava(
+  type: ServerType,
+  version: string,
+  command = "java",
+  detectJavaImpl: typeof detectJava = detectJava,
+) {
+  const support = isProxyType(type) ? undefined : getMinecraftSupport(version);
+  if (!isProxyType(type) && !support?.servers[type].supported) {
+    throw new MctError(
+      {
+        code: "UNSUPPORTED_VERSION",
+        message: `Unsupported ${type} version ${version}`,
+      },
+      4,
+    );
+  }
+
+  const requirement = isProxyType(type)
+    ? PROXY_MATRIX[type].javaVersion
+    : support!.javaVersion;
+  const requiredVersion = Number.parseInt(requirement, 10);
+  const detected = await detectJavaImpl(command);
+
+  if (!detected.available) {
+    throw new MctError(
+      {
+        code: "JAVA_NOT_FOUND",
+        message: `Java ${requiredVersion}+ is required for ${type} ${version}`,
+        details: { command: detected.command },
+      },
+      4,
+    );
+  }
+
+  if ((detected.majorVersion ?? 0) < requiredVersion) {
+    throw new MctError(
+      {
+        code: "JAVA_VERSION_TOO_LOW",
+        message: `Java ${requiredVersion}+ is required for ${type} ${version}`,
+        details: {
+          detected: detected.majorVersion,
+          command: detected.command,
+        },
+      },
+      4,
+    );
+  }
+
+  return {
+    javaCommand: detected.command,
+    javaVersion: detected.majorVersion,
+  };
 }
 
 export function createServerCommand() {
@@ -77,6 +133,7 @@ export function createServerCommand() {
     .option("--build <build>", "Specific build number")
     .option("--port <number>", "Server port (auto-assigned if omitted)", Number)
     .option("--jvm-args <args>", "JVM arguments (comma-separated)")
+    .option("--java <command>", "Java command to use")
     .option("--eula", "Auto-accept EULA")
     .option(
       "--online-mode",
@@ -97,6 +154,7 @@ export function createServerCommand() {
               build?: string;
               port?: number;
               jvmArgs?: string;
+              java?: string;
               eula?: boolean;
               onlineMode?: boolean;
             };
@@ -110,10 +168,17 @@ export function createServerCommand() {
               ? PROXY_MATRIX[serverType].defaultVersion
               : "1.21.4");
 
+          const java = await resolveServerJava(
+            serverType,
+            version,
+            options.java,
+          );
+
           const downloadResult = await downloadServerJarToCache({
             type: serverType,
             version,
             build: options.build,
+            javaCommand: java.javaCommand,
           });
 
           const manager = new ServerInstanceManager(
@@ -127,6 +192,8 @@ export function createServerCommand() {
             version,
             port: options.port,
             jvmArgs: options.jvmArgs?.split(",").map((a) => a.trim()) ?? [],
+            javaCommand: java.javaCommand,
+            javaVersion: java.javaVersion,
             eula: options.eula,
             onlineMode: options.onlineMode,
             cachedJarPath: downloadResult.cachePath,

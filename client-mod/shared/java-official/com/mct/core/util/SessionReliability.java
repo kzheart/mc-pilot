@@ -30,7 +30,8 @@ public final class SessionReliability {
         }
 
         int maxAttempts = parseMaxAttempts();
-        if (maxAttempts <= 0 || reconnectAttempts >= maxAttempts || !isReconnectableScreen(client.gui.screen())) {
+        Screen currentScreen = ClientVersionModulesHolder.get().compatibility().getScreen(client);
+        if (maxAttempts <= 0 || reconnectAttempts >= maxAttempts || !isReconnectableScreen(currentScreen)) {
             return false;
         }
 
@@ -41,13 +42,13 @@ public final class SessionReliability {
 
         reconnectAttempts++;
         lastReconnectAttemptAt = now;
-        Screen parent = client.gui.screen() != null ? client.gui.screen() : new TitleScreen();
+        Screen parent = currentScreen != null ? currentScreen : new TitleScreen();
         ClientVersionModulesHolder.get().reconnect().connect(client, parent, ServerAddress.parseString(address), address);
         return true;
     }
 
     public static String disconnectReason(Minecraft client) {
-        MapLikeScreen screen = MapLikeScreen.from(client.gui.screen());
+        MapLikeScreen screen = MapLikeScreen.from(ClientVersionModulesHolder.get().compatibility().getScreen(client));
         if (screen == null || !screen.isDisconnectLike()) {
             return "";
         }
@@ -55,7 +56,7 @@ public final class SessionReliability {
     }
 
     public static String screenCategory(Minecraft client) {
-        MapLikeScreen screen = MapLikeScreen.from(client.gui.screen());
+        MapLikeScreen screen = MapLikeScreen.from(ClientVersionModulesHolder.get().compatibility().getScreen(client));
         if (screen == null) {
             return "game";
         }

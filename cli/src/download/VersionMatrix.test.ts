@@ -14,9 +14,10 @@ import {
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
-  assert.equal(matrix.length, 11);
+  assert.equal(matrix.length, 12);
   assert.deepEqual(getSupportedMinecraftVersions(), [
     "26.2",
+    "26.1",
     "1.21.11",
     "1.21.4",
     "1.21.1",
@@ -39,6 +40,24 @@ test("getVersionMatrix exposes documented server and client support entries", ()
   assert.equal(latest.clients.forge.loaderVersion, "61.1.8");
   assert.equal(latest.clients.neoforge.supported, true);
   assert.equal(latest.clients.neoforge.loaderVersion, "21.11.42");
+});
+
+test("Minecraft 26.1 exposes exact available server and client support", () => {
+  const support = getMinecraftSupport("26.1");
+
+  assert.ok(support);
+  assert.equal(support.javaVersion, "25+");
+  assert.equal(support.servers.vanilla.supported, true);
+  assert.equal(support.servers.spigot.supported, false);
+  assert.equal(support.servers.paper.supported, false);
+  assert.equal(support.servers.purpur.supported, false);
+  assert.deepEqual(
+    Object.values(support.clients).map((client) => client.validation),
+    ["verified", "verified", "verified"],
+  );
+  assert.equal(support.clients.fabric.loaderVersion, "0.19.3");
+  assert.equal(support.clients.forge.loaderVersion, "62.0.9");
+  assert.equal(support.clients.neoforge.loaderVersion, "26.1.0.19-beta");
 });
 
 test("searchServerVersions can filter by type and version", () => {

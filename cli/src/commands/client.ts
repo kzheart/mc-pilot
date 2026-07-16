@@ -161,7 +161,10 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this launch (default)")
     .option("--no-mute", "Keep in-game audio enabled for this launch")
-    .option("--no-server", "Launch without connecting to the active profile server")
+    .option(
+      "--no-server",
+      "Launch without connecting to the active profile server",
+    )
     .option(
       "--force",
       "Kill any existing client with the same name before launching",
