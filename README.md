@@ -352,7 +352,7 @@ mct block get 200 64 200              # confirm block WAS broken
 | 26.2 | Forge | Supported |
 | 26.2 | NeoForge | Supported |
 
-For exact Minecraft 26.1 servers, only Vanilla is available. Paper, Purpur, and Spigot do not publish an exact 26.1 artifact; Spigot's `26.1` BuildTools alias currently resolves to 26.1.2, so it is intentionally rejected instead of being reported as exact support.
+For exact Minecraft 26.1 servers, only Vanilla is available. Paper does not publish a `26.1` artifact, but the Fabric 26.1 client is verified to join Paper 26.1.1 build 29 and Paper 26.1.2 build 74. `mct client search --loader fabric --version 26.1` and `mct server search --type paper --version 26.1.2` expose these verified pairings so agents can select the tested client/server combination. Paper 26.2 build 60 and Vanilla 26.2 are also verified with the Fabric 26.2 client. Purpur and Spigot combinations remain unverified.
 
 ## Project Structure
 

@@ -61,3 +61,18 @@ test("resolveServerJava rejects unsupported exact server artifacts", async () =>
       error.code === "UNSUPPORTED_VERSION",
   );
 });
+
+test("resolveServerJava accepts Java 25 for a verified Paper 26.1.2 server", async () => {
+  const result = await resolveServerJava(
+    "paper",
+    "26.1.2",
+    "/opt/java-25/bin/java",
+    async (command) => ({
+      available: true,
+      command: command ?? "java",
+      majorVersion: 25,
+    }),
+  );
+
+  assert.equal(result.javaVersion, 25);
+});

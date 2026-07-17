@@ -42,3 +42,12 @@ jobs:
       - name: Validate client-mod (all versions)
         run: ./gradlew build -x test -q
         working-directory: client-mod
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Validate Minecraft 26.x client-mod variants
+        run: ./gradlew build -x test -q
+        working-directory: client-mod/mc26

@@ -6,6 +6,8 @@ import {
   type ClientLoader,
   type ProxyType,
   type ServerType,
+  type VerifiedClientInfo,
+  type VerifiedServerInfo,
 } from "./VersionMatrix.js";
 
 export interface ServerSearchCommandResult {
@@ -14,6 +16,7 @@ export interface ServerSearchCommandResult {
     version: string;
     build?: string;
     requiresBuildTools?: boolean;
+    verifiedClients?: readonly VerifiedClientInfo[];
   }>;
 }
 
@@ -27,6 +30,7 @@ export interface ClientSearchCommandResult {
     modVersion?: string;
     validation?: "verified" | "limited" | "planned";
     notes?: string;
+    verifiedServers?: readonly VerifiedServerInfo[];
   }>;
 }
 
@@ -81,6 +85,9 @@ export function buildServerSearchResults(filter?: {
         ? { build: String(entry.latestBuild) }
         : {}),
       ...(entry.requiresBuildTools ? { requiresBuildTools: true } : {}),
+      ...(entry.verifiedClients?.length
+        ? { verifiedClients: entry.verifiedClients }
+        : {}),
     });
     grouped.set(entry.type, current);
   }
@@ -117,6 +124,9 @@ export function buildClientSearchResults(filter?: {
       ...(entry.modVersion ? { modVersion: entry.modVersion } : {}),
       ...(entry.validation ? { validation: entry.validation } : {}),
       ...(entry.notes ? { notes: entry.notes } : {}),
+      ...(entry.verifiedServers?.length
+        ? { verifiedServers: entry.verifiedServers }
+        : {}),
     });
     grouped.set(entry.minecraftVersion, current);
   }

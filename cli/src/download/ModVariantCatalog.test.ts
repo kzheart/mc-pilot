@@ -35,6 +35,8 @@ test("getBuildableFabricVariants only returns variants with build metadata", asy
   assert.deepEqual(
     variants.map((variant) => variant.id),
     [
+      "26.2-fabric",
+      "26.1-fabric",
       "1.21.11-fabric",
       "1.21.4-fabric",
       "1.21.1-fabric",

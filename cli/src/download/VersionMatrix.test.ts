@@ -14,9 +14,11 @@ import {
 test("getVersionMatrix exposes documented server and client support entries", () => {
   const matrix = getVersionMatrix();
 
-  assert.equal(matrix.length, 12);
+  assert.equal(matrix.length, 14);
   assert.deepEqual(getSupportedMinecraftVersions(), [
     "26.2",
+    "26.1.2",
+    "26.1.1",
     "26.1",
     "1.21.11",
     "1.21.4",
@@ -58,6 +60,45 @@ test("Minecraft 26.1 exposes exact available server and client support", () => {
   assert.equal(support.clients.fabric.loaderVersion, "0.19.3");
   assert.equal(support.clients.forge.loaderVersion, "62.0.9");
   assert.equal(support.clients.neoforge.loaderVersion, "26.1.0.19-beta");
+});
+
+test("Minecraft 26.1 patch servers expose the verified 26.1 Fabric client", () => {
+  for (const [version, build] of [
+    ["26.1.1", 29],
+    ["26.1.2", 74],
+  ] as const) {
+    const support = getMinecraftSupport(version);
+
+    assert.ok(support);
+    assert.equal(support.servers.paper.supported, true);
+    assert.equal(support.servers.paper.latestBuild, build);
+    assert.deepEqual(support.servers.paper.verifiedClients, [
+      { minecraftVersion: "26.1", loader: "fabric", build },
+    ]);
+    assert.equal(support.clients.fabric.supported, false);
+  }
+
+  const fabric = searchClientVersions({
+    loader: "fabric",
+    version: "26.1",
+  })[0];
+  assert.deepEqual(fabric?.verifiedServers, [
+    { type: "paper", minecraftVersion: "26.1.2", build: 74 },
+    { type: "paper", minecraftVersion: "26.1.1", build: 29 },
+    { type: "vanilla", minecraftVersion: "26.1" },
+  ]);
+});
+
+test("Minecraft 26.2 records verified Fabric joins for exact servers", () => {
+  const fabric = searchClientVersions({
+    loader: "fabric",
+    version: "26.2",
+  })[0];
+
+  assert.deepEqual(fabric?.verifiedServers, [
+    { type: "vanilla", minecraftVersion: "26.2" },
+    { type: "paper", minecraftVersion: "26.2", build: 60 },
+  ]);
 });
 
 test("searchServerVersions can filter by type and version", () => {

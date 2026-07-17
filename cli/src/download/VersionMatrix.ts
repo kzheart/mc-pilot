@@ -8,11 +8,19 @@ export type ServerType =
   | "velocity"
   | "bungeecord";
 export type ClientLoader = "fabric" | "forge" | "neoforge";
+export type CompatibilityValidation = "verified" | "limited" | "planned";
+
+export interface VerifiedClientInfo {
+  minecraftVersion: string;
+  loader: ClientLoader;
+  build?: number;
+}
 
 export interface ServerSupportInfo {
   supported: boolean;
   latestBuild?: number;
   requiresBuildTools?: boolean;
+  verifiedClients?: readonly VerifiedClientInfo[];
 }
 
 export type ProxyType = "velocity" | "bungeecord";
@@ -37,7 +45,7 @@ export interface ClientLoaderSupportInfo {
   supported: boolean;
   loaderVersion?: string;
   modVersion?: string;
-  validation?: "verified" | "limited" | "planned";
+  validation?: CompatibilityValidation;
   notes?: string;
 }
 
@@ -63,6 +71,7 @@ export interface ServerSearchResult {
   supported: boolean;
   latestBuild?: number;
   requiresBuildTools?: boolean;
+  verifiedClients?: readonly VerifiedClientInfo[];
 }
 
 export interface ServerCatalogEntry {
@@ -77,9 +86,16 @@ export interface ClientSearchResult {
   supported: boolean;
   loaderVersion?: string;
   modVersion?: string;
-  validation?: "verified" | "limited" | "planned";
+  validation?: CompatibilityValidation;
   notes?: string;
   javaVersion: string;
+  verifiedServers?: readonly VerifiedServerInfo[];
+}
+
+export interface VerifiedServerInfo {
+  type: Exclude<ServerType, ProxyType>;
+  minecraftVersion: string;
+  build?: number;
 }
 
 const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
@@ -87,8 +103,17 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     minecraftVersion: "26.2",
     javaVersion: "25+",
     servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 53 },
+      vanilla: {
+        supported: true,
+        verifiedClients: [{ minecraftVersion: "26.2", loader: "fabric" }],
+      },
+      paper: {
+        supported: true,
+        latestBuild: 60,
+        verifiedClients: [
+          { minecraftVersion: "26.2", loader: "fabric", build: 60 },
+        ],
+      },
       purpur: { supported: true, latestBuild: 2607 },
       spigot: { supported: true, requiresBuildTools: true },
     },
@@ -114,10 +139,55 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
     },
   },
   {
-    minecraftVersion: "26.1",
+    minecraftVersion: "26.1.2",
     javaVersion: "25+",
     servers: {
       vanilla: { supported: true },
+      paper: {
+        supported: true,
+        latestBuild: 74,
+        verifiedClients: [
+          { minecraftVersion: "26.1", loader: "fabric", build: 74 },
+        ],
+      },
+      purpur: { supported: false },
+      spigot: { supported: false },
+    },
+    clients: {
+      fabric: { supported: false, notes: "使用已验证兼容的 26.1 客户端" },
+      forge: { supported: false, notes: "未提供精确 26.1.2 客户端变体" },
+      neoforge: { supported: false, notes: "未提供精确 26.1.2 客户端变体" },
+    },
+  },
+  {
+    minecraftVersion: "26.1.1",
+    javaVersion: "25+",
+    servers: {
+      vanilla: { supported: true },
+      paper: {
+        supported: true,
+        latestBuild: 29,
+        verifiedClients: [
+          { minecraftVersion: "26.1", loader: "fabric", build: 29 },
+        ],
+      },
+      purpur: { supported: false },
+      spigot: { supported: false },
+    },
+    clients: {
+      fabric: { supported: false, notes: "使用已验证兼容的 26.1 客户端" },
+      forge: { supported: false, notes: "未提供精确 26.1.1 客户端变体" },
+      neoforge: { supported: false, notes: "未提供精确 26.1.1 客户端变体" },
+    },
+  },
+  {
+    minecraftVersion: "26.1",
+    javaVersion: "25+",
+    servers: {
+      vanilla: {
+        supported: true,
+        verifiedClients: [{ minecraftVersion: "26.1", loader: "fabric" }],
+      },
       paper: { supported: false },
       purpur: { supported: false },
       spigot: { supported: false },
@@ -436,7 +506,36 @@ export function searchServerVersions(filter?: {
       supported: entry.servers[type].supported,
       latestBuild: entry.servers[type].latestBuild,
       requiresBuildTools: entry.servers[type].requiresBuildTools,
+      ...(entry.servers[type].verifiedClients?.length
+        ? { verifiedClients: entry.servers[type].verifiedClients }
+        : {}),
     })),
+  );
+}
+
+function getVerifiedServers(
+  minecraftVersion: string,
+  loader: ClientLoader,
+): VerifiedServerInfo[] {
+  return VERSION_MATRIX.flatMap((entry) =>
+    getServerTypes().flatMap((type) => {
+      const support = entry.servers[type];
+      const verified = support.verifiedClients?.find(
+        (client) =>
+          client.minecraftVersion === minecraftVersion &&
+          client.loader === loader,
+      );
+      if (!verified) {
+        return [];
+      }
+      return [
+        {
+          type,
+          minecraftVersion: entry.minecraftVersion,
+          ...(verified.build != null ? { build: verified.build } : {}),
+        },
+      ];
+    }),
   );
 }
 
@@ -454,6 +553,10 @@ export function searchClientVersions(filter?: {
   return loaders.flatMap((loader) =>
     entries.map<ClientSearchResult>((entry) => {
       const support = overlayClientSupport(entry, loader);
+      const verifiedServers = getVerifiedServers(
+        entry.minecraftVersion,
+        loader,
+      );
       return {
         loader,
         minecraftVersion: entry.minecraftVersion,
@@ -465,6 +568,7 @@ export function searchClientVersions(filter?: {
         ...(support.validation ? { validation: support.validation } : {}),
         ...(support.notes ? { notes: support.notes } : {}),
         javaVersion: entry.javaVersion,
+        ...(verifiedServers.length > 0 ? { verifiedServers } : {}),
       };
     }),
   );

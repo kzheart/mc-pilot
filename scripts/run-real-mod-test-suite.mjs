@@ -8,7 +8,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
-import { getMinecraftSupport } from "../cli/dist/download/VersionMatrix.js";
+import { getMinecraftSupport, searchClientVersions } from "../cli/dist/download/VersionMatrix.js";
 import {
   findDistinctPorts,
   parseCliOptions as parseSharedCliOptions,
@@ -52,22 +52,34 @@ function parseCliOptions(argv) {
   return { selectedGroups, selectedVersions };
 }
 
-function resolveServerType(minecraftVersion) {
+function resolveServerTarget(minecraftVersion, loader) {
+  const client = searchClientVersions({ version: minecraftVersion, loader })[0];
+  const verifiedPaper = client?.verifiedServers
+    ?.filter((server) => server.type === "paper")
+    .at(0);
+  if (verifiedPaper) {
+    return {
+      serverType: verifiedPaper.type,
+      serverVersion: verifiedPaper.minecraftVersion,
+      serverBuild: verifiedPaper.build,
+    };
+  }
+
   const support = getMinecraftSupport(minecraftVersion);
   if (!support) {
     return null;
   }
   if (support.servers.paper.supported) {
-    return "paper";
+    return { serverType: "paper", serverVersion: minecraftVersion };
   }
   if (support.servers.purpur.supported) {
-    return "purpur";
+    return { serverType: "purpur", serverVersion: minecraftVersion };
   }
   if (support.servers.spigot.supported) {
-    return "spigot";
+    return { serverType: "spigot", serverVersion: minecraftVersion };
   }
   if (support.servers.vanilla.supported) {
-    return "vanilla";
+    return { serverType: "vanilla", serverVersion: minecraftVersion };
   }
   return null;
 }
@@ -84,8 +96,11 @@ function resolveVersionMatrix(selectedVersions) {
       continue;
     }
 
-    const serverType = resolveServerType(variant.minecraftVersion);
-    if (!serverType) {
+    const serverTarget = resolveServerTarget(
+      variant.minecraftVersion,
+      variant.loader || "fabric",
+    );
+    if (!serverTarget) {
       skipped.push({
         variantId: variant.id,
         minecraftVersion: variant.minecraftVersion,
@@ -98,7 +113,9 @@ function resolveVersionMatrix(selectedVersions) {
       variantId: variant.id,
       minecraftVersion: variant.minecraftVersion,
       loader: variant.loader || "fabric",
-      serverType
+      gradleBuild: variant.gradleBuild,
+      gradleModule: variant.gradleModule,
+      ...serverTarget,
     });
   }
 
@@ -117,7 +134,10 @@ function getVersionPaths(variantId, minecraftVersion, serverType) {
 }
 
 function javaMajorForMinecraft(minecraftVersion) {
-  const [, minor = "0"] = minecraftVersion.split(".");
+  const [major = "0", minor = "0"] = minecraftVersion.split(".");
+  if (Number.parseInt(major, 10) >= 26) {
+    return 25;
+  }
   return Number.parseInt(minor, 10) >= 21 ? 21 : 17;
 }
 
@@ -166,9 +186,23 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   };
 
   await logLine(`variant build start variant=${entry.variantId}`);
-  const gradleModule = `version-${entry.minecraftVersion}`;
+  const gradleModule = entry.gradleModule || `version-${entry.minecraftVersion}`;
+  const gradleDir = entry.gradleBuild
+    ? path.join(CLIENT_MOD_DIR, entry.gradleBuild)
+    : CLIENT_MOD_DIR;
+  const javaCommand = resolveJavaCommand(entry.minecraftVersion);
+  const javaHome = javaCommand === "java"
+    ? null
+    : path.dirname(path.dirname(javaCommand));
   const buildResult = await runCommand("./gradlew", [`:${gradleModule}:build`, "-q"], {
-    cwd: CLIENT_MOD_DIR,
+    cwd: gradleDir,
+    env: javaHome
+      ? {
+          ...process.env,
+          JAVA_HOME: javaHome,
+          PATH: `${path.join(javaHome, "bin")}:${process.env.PATH || ""}`,
+        }
+      : process.env,
     allowFailure: true,
     timeoutMs: 120_000
   });
@@ -177,7 +211,7 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   }
 
   const artifactFileName = `mct-client-mod-${entry.loader || "fabric"}-${entry.minecraftVersion}.jar`;
-  const buildArtifactPath = path.join(CLIENT_MOD_DIR, gradleModule, "build", "libs", artifactFileName);
+  const buildArtifactPath = path.join(gradleDir, gradleModule, "build", "libs", artifactFileName);
   const cacheArtifactPath = path.join(GLOBAL_CACHE_DIR, "mod", artifactFileName);
   await mkdir(path.dirname(cacheArtifactPath), { recursive: true });
   await copyFile(buildArtifactPath, cacheArtifactPath);
@@ -201,22 +235,26 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
     throw new Error(`Failed to initialize project for ${entry.variantId}: ${initResult.stderr || initResult.stdout}`);
   }
 
-  await logLine(`server create start variant=${entry.variantId} provider=${entry.serverType}`);
+  await logLine(`server create start variant=${entry.variantId} provider=${entry.serverType} serverVersion=${entry.serverVersion}`);
+  const serverCreateArgs = [
+    CLI_PATH,
+    "server",
+    "create",
+    serverName,
+    "--type",
+    entry.serverType,
+    "--version",
+    entry.serverVersion,
+    "--port",
+    String(serverPort),
+    "--eula",
+  ];
+  if (entry.serverBuild != null) {
+    serverCreateArgs.push("--build", String(entry.serverBuild));
+  }
   const serverCreate = await runCommandWithRetry(
     process.execPath,
-    [
-      CLI_PATH,
-      "server",
-      "create",
-      serverName,
-      "--type",
-      entry.serverType,
-      "--version",
-      entry.minecraftVersion,
-      "--port",
-      String(serverPort),
-      "--eula"
-    ],
+    appendJavaOption(serverCreateArgs, entry.serverVersion),
     {
       cwd: paths.projectDir,
       env,

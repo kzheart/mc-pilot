@@ -47,6 +47,17 @@ test("resolveServerDownloadSpec rejects unavailable exact server artifacts", () 
   }
 });
 
+test("resolveServerDownloadSpec resolves verified 26.1 patch Paper artifacts", () => {
+  assert.equal(
+    resolveServerDownloadSpec({ type: "paper", version: "26.1.1" }).fileName,
+    "paper-26.1.1-29.jar",
+  );
+  assert.equal(
+    resolveServerDownloadSpec({ type: "paper", version: "26.1.2" }).fileName,
+    "paper-26.1.2-74.jar",
+  );
+});
+
 test("downloadServerJarToCache downloads to cache", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-server-download-"));
   const cacheRoot = path.join(tempDir, "cache");

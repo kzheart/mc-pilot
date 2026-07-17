@@ -78,8 +78,9 @@ export function getBuildableFabricVariants(catalog: ModVariantCatalog) {
     catalog.variants.filter(
       (variant) =>
         variant.loader === "fabric" &&
-        variant.yarnMappings &&
+        (variant.yarnMappings || variant.mappings === "mojang") &&
         variant.fabricLoaderVersion &&
+        variant.gradleModule &&
         (variant.support === "ready" || variant.support === "configured"),
     ),
   );

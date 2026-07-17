@@ -47,7 +47,7 @@ test("buildClientSearchResults groups loader data by Minecraft version", () => {
     loader: "fabric",
   });
 
-  assert.equal(results.length, 12);
+  assert.equal(results.length, 14);
   assert.equal(results[0]?.version, "26.2");
   assert(
     results.every(
@@ -55,6 +55,36 @@ test("buildClientSearchResults groups loader data by Minecraft version", () => {
         Array.isArray(entry.loaders) && entry.loaders[0]?.loader === "fabric",
     ),
   );
+});
+
+test("search exposes verified cross-patch client and server pairings", () => {
+  assert.deepEqual(
+    buildServerSearchResults({ type: "paper", version: "26.1.2" }),
+    [
+      {
+        type: "paper",
+        versions: [
+          {
+            version: "26.1.2",
+            build: "74",
+            verifiedClients: [
+              { minecraftVersion: "26.1", loader: "fabric", build: 74 },
+            ],
+          },
+        ],
+      },
+    ],
+  );
+
+  const [client] = buildClientSearchResults({
+    loader: "fabric",
+    version: "26.1",
+  });
+  assert.deepEqual(client?.loaders[0]?.verifiedServers, [
+    { type: "paper", minecraftVersion: "26.1.2", build: 74 },
+    { type: "paper", minecraftVersion: "26.1.1", build: 29 },
+    { type: "vanilla", minecraftVersion: "26.1" },
+  ]);
 });
 
 test("buildClientSearchResults carries variant validation metadata into grouped output", () => {
