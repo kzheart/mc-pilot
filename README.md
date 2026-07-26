@@ -1,84 +1,76 @@
 # MC Pilot
 
-Automated testing framework for Minecraft plugins and mods. Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.
+> Automated testing for Minecraft plugins and mods — drive a **real Minecraft client** from the command line, simulate player actions, and verify server-side behavior.
 
-## Features
+[![npm](https://img.shields.io/npm/v/%40kzheart_%2Fmc-pilot?label=npm)](https://www.npmjs.com/package/@kzheart_/mc-pilot)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-- **Real client** — Controls a real Minecraft client via Fabric/Forge Mod, natively compatible with all server features
-- **AI-driven** — All operations exposed as CLI commands, designed for AI agents (e.g. Claude Code) to call
-- **Zero intrusion** — Test plugins as-is, no modifications needed
-- **Multi-version** — Supports Minecraft 1.12.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (27 variants)
-- **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
-- **Proxy networks** — Velocity/BungeeCord topologies with automatic forwarding configuration for cross-server testing
+Unlike protocol-level bots, MC Pilot injects a mod into a genuine Minecraft client, so everything a real player sees — GUIs, scoreboards, titles, resource packs, anvils, villager trades — is observable and scriptable. Every operation is a CLI command with JSON output, which makes it a natural tool for **AI coding agents** (Claude Code, Codex, Cursor, …) to test the plugin they just wrote.
 
-## Architecture
+## Highlights
+
+- **Real client, zero intrusion** — test plugins/mods as-is; the client mod executes actions and reports state, the server needs no changes
+- **AI-first design** — JSON output by default, machine-readable `mct schema`, bundled Coding Agent Skill
+- **Wide version coverage** — Minecraft 1.12.2 – 26.2, Fabric / Forge / NeoForge, 27 client variants
+- **Multiplayer testing** — run multiple clients simultaneously (PvP, trading, cross-player interactions)
+- **Proxy networks** — Velocity / BungeeCord topologies with automatic forwarding configuration
+- **Session recording** — capture mp4 + command timeline + game events, replay them side by side (macOS)
+
+## How It Works
 
 ```
 AI / Test Script
-     │ CLI commands
+     │ CLI commands (JSON in/out)
      ▼
 ┌─────────────────────────────┐
 │  mct CLI (Node.js)          │
-│  Server/client lifecycle    │
+│  server/client lifecycle    │
 │  WebSocket command dispatch │
 └────┬───────────────────┬────┘
-     │ Process mgmt       │ WebSocket
-     ▼                    ▼
-  Paper Server      MC Client + Mod
-  (plugin under     (executes actions /
+     │ process mgmt      │ WebSocket
+     ▼                   ▼
+  Server            MC Client + Mod
+  (plugin under     (executes actions,
    test)             returns state)
 ```
 
 ## Quick Start
 
-### Requirements
-
-- Node.js >= 20
-- Java matching the selected Minecraft version (Java 8 for Forge 1.12.2, Java 25+ for 26.x; use `--java <command>` when it is not the default `java`)
-
-### Install
+**Requirements:** Node.js ≥ 20, plus a Java runtime matching the Minecraft version (Java 8 for Forge 1.12.2, Java 17/21 for 1.18–1.21, Java 25+ for 26.x — pass `--java <command>` when it is not the default `java`).
 
 ```bash
 npm install -g @kzheart_/mc-pilot
 ```
 
-The npm package bundles the `mc-pilot` Coding Agent Skill. Run the interactive
-installer after installation and select any combination of Codex, Claude Code,
-Cursor, Gemini CLI, OpenCode, Windsurf, Copilot, or the standard Agents path:
-
 ```bash
-mct skill install
-```
-
-Selections are saved in `~/.mct/skill-install.json`. Future npm updates
-automatically synchronize the Skill into every selected location. For
-non-interactive installation, set `MCT_SKILL_TARGETS=codex,claude` (or `all` /
-`none`). To show the prompt during the npm lifecycle itself, install with
-`--foreground-scripts`.
-
-### Create Project and Instances
-
-```bash
-# Initialize a project in the current directory
+# 1. Initialize a project in your plugin's directory
 mct init --name my-plugin
 
-# Create a Paper server instance for this project
+# 2. Create a server and a client instance
 mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
-
-# Minecraft 26.x requires Java 25
-mct server create vanilla-26.1 --type vanilla --version 26.1 --java /path/to/java-25 --eula
-
-# Create a Fabric client instance
 mct client create fabric-1.20.4 --version 1.20.4
 
-# Forge 1.12.2 requires Java 8 and supports three selectable Forge builds
-mct client create forge-1.12.2 --loader forge --version 1.12.2 \
-  --forge-version 14.23.5.2864 --java /path/to/java-8
+# 3. Start everything (server + client + plugin deployment)
+mct up --profile 1.20
+
+# 4. Drive the player, verify behavior
+mct chat command "gamemode creative"
+mct move to 100 64 100
+mct block break 100 65 100
+mct inventory get
+mct gui screenshot
+
+# 5. Tear down
+mct down
 ```
 
-Clients default to Simplified Chinese (`zh_cn`) and muted in-game audio. Use `--no-mute` only when a test needs sound.
+Clients default to Simplified Chinese (`zh_cn`) with muted audio (`--no-mute` to opt out).
 
-`mct init` now creates a global project config at `~/.mct/projects/<projectId>/project.json`, where `projectId` is derived from the current directory path. Edit that file to configure the profile that points to the server/client instances you want to use:
+<details>
+<summary><b>Project configuration</b> — profiles, server/client wiring, plugin deployment</summary>
+
+`mct init` creates a global project config at `~/.mct/projects/<projectId>/project.json` (`projectId` is derived from the directory path). Profiles wire instances together:
 
 ```json
 {
@@ -96,296 +88,222 @@ Clients default to Simplified Chinese (`zh_cn`) and muted in-game audio. Use `--
 }
 ```
 
-### Launch and Test
+`mct up` waits for every profile client to join a world. When that is not what you want:
 
 ```bash
-# Start server + client + plugin deployment from the active profile
-mct up --profile 1.20
-
-# Optional: re-enable or force mute audio for a specific launch
-mct client launch fabric-1.20.4 --no-mute
-mct client launch fabric-1.20.4 --mute
-
-# Control the client
-mct chat command "gamemode creative"
-mct move to 100 64 100
-mct block break 100 65 100
-mct inventory get
-mct screenshot
-mct gui screenshot
-
-# Optional: inspect runtime info or export a machine-readable schema for AI agents
-mct info
-mct schema
-
-# Stop
-mct down
+mct up --skip-client-ready   # launch clients but don't block on in-world checks
+mct up --server-only-ok      # server only; skip client launch entirely
 ```
 
-## CLI Commands
+</details>
 
-All commands output JSON by default. Use `--human` for human-readable output.
+<details>
+<summary><b>Non-default versions</b> — 26.x servers, legacy Forge 1.12.2</summary>
 
-| Command | Description |
+```bash
+# Minecraft 26.x requires Java 25
+mct server create vanilla-26.1 --type vanilla --version 26.1 --java /path/to/java-25 --eula
+
+# Forge 1.12.2 requires Java 8; three Forge builds are selectable
+mct client create forge-1.12.2 --loader forge --version 1.12.2 \
+  --forge-version 14.23.5.2864 --java /path/to/java-8
+```
+
+Use `mct client search` / `mct server search` to discover supported versions, loaders, and verified client/server pairings.
+
+</details>
+
+## AI Agent Integration
+
+The npm package bundles the `mc-pilot` Coding Agent Skill. Install it into your agent(s) of choice — Claude Code, Codex, Cursor, Gemini CLI, OpenCode, Windsurf, Copilot, or the standard Agents path:
+
+```bash
+mct skill install
+```
+
+Selections persist in `~/.mct/skill-install.json` and stay in sync automatically on future npm updates (`mct skill sync` / `mct skill status` to manage manually). For non-interactive installs, set `MCT_SKILL_TARGETS=codex,claude` (or `all` / `none`).
+
+Agents can also introspect the full command surface at runtime:
+
+```bash
+mct schema   # machine-readable CLI + WebSocket protocol schema
+mct info     # current project, active profile, state root
+```
+
+## Command Reference
+
+All commands output JSON by default; add `--human` for human-readable output. Run `mct <command> --help` for details.
+
+| Area | Commands |
 |---|---|
-| `mct init` / `mct up` / `mct down` / `mct use` | Project lifecycle and active profile management |
-| `mct info` | Show current project, active profile and global state root |
-| `mct server` | Server management (search/create/start/stop/config/status/logs) |
-| `mct client` | Client management (search/create/launch/stop/list/wait-ready) |
-| `mct skill` | Install, synchronize, and inspect Coding Agent Skill copies |
-| `mct plugin` | Plugin catalog management and project installation |
-| `mct chat` | Chat (send/command/wait/history) |
-| `mct move` | Movement (coordinates/direction/jump/sneak/sprint) |
-| `mct look` | Camera control (coordinates/entity/angle) |
-| `mct position` | Get current position |
-| `mct rotation` | Get current view direction |
-| `mct block` | Block interaction (break/place/interact/get) |
-| `mct entity` | Entity interaction (attack/interact/list/mount) |
-| `mct inventory` | Inventory (get/slot/hotbar/drop/use) |
-| `mct gui` | GUI / container (info/click/drag/screenshot/wait) |
-| `mct screenshot` | Take a screenshot |
-| `mct screen` | Get screen dimensions |
-| `mct hud` | HUD queries (scoreboard/tab/bossbar/title) |
-| `mct status` | Player status (health/effects/xp/gamemode) |
-| `mct sign` | Sign block (edit/read) |
-| `mct book` | Book (write/sign/read) |
-| `mct resourcepack` | Resource pack (accept/reject/status) |
-| `mct craft` | Crafting table (auto-craft from recipe) |
-| `mct anvil` | Anvil (rename items) |
-| `mct enchant` | Enchanting table |
-| `mct trade` | Villager trading |
-| `mct combat` | Combat combos (kill/engage/chase/clear/pickup) |
-| `mct input` | Raw mouse/keyboard input |
-| `mct wait` | Wait (seconds/ticks/conditions) |
-| `mct events` | Inspect or wait for client event-log entries |
-| `mct record` | Record the client screen during tests (start/stop/list/view, macOS only for now) |
-| `mct schema` | Output a machine-readable CLI/protocol schema |
+| **Project** | `init` `up` `down` `use` `info` `schema` |
+| **Instances** | `server` (search/create/start/stop/config/logs) · `client` (search/create/launch/stop/wait-ready) · `plugin` · `skill` |
+| **Movement & world** | `move` `look` `position` `rotation` `block` `entity` |
+| **Chat & UI** | `chat` `gui` `sign` `book` `hud` `resourcepack` |
+| **Items & stations** | `inventory` `craft` `anvil` `enchant` `trade` |
+| **Combat & input** | `combat` `input` |
+| **Observation** | `status` `screenshot` `screen` `events` `wait` `wait-log` `record` |
 
-Use `mct <command> --help` for detailed usage of each command.
-
-### Global Options
+Global options:
 
 ```
---project <id>     Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)
---profile <name>   Profile name (default: from ~/.mct/projects/<id>/project.json)
+--project <id>     Project ID (default: derived from cwd)
+--profile <name>   Profile name (default: project's defaultProfile)
 --client <name>    Target client (required with multiple clients)
 --human            Human-readable output (default: JSON)
 ```
 
-### Multi-Client
+## Multi-Client Testing
 
 ```bash
-# Create two clients with different WebSocket ports
 mct client create p1 --version 1.20.4 --ws-port 25560
 mct client create p2 --version 1.20.4 --ws-port 25561
 
-# Launch both
 mct client launch p1 --server 127.0.0.1:25565 --account Fighter1
 mct client launch p2 --server 127.0.0.1:25565 --account Fighter2
-mct client wait-ready p1
-mct client wait-ready p2
+mct client wait-ready p1 && mct client wait-ready p2
 
-# Control each client with --client
-mct --client p1 chat send "Hello from p1"
-mct --client p2 chat send "Hello from p2"
-mct --client p1 combat kill --type zombie --nearest
+mct --client p1 chat command "pvp challenge Fighter2"
+mct --client p2 chat wait --match "challenge" --timeout 5
+mct --client p2 chat command "pvp accept"
+mct --client p1 combat kill --nearest --type player
 mct --client p2 status health
 ```
 
-`mct up` waits for every profile client to join a world by default. For multi-client plugin tests where one client may be intentionally stuck on menus while the server and other clients are usable, use:
+## Recipes
 
-```bash
-mct up --skip-client-ready       # deploy/start server and launch clients, but do not block on in-world checks
-mct up --server-only-ok          # deploy/start/wait server only; skip client launch and client ready checks
-```
-
-## Examples
-
-### Shop Plugin Test
+### Shop plugin (GUI interaction)
 
 ```bash
 mct chat command "shop"
 mct gui wait-open --timeout 5
-mct gui screenshot
 mct gui snapshot                      # inspect slot layout
 mct gui click 11                      # click a category
 mct gui wait-update --timeout 3
 mct gui click 13 --button left        # buy an item
 mct chat wait --match "purchased" --timeout 5
 mct gui close
-mct inventory get                     # verify item in inventory
+mct inventory get                     # verify item arrived
 ```
 
-### Crafting Table Workflow
+### Region protection (WorldGuard)
 
 ```bash
-# Open crafting table
-mct block interact 12 80 34
+mct chat command "tp TestPlayer 100 64 100"
+mct block break 100 64 100
+mct chat history --last 3             # expect a permission-denied message
+mct block get 100 64 100              # block must still exist
 
-# Craft sticks from planks (auto-places materials, auto-takes result)
-mct craft --recipe '[["oak_planks",null,null],["oak_planks",null,null],[null,null,null]]'
-
-# Legacy 9-slot object form is also accepted and normalized by the CLI:
-mct craft --recipe '{"slots":["oak_planks",null,null,"oak_planks",null,null,null,null,null]}'
-
-# Result is now in inventory
-mct inventory get
+mct move to 200 64 200
+mct block break 200 64 200
+mct block get 200 64 200              # block must be gone
 ```
 
-### Log and Screenshot Diagnostics
+### Log diagnostics
 
 ```bash
-# Append a marker, then inspect only newer matching lines.
+# Append a marker, then inspect only newer matching lines
 MARKER=$(mct server logs-mark --human | tail -1)
 mct server logs --after-marker "$MARKER" --grep "ERROR|Exception"
 
-# Ignore stale lines from previous server launches.
-mct server logs --since-start --grep "Enabled|ERROR"
+mct server logs --since-start --grep "Enabled|ERROR"   # ignore stale lines
+mct wait-log --grep "Done .* For help" --timeout 60    # wait for a fresh match
+```
 
-# Wait for a fresh matching log line without hand-written polling.
-mct wait-log --grep "Done .* For help" --timeout 60
+<details>
+<summary><b>More recipes</b> — crafting, enchanting, screenshots</summary>
 
-# Screenshot requests use a longer timeout and one retry by default; tune if the client is slow.
+### Crafting table
+
+```bash
+mct block interact 12 80 34           # open the crafting table
+mct craft --recipe '[["oak_planks",null,null],["oak_planks",null,null],[null,null,null]]'
+mct inventory get                     # result is in inventory
+```
+
+The legacy 9-slot object form `'{"slots":[...]}'` is also accepted and normalized.
+
+### Enchanting table
+
+```bash
+mct block interact 16 80 40
+mct gui click 36 --button left        # pick up sword from inventory
+mct gui click 0 --button left         # place in enchant input slot
+mct gui click 37 --button left        # pick up lapis
+mct gui click 1 --button left         # place in lapis slot
+mct enchant --option 0                # 0=top, 1=middle, 2=bottom
+```
+
+### Screenshot tuning
+
+```bash
+# Screenshots use a longer timeout and one retry by default; tune if the client is slow
 mct screenshot --timeout 45 --retries 2 --output ./screenshots/check.png
 ```
 
-### Test Session Recording (macOS)
+</details>
 
-Record the client window as mp4 while commands run, then review everything on a
-synchronized replay page (video + command timeline + game events).
+More runnable examples live in [`examples/`](examples/) (shop, PvP, WorldGuard, proxy networks).
 
-The recorder helper (a universal `arm64 + x86_64` binary) ships inside the npm
-package, so recording works out of the box after `npm install` — no build step.
+## Session Recording (macOS)
 
-Prerequisites:
-
-1. Grant **Screen Recording** permission to your terminal app in
-   System Settings > Privacy & Security > Screen Recording, **before** running tests.
-   Without it `mct record start` fails fast with an authorization hint.
-
-> Local development from source: build the helper once with
-> `cd recorder/macos && swift build -c release` (requires Xcode Command Line Tools).
-> Set `MCT_RECORDER_BIN` to override the bundled binary with a custom path.
+Record the client window as mp4 while commands run, then review a synchronized replay page (video + command timeline + game events). The recorder helper ships in the npm package — no build step.
 
 ```bash
-# Start recording the client window (client must be running)
-mct record start --client bot1 [--fps 30]
-
-# Run the test as usual — every mct command is recorded into the timeline automatically
-mct chat command "gamemode creative"
-mct move to 100 64 100
-mct block break 100 63 100
-
-# Stop and finalize (writes recording.mp4, timeline.jsonl and a slice of events.jsonl)
+mct record start --client bot1        # requires Screen Recording permission for your terminal
+mct chat command "gamemode creative"  # every mct command lands in the timeline
 mct record stop --client bot1
-
-# List recordings of the current project
-mct record list
-
-# Generate viewer.html and open it in the browser
-mct record view <recording-id>
+mct record view <recording-id>        # generates viewer.html and opens it
 ```
 
-Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/`. The
-recording survives client crashes (the helper finalizes the mp4 automatically
-when the target process exits).
+Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/` and survive client crashes. When building from source, compile the helper once with `cd recorder/macos && swift build -c release` (or point `MCT_RECORDER_BIN` at a custom binary).
 
-### Enchanting Workflow
+## Supported Versions
+
+✅ verified · ⚠️ supported, limited validation · — not available
+
+| Minecraft | Fabric | Forge | NeoForge |
+|---|:-:|:-:|:-:|
+| 1.12.2 | — | ⚠️ | — |
+| 1.18.2 | ✅ | ✅ | — |
+| 1.20.1 | ✅ | ⚠️ | ✅ |
+| 1.20.2 | ✅ | ⚠️ | ⚠️ |
+| 1.20.4 (default) | ✅ | ⚠️ | ✅ |
+| 1.21.1 | ✅ | ✅ | ✅ |
+| 1.21.4 | ✅ | ✅ | ⚠️ |
+| 1.21.11 | ✅ | ✅ | ⚠️ |
+| 26.1 | ✅ | ✅ | ✅ |
+| 26.2 | ✅ | ✅ | ✅ |
+
+Version notes:
+
+- **26.1 servers** — Paper publishes no exact `26.1` artifact; the Fabric 26.1 client is verified against Paper 26.1.1 build 29 and 26.1.2 build 74. Paper 26.2 build 60 and Vanilla 26.2 are verified with the Fabric 26.2 client. `mct client search` / `mct server search` expose these verified pairings.
+- **Forge 1.12.2** — built with the legacy Java 8 toolchain; Forge builds 14.23.5.2859 / 2860 / 2864 are selectable via `--forge-version` and verified to install, launch, and join a vanilla 1.12.2 server. On Apple Silicon, use an x86_64 Java 8 runtime under Rosetta (Minecraft 1.12.2 ships LWJGL2 x86_64 natives only).
+
+## Development
 
 ```bash
-# Open enchanting table
-mct block interact 16 80 40
+git clone https://github.com/kzheart/mc-pilot.git
+cd mc-pilot
+npm ci
 
-# Manually place sword and lapis via GUI clicks
-mct gui snapshot                       # check slot layout
-mct gui click 36 --button left         # pick up sword from inventory
-mct gui click 0 --button left          # place in enchant input slot
-mct gui click 37 --button left         # pick up lapis
-mct gui click 1 --button left          # place in lapis slot
+npm run test:cli        # CLI unit tests
+npm run test:e2e        # CLI system E2E tests
+npm run check:protocol  # verify CLI/protocol schema sync
+npm run test:real       # full suite against a real client (slow)
 
-# Select enchantment option (0=top, 1=middle, 2=bottom)
-mct enchant --option 0
+cd client-mod && ./gradlew build          # build client mod (all modern variants)
+cd client-mod/legacy && ./gradlew build   # Forge 1.12.2 variant (requires Java 8)
 ```
 
-### PvP Test (Multi-Client)
-
-```bash
-mct client launch p1 --account Fighter1
-mct client launch p2 --account Fighter2
-mct client wait-ready p1 --timeout 60
-mct client wait-ready p2 --timeout 60
-
-mct --client p1 chat command "pvp challenge Fighter2"
-mct --client p2 chat wait --match "challenge" --timeout 5
-mct --client p2 chat command "pvp accept"
-mct --client p1 wait 3
-mct --client p1 combat kill --nearest --type player
-mct --client p2 status health
-mct --client p1 hud scoreboard
-```
-
-### WorldGuard Region Protection Test
-
-```bash
-# Try breaking a block inside a protected region
-mct chat command "tp TestPlayer 100 64 100"
-mct wait 1
-mct block break 100 64 100
-mct chat history --last 3             # check for permission denied message
-mct block get 100 64 100              # confirm block was NOT broken
-
-# Break a block outside the region
-mct move to 200 64 200
-mct block break 200 64 200
-mct block get 200 64 200              # confirm block WAS broken
-```
-
-## Supported Minecraft Versions
-
-| Version | Loader | Status |
-|---|---|---|
-| 1.12.2 | Forge 14.23.5.2859 / 2860 / 2864 | Supported (limited validation) |
-| 1.18.2 | Fabric | Supported |
-| 1.18.2 | Forge | Supported |
-| 1.20.1 | Fabric | Supported |
-| 1.20.1 | Forge | Supported (limited validation) |
-| 1.20.1 | NeoForge | Supported |
-| 1.20.2 | Fabric | Supported |
-| 1.20.2 | Forge | Supported (limited validation) |
-| 1.20.2 | NeoForge | Supported (limited validation) |
-| 1.20.4 | Fabric | Supported (default) |
-| 1.20.4 | Forge | Supported (limited validation) |
-| 1.20.4 | NeoForge | Supported |
-| 1.21.1 | Fabric | Supported |
-| 1.21.1 | Forge | Supported |
-| 1.21.1 | NeoForge | Supported |
-| 1.21.4 | Fabric | Supported |
-| 1.21.4 | Forge | Supported |
-| 1.21.4 | NeoForge | Supported (limited validation) |
-| 1.21.11 | Fabric | Supported |
-| 1.21.11 | Forge | Supported |
-| 1.21.11 | NeoForge | Supported (limited validation) |
-| 26.1 | Fabric | Supported |
-| 26.1 | Forge | Supported |
-| 26.1 | NeoForge | Supported |
-| 26.2 | Fabric | Supported |
-| 26.2 | Forge | Supported |
-| 26.2 | NeoForge | Supported |
-
-For exact Minecraft 26.1 servers, only Vanilla is available. Paper does not publish a `26.1` artifact, but the Fabric 26.1 client is verified to join Paper 26.1.1 build 29 and Paper 26.1.2 build 74. `mct client search --loader fabric --version 26.1` and `mct server search --type paper --version 26.1.2` expose these verified pairings so agents can select the tested client/server combination. Paper 26.2 build 60 and Vanilla 26.2 are also verified with the Fabric 26.2 client. Purpur and Spigot combinations remain unverified.
-
-The Forge 1.12.2 variant is built with the legacy Java 8 toolchain. The
-recommended 2859 build, common 2860 build, and latest 2864 build have all been
-verified to install, launch, and join a vanilla 1.12.2 server. On Apple Silicon,
-use an x86_64 Java 8 runtime under Rosetta because Minecraft 1.12.2 uses LWJGL2
-x86_64 native libraries.
-
-## Project Structure
+### Project Structure
 
 ```
 mc-pilot/
 ├── cli/              # CLI tool (TypeScript)
-├── client-mod/       # Fabric/Forge client mod (Java, multi-version modules)
+├── client-mod/       # Fabric/Forge/NeoForge client mod (Java, multi-version modules)
+│   ├── legacy/       # Forge 1.12.2 (Java 8 toolchain)
+│   └── mc26/         # Minecraft 26.x variants (Java 25 toolchain)
 ├── protocol/         # WebSocket protocol definitions
 ├── examples/         # Example test scripts
 ├── scripts/          # Internal E2E test scripts
@@ -394,4 +312,4 @@ mc-pilot/
 
 ## License
 
-MIT
+[MIT](LICENSE)
