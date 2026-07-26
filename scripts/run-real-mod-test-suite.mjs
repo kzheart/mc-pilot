@@ -465,14 +465,18 @@ async function main() {
   }
 
   if (matrix.runnable.some((entry) => entry.gradleBuild === "legacy")) {
-    const legacyFixtureBuild = await runCommand("gradle", ["build", "-q"], {
-      cwd: path.join(ROOT_DIR, "paper-fixture-legacy"),
-      env: {
-        ...process.env,
-        JAVA_HOME: path.dirname(path.dirname(resolveJavaCommand("1.18.2")))
-      },
+    const legacyFixtureBuild = await runGradleWrapper({
+      wrapperDir: CLIENT_MOD_DIR,
+      projectDir: path.join(ROOT_DIR, "paper-fixture-legacy"),
+      args: ["build", "-q"],
+      env: fixtureJavaCommand === "java"
+        ? process.env
+        : {
+            ...process.env,
+            JAVA_HOME: path.dirname(path.dirname(fixtureJavaCommand))
+          },
       allowFailure: true,
-      timeoutMs: 120_000
+      timeoutMs: 600_000
     });
     if (!legacyFixtureBuild.ok) {
       throw new Error(`Failed to build legacy paper fixture: ${legacyFixtureBuild.stderr || legacyFixtureBuild.stdout}`);
