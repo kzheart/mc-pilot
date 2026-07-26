@@ -7,7 +7,7 @@ Automated testing framework for Minecraft plugins and mods. Control a real Minec
 - **Real client** — Controls a real Minecraft client via Fabric/Forge Mod, natively compatible with all server features
 - **AI-driven** — All operations exposed as CLI commands, designed for AI agents (e.g. Claude Code) to call
 - **Zero intrusion** — Test plugins as-is, no modifications needed
-- **Multi-version** — Supports Minecraft 1.18.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (26 variants)
+- **Multi-version** — Supports Minecraft 1.12.2 ~ 26.2 with Fabric/Forge/NeoForge loaders (27 variants)
 - **Multi-client** — Control multiple client instances simultaneously for multiplayer testing
 - **Proxy networks** — Velocity/BungeeCord topologies with automatic forwarding configuration for cross-server testing
 
@@ -34,13 +34,27 @@ AI / Test Script
 ### Requirements
 
 - Node.js >= 20
-- Java matching the selected Minecraft version (Java 25+ for 26.x; use `--java <command>` when it is not the default `java`)
+- Java matching the selected Minecraft version (Java 8 for Forge 1.12.2, Java 25+ for 26.x; use `--java <command>` when it is not the default `java`)
 
 ### Install
 
 ```bash
 npm install -g @kzheart_/mc-pilot
 ```
+
+The npm package bundles the `mc-pilot` Coding Agent Skill. Run the interactive
+installer after installation and select any combination of Codex, Claude Code,
+Cursor, Gemini CLI, OpenCode, Windsurf, Copilot, or the standard Agents path:
+
+```bash
+mct skill install
+```
+
+Selections are saved in `~/.mct/skill-install.json`. Future npm updates
+automatically synchronize the Skill into every selected location. For
+non-interactive installation, set `MCT_SKILL_TARGETS=codex,claude` (or `all` /
+`none`). To show the prompt during the npm lifecycle itself, install with
+`--foreground-scripts`.
 
 ### Create Project and Instances
 
@@ -56,6 +70,10 @@ mct server create vanilla-26.1 --type vanilla --version 26.1 --java /path/to/jav
 
 # Create a Fabric client instance
 mct client create fabric-1.20.4 --version 1.20.4
+
+# Forge 1.12.2 requires Java 8 and supports three selectable Forge builds
+mct client create forge-1.12.2 --loader forge --version 1.12.2 \
+  --forge-version 14.23.5.2864 --java /path/to/java-8
 ```
 
 Clients default to Simplified Chinese (`zh_cn`) and muted in-game audio. Use `--no-mute` only when a test needs sound.
@@ -114,6 +132,7 @@ All commands output JSON by default. Use `--human` for human-readable output.
 | `mct info` | Show current project, active profile and global state root |
 | `mct server` | Server management (search/create/start/stop/config/status/logs) |
 | `mct client` | Client management (search/create/launch/stop/list/wait-ready) |
+| `mct skill` | Install, synchronize, and inspect Coding Agent Skill copies |
 | `mct plugin` | Plugin catalog management and project installation |
 | `mct chat` | Chat (send/command/wait/history) |
 | `mct move` | Movement (coordinates/direction/jump/sneak/sprint) |
@@ -325,6 +344,7 @@ mct block get 200 64 200              # confirm block WAS broken
 
 | Version | Loader | Status |
 |---|---|---|
+| 1.12.2 | Forge 14.23.5.2859 / 2860 / 2864 | Supported (limited validation) |
 | 1.18.2 | Fabric | Supported |
 | 1.18.2 | Forge | Supported |
 | 1.20.1 | Fabric | Supported |
@@ -353,6 +373,12 @@ mct block get 200 64 200              # confirm block WAS broken
 | 26.2 | NeoForge | Supported |
 
 For exact Minecraft 26.1 servers, only Vanilla is available. Paper does not publish a `26.1` artifact, but the Fabric 26.1 client is verified to join Paper 26.1.1 build 29 and Paper 26.1.2 build 74. `mct client search --loader fabric --version 26.1` and `mct server search --type paper --version 26.1.2` expose these verified pairings so agents can select the tested client/server combination. Paper 26.2 build 60 and Vanilla 26.2 are also verified with the Fabric 26.2 client. Purpur and Spigot combinations remain unverified.
+
+The Forge 1.12.2 variant is built with the legacy Java 8 toolchain. The
+recommended 2859 build, common 2860 build, and latest 2864 build have all been
+verified to install, launch, and join a vanilla 1.12.2 server. On Apple Silicon,
+use an x86_64 Java 8 runtime under Rosetta because Minecraft 1.12.2 uses LWJGL2
+x86_64 native libraries.
 
 ## Project Structure
 
