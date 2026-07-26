@@ -31,6 +31,7 @@ const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(process.env.HOME, ".mct", "cache");
 const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "server");
 const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
+const LEGACY_FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture-legacy", "build", "libs", "mct-paper-fixture-legacy-0.1.0.jar");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
 const INTER_VERSION_DELAY_MS = 6000;
@@ -93,10 +94,6 @@ function isBuildableVariant(variant) {
     return false;
   }
   if (variant.support !== "ready" && variant.support !== "configured") {
-    return false;
-  }
-  // The legacy 1.12.2 shell implements a protocol subset; it cannot pass the full suite.
-  if (variant.gradleBuild === "legacy") {
     return false;
   }
   if (variant.loader === "fabric") {
@@ -173,18 +170,29 @@ function javaMajorForMinecraft(minecraftVersion) {
   if (Number.parseInt(major, 10) >= 26) {
     return 25;
   }
-  return Number.parseInt(minor, 10) >= 21 ? 21 : 17;
+  const minorNumber = Number.parseInt(minor, 10);
+  if (minorNumber <= 12) {
+    return 8;
+  }
+  return minorNumber >= 21 ? 21 : 17;
 }
 
 function resolveJavaCommand(minecraftVersion) {
-  const envKey = `MCT_JAVA_${javaMajorForMinecraft(minecraftVersion)}`;
+  const javaMajor = javaMajorForMinecraft(minecraftVersion);
+  const envKey = `MCT_JAVA_${javaMajor}`;
   if (process.env[envKey]) {
     return process.env[envKey];
   }
 
   if (process.platform === "darwin") {
+    // 1.12.2 ships LWJGL2 x86_64 natives only, so the client (and by extension
+    // this shared resolver) must pick an x86_64 Java 8 on Apple Silicon.
+    // Note: java_home wants "1.8", not "8".
+    const javaHomeArgs = javaMajor === 8
+      ? ["-v", "1.8", "-a", "x86_64"]
+      : ["-v", String(javaMajor)];
     try {
-      const javaHome = execFileSync(MACOS_JAVA_HOME, ["-v", String(javaMajorForMinecraft(minecraftVersion))], {
+      const javaHome = execFileSync(MACOS_JAVA_HOME, javaHomeArgs, {
         encoding: "utf8"
       }).trim();
       if (javaHome) {
@@ -234,7 +242,11 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const javaCommand = process.env[`MCT_JAVA_${buildJavaVersion}`]
     ?? (process.platform === "darwin"
       ? path.join(
-          execFileSync(MACOS_JAVA_HOME, ["-v", buildJavaVersion], { encoding: "utf8" }).trim(),
+          execFileSync(
+            MACOS_JAVA_HOME,
+            ["-v", buildJavaVersion === "8" ? "1.8" : buildJavaVersion],
+            { encoding: "utf8" },
+          ).trim(),
           "bin",
           "java",
         )
@@ -359,7 +371,7 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
         server: serverName,
         clients: [clientName],
         deployPlugins: [
-          FIXTURE_PLUGIN_JAR,
+          entry.gradleBuild === "legacy" ? LEGACY_FIXTURE_PLUGIN_JAR : FIXTURE_PLUGIN_JAR,
           ...(process.env.MCT_SUITE_EXTRA_PLUGINS
             ? process.env.MCT_SUITE_EXTRA_PLUGINS.split(",").filter(Boolean)
             : []),
@@ -440,6 +452,21 @@ async function main() {
   });
   if (!fixtureBuild.ok) {
     throw new Error(`Failed to build paper fixture: ${fixtureBuild.stderr || fixtureBuild.stdout}`);
+  }
+
+  if (matrix.runnable.some((entry) => entry.gradleBuild === "legacy")) {
+    const legacyFixtureBuild = await runCommand("gradle", ["build", "-q"], {
+      cwd: path.join(ROOT_DIR, "paper-fixture-legacy"),
+      env: {
+        ...process.env,
+        JAVA_HOME: path.dirname(path.dirname(resolveJavaCommand("1.18.2")))
+      },
+      allowFailure: true,
+      timeoutMs: 120_000
+    });
+    if (!legacyFixtureBuild.ok) {
+      throw new Error(`Failed to build legacy paper fixture: ${legacyFixtureBuild.stderr || legacyFixtureBuild.stdout}`);
+    }
   }
 
   await logLine(`suite start groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);

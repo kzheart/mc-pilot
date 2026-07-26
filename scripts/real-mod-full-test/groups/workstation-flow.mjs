@@ -14,6 +14,21 @@ export const workstationFlowGroup = {
       unwrapRequestSuccess
     } = context;
 
+    // The anvil preview slot updates after a server round-trip; poll instead of
+    // asserting on the first snapshot.
+    const pollAnvilPreview = async (predicate) => {
+      let preview = null;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
+        preview = snapshot.slots.find((slot) => slot.slot === 2)?.item;
+        if (predicate(String(preview?.displayName ?? ""))) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      return preview;
+    };
+
     await resetFixture("setup reset before trade");
     await runSetup("setup open villager trade", ["entity", "interact", "--name", "MCT Trader"], (data) => {
       expect(data.success === true, "failed to open villager trade");
@@ -74,15 +89,13 @@ export const workstationFlowGroup = {
 
     await runClientLeaf("input type", ["input", "type", "RawName"], async (data) => {
       expect(data.typed === true, "input type did not report success");
-      const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-      const preview = snapshot.slots.find((slot) => slot.slot === 2)?.item;
+      const preview = await pollAnvilPreview((name) => name.includes("RawName"));
       expect(String(preview?.displayName ?? "").includes("RawName"), "input type did not update the anvil preview name");
     });
 
     await runClientLeaf("input key combo", ["input", "key", "combo", "backspace"], async (data) => {
       expect(data.pressed === true, "input key combo did not report success");
-      const snapshot = unwrapRequestSuccess(await runCli(["--client", "real", "gui", "snapshot"]));
-      const preview = snapshot.slots.find((slot) => slot.slot === 2)?.item;
+      const preview = await pollAnvilPreview((name) => name.includes("RawNam") && !name.includes("RawName"));
       expect(String(preview?.displayName ?? "").includes("RawNam"), "input key combo did not update the anvil preview name");
       expect(!String(preview?.displayName ?? "").includes("RawName"), "input key combo did not remove the trailing character");
     });

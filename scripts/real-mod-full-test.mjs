@@ -24,7 +24,9 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
-const BUILT_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-paper-fixture-0.1.0.jar");
+const MODERN_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture/build/libs/mct-paper-fixture-0.1.0.jar");
+const LEGACY_PLUGIN_PATH = path.join(ROOT_DIR, "paper-fixture-legacy/build/libs/mct-paper-fixture-legacy-0.1.0.jar");
+let BUILT_PLUGIN_PATH = MODERN_PLUGIN_PATH;
 const RESOURCEPACK_PATH = path.join(ROOT_DIR, "tmp/real-e2e/resourcepack/test-pack.zip");
 const RESOURCEPACK_PORT = Number.parseInt(process.env.MCT_REAL_RESOURCEPACK_PORT ?? "18080", 10);
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
@@ -208,6 +210,9 @@ async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, scre
     REAL_CLIENT_WS_PORT = 25560;
     CLIENT_MC_VERSION = "1.21.4";
   }
+
+  BUILT_PLUGIN_PATH = CLIENT_MC_VERSION === "1.12.2" ? LEGACY_PLUGIN_PATH : MODERN_PLUGIN_PATH;
+  SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", path.basename(BUILT_PLUGIN_PATH));
 }
 
 function collectLeafCommands(command, parents = []) {
@@ -1041,7 +1046,11 @@ async function main() {
         if (readyState.ready) {
           if (options.deferServerConnect) {
             // Mipmap suffix differs per loader (x0 on Fabric, x4 on Forge) — match the atlas name only.
-            await waitForClientLogCountIncrease("minecraft:textures/atlas/mob_effects.png-atlas", 0, 30);
+            // 1.12 logs "Created: 512x512 textures-atlas" instead of the modern atlas line.
+            const atlasFragment = CLIENT_MC_VERSION === "1.12.2"
+              ? "textures-atlas"
+              : "minecraft:textures/atlas/mob_effects.png-atlas";
+            await waitForClientLogCountIncrease(atlasFragment, 0, 30);
             await runClientLeaf("client reconnect", ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`], (data) => {
               expect(data.connecting === true, `${label} client reconnect did not start`);
             });
@@ -1161,7 +1170,10 @@ async function main() {
     });
 
     const swordSlot = snapshot.slots.find((slot) => slot.item?.type === "minecraft:diamond_sword")?.slot;
-    const lapisSlot = snapshot.slots.find((slot) => slot.item?.type === "minecraft:lapis_lazuli")?.slot;
+    // 1.12 has no dedicated lapis item id — it is minecraft:dye with data 4.
+    const lapisSlot = snapshot.slots.find(
+      (slot) => slot.item?.type === "minecraft:lapis_lazuli" || slot.item?.type === "minecraft:dye"
+    )?.slot;
     expect(Number.isInteger(swordSlot), "diamond sword slot not found in enchant gui");
     expect(Number.isInteger(lapisSlot), "lapis slot not found in enchant gui");
 
@@ -1232,8 +1244,11 @@ async function main() {
     await waitForLogEntry("Done", 120);
 
     await launchRealClientAndWaitReady("initial", {
+      // 1.12.2: Forge's --server startup join races into a double login that
+      // corrupts Paper's chunk tracking — always connect via client reconnect.
       deferServerConnect:
         CLIENT_MC_VERSION === "1.18.2" ||
+        CLIENT_MC_VERSION === "1.12.2" ||
         process.env.MCT_SUITE_DEFER_CONNECT === "1"
     });
     coveredNonRequestLeafCommands.add("client launch");
