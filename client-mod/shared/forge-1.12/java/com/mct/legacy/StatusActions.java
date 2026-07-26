@@ -94,7 +94,7 @@ public final class StatusActions extends LegacyActions {
 
     private Map<String, Object> experienceStatus() {
         EntityPlayerSP player = requirePlayer();
-        int nextLevelPoints = player.xpBarCap();
+        int nextLevelPoints = experiencePointsForLevel(player.experienceLevel);
         int points = Math.min(nextLevelPoints, Math.max(0, Math.round(player.experience * nextLevelPoints)));
         Map<String, Object> result = new LinkedHashMap<String, Object>();
         result.put("level", player.experienceLevel);
@@ -102,8 +102,28 @@ public final class StatusActions extends LegacyActions {
         result.put("points", points);
         result.put("nextLevelPoints", nextLevelPoints);
         result.put("pointsToNextLevel", Math.max(0, nextLevelPoints - points));
-        result.put("totalExperience", player.experienceTotal);
+        result.put("totalExperience", experiencePointsToReachLevel(player.experienceLevel) + points);
         return result;
+    }
+
+    private int experiencePointsForLevel(int level) {
+        if (level >= 30) {
+            return 9 * level - 158;
+        }
+        if (level >= 15) {
+            return 5 * level - 38;
+        }
+        return 2 * level + 7;
+    }
+
+    private int experiencePointsToReachLevel(int level) {
+        if (level <= 16) {
+            return (level * level) + (6 * level);
+        }
+        if (level <= 31) {
+            return (int) Math.round((2.5D * level * level) - (40.5D * level) + 360.0D);
+        }
+        return (int) Math.round((4.5D * level * level) - (162.5D * level) + 2220.0D);
     }
 
     private Map<String, Object> gamemodeStatus() {

@@ -17,9 +17,14 @@ public final class LegacyForgeEntrypoint {
 
     private static LegacyWebSocketServer server;
     private static ChatRecorder chatRecorder;
+    private static TitleTracker titleTracker;
 
     public static ChatRecorder chatRecorder() {
         return chatRecorder;
+    }
+
+    public static TitleTracker titleTracker() {
+        return titleTracker;
     }
 
     @Mod.EventHandler
@@ -29,6 +34,8 @@ public final class LegacyForgeEntrypoint {
         }
         chatRecorder = new ChatRecorder();
         MinecraftForge.EVENT_BUS.register(chatRecorder);
+        titleTracker = new TitleTracker();
+        MinecraftForge.EVENT_BUS.register(titleTracker);
 
         MovementActions movement = new MovementActions();
         ActionRouter router = new ActionRouter();

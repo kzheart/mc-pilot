@@ -22,6 +22,9 @@ import org.lwjgl.input.Mouse;
 public final class InputActions extends LegacyActions {
 
     private final Set<String> heldKeys = Collections.synchronizedSet(new LinkedHashSet<String>());
+    // LWJGL2's Mouse.getX/getY only refresh on the next input poll, so track our own cursor.
+    private volatile double virtualMouseX = -1.0D;
+    private volatile double virtualMouseY = -1.0D;
 
     @Override
     public Map<String, Object> handle(String action, JsonObject params) {
@@ -41,7 +44,7 @@ public final class InputActions extends LegacyActions {
             return onClient(this::mousePosition);
         }
         if ("input.scroll".equals(action)) {
-            throw new LegacyActionException("INVALID_STATE");
+            return inputScroll(params);
         }
         if ("input.type".equals(action)) {
             return inputType(params);
@@ -113,6 +116,25 @@ public final class InputActions extends LegacyActions {
             }
             return true;
         });
+    }
+
+    private Map<String, Object> inputScroll(JsonObject params) {
+        int delta = Params.requireInt(params, "delta");
+        onClient(() -> {
+            // LWJGL2 offers no scroll-event injection; emulate the gameplay effect (hotbar switch).
+            if (client.currentScreen != null) {
+                throw new LegacyActionException("INVALID_STATE");
+            }
+            net.minecraft.client.entity.EntityPlayerSP player = client.player;
+            if (player == null) {
+                throw new LegacyActionException("NOT_IN_WORLD");
+            }
+            int slot = ((player.inventory.currentItem - delta) % 9 + 9) % 9;
+            player.inventory.currentItem = slot;
+            player.connection.sendPacket(new net.minecraft.network.play.client.CPacketHeldItemChange(slot));
+            return true;
+        });
+        return map("scrolled", true, "delta", delta, "mouse", onClient(this::mousePosition));
     }
 
     private Map<String, Object> inputMouseMove(JsonObject params) {
@@ -196,6 +218,7 @@ public final class InputActions extends LegacyActions {
             if (screen == null) {
                 throw new LegacyActionException("INVALID_STATE");
             }
+            focusFirstTextField(screen);
             for (int index = 0; index < text.length(); index++) {
                 char value = text.charAt(index);
                 typeChar(screen, value, 0);
@@ -203,6 +226,36 @@ public final class InputActions extends LegacyActions {
             return true;
         });
         return map("typed", true, "text", text);
+    }
+
+    /** 1.12 screens (e.g. GuiRepair) don't auto-focus their text field like modern versions do. */
+    private void focusFirstTextField(GuiScreen screen) {
+        try {
+            net.minecraft.client.gui.GuiTextField firstField = null;
+            for (Class<?> type = screen.getClass(); type != null && type != GuiScreen.class.getSuperclass(); type = type.getSuperclass()) {
+                for (java.lang.reflect.Field field : type.getDeclaredFields()) {
+                    if (!net.minecraft.client.gui.GuiTextField.class.isAssignableFrom(field.getType())) {
+                        continue;
+                    }
+                    field.setAccessible(true);
+                    Object value = field.get(screen);
+                    if (value == null) {
+                        continue;
+                    }
+                    net.minecraft.client.gui.GuiTextField textField = (net.minecraft.client.gui.GuiTextField) value;
+                    if (textField.isFocused()) {
+                        return;
+                    }
+                    if (firstField == null) {
+                        firstField = textField;
+                    }
+                }
+            }
+            if (firstField != null) {
+                firstField.setFocused(true);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private Map<String, Object> inputKeyPress(JsonObject params) {
@@ -383,9 +436,14 @@ public final class InputActions extends LegacyActions {
         int rawX = scaledX * client.displayWidth / resolution.getScaledWidth();
         int rawYFromTop = scaledY * client.displayHeight / resolution.getScaledHeight();
         Mouse.setCursorPosition(rawX, client.displayHeight - 1 - rawYFromTop);
+        virtualMouseX = scaledX;
+        virtualMouseY = scaledY;
     }
 
     private Map<String, Object> mousePosition() {
+        if (virtualMouseX >= 0.0D) {
+            return map("x", virtualMouseX, "y", virtualMouseY);
+        }
         ScaledResolution resolution = new ScaledResolution(client);
         double x = (double) Mouse.getX() * resolution.getScaledWidth() / client.displayWidth;
         double y = (double) (client.displayHeight - 1 - Mouse.getY()) * resolution.getScaledHeight() / client.displayHeight;

@@ -161,9 +161,10 @@ public final class SessionActions extends LegacyActions {
 
     private Map<String, Object> titleStatus() {
         requirePlayer();
+        TitleTracker tracker = LegacyForgeEntrypoint.titleTracker();
         Map<String, Object> result = new LinkedHashMap<String, Object>();
-        result.put("title", ingameStringField("displayedTitle", "field_175201_x"));
-        result.put("subtitle", ingameStringField("displayedSubTitle", "field_175200_y"));
+        result.put("title", tracker != null ? tracker.title() : "");
+        result.put("subtitle", tracker != null ? tracker.subtitle() : "");
         result.put("fadeIn", 0);
         result.put("stay", 0);
         result.put("fadeOut", 0);
