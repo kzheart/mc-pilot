@@ -37,7 +37,7 @@ AI / Test Script
 
 ## Quick Start
 
-**Requirements:** Node.js ≥ 20, plus a Java runtime matching the Minecraft version (Java 8 for Forge 1.12.2, Java 17/21 for 1.18–1.21, Java 25+ for 26.x — pass `--java <command>` when it is not the default `java`).
+**Requirements:** Node.js ≥ 20, plus a Java runtime matching the Minecraft version (Java 8 for Forge 1.12.2, Java 17 for 1.18–1.20, Java 21 for 1.21.x, Java 25+ for 26.x — pass `--java <command>` when it is not the default `java`).
 
 ```bash
 npm install -g @kzheart_/mc-pilot
@@ -136,13 +136,13 @@ All commands output JSON by default; add `--human` for human-readable output. Ru
 
 | Area | Commands |
 |---|---|
-| **Project** | `init` `up` `down` `use` `info` `schema` |
-| **Instances** | `server` (search/create/start/stop/config/logs) · `client` (search/create/launch/stop/wait-ready) · `plugin` · `skill` |
+| **Project** | `init` `up` `down` `use` `deploy` `info` `schema` |
+| **Instances** | `server` (search/create/start/stop/config/exec/logs) · `client` (search/create/launch/stop/wait-ready) · `plugin` · `skill` |
 | **Movement & world** | `move` `look` `position` `rotation` `block` `entity` |
 | **Chat & UI** | `chat` `gui` `sign` `book` `hud` `resourcepack` |
-| **Items & stations** | `inventory` `craft` `anvil` `enchant` `trade` |
+| **Items & stations** | `inventory` `craft` `recipe` `anvil` `enchant` `trade` |
 | **Combat & input** | `combat` `input` |
-| **Observation** | `status` `screenshot` `screen` `events` `wait` `wait-log` `record` |
+| **Observation** | `status` `screenshot` `screen` `image` `events` `wait` `wait-log` `record` |
 
 Global options:
 
