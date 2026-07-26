@@ -27,6 +27,7 @@ export interface ClientSearchCommandResult {
     loader: ClientLoader;
     supported: boolean;
     loaderVersion?: string;
+    loaderVersions?: readonly string[];
     modVersion?: string;
     validation?: "verified" | "limited" | "planned";
     notes?: string;
@@ -121,6 +122,9 @@ export function buildClientSearchResults(filter?: {
       loader: entry.loader,
       supported: entry.supported,
       ...(entry.loaderVersion ? { loaderVersion: entry.loaderVersion } : {}),
+      ...(entry.loaderVersions?.length
+        ? { loaderVersions: entry.loaderVersions }
+        : {}),
       ...(entry.modVersion ? { modVersion: entry.modVersion } : {}),
       ...(entry.validation ? { validation: entry.validation } : {}),
       ...(entry.notes ? { notes: entry.notes } : {}),

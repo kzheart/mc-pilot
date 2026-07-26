@@ -212,6 +212,23 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
   ]);
 });
 
+test("Minecraft 1.12.2 exposes selectable Forge builds from the real variant", () => {
+  const [forge] = searchClientVersions({
+    loader: "forge",
+    version: "1.12.2",
+  });
+
+  assert.equal(forge?.supported, true);
+  assert.equal(forge?.loaderVersion, "14.23.5.2864");
+  assert.deepEqual(forge?.loaderVersions, [
+    "14.23.5.2859",
+    "14.23.5.2860",
+    "14.23.5.2864",
+  ]);
+  assert.equal(forge?.javaVersion, "8");
+  assert.equal(forge?.validation, "limited");
+});
+
 test("isProxyType returns true only for proxy types", () => {
   assert.equal(isProxyType("velocity"), true);
   assert.equal(isProxyType("bungeecord"), true);

@@ -178,6 +178,94 @@ test("downloadClientModToDir prepares a Forge runtime", async () => {
   }
 });
 
+test("downloadClientModToDir selects a supported Forge 1.12.2 build", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
+  const buildDir = path.join(
+    tempDir,
+    "client-mod",
+    "legacy",
+    "version-1.12.2-forge",
+    "build",
+    "libs",
+  );
+  const jarPath = path.join(buildDir, "mct-client-mod-forge-1.12.2.jar");
+  const targetDir = path.join(tempDir, "client-instance");
+  const forgeVersionId = "1.12.2-forge-14.23.5.2859";
+  await mkdir(buildDir, { recursive: true });
+  await writeFile(jarPath, "forge-1122-mod", "utf8");
+
+  try {
+    const result = await downloadClientModToDir(
+      tempDir,
+      targetDir,
+      {
+        version: "1.12.2",
+        loader: "forge",
+        forgeVersion: "14.23.5.2859",
+      },
+      {
+        cacheManager: new CacheManager(path.join(tempDir, "cache")),
+        detectJavaImpl: async () => ({
+          available: true,
+          command: "java8",
+          majorVersion: 8,
+        }),
+        prepareManagedRuntimeImpl: async (
+          variant: ModVariant,
+          runtimeOptions: { runtimeRootDir: string; gameDir: string },
+        ) => {
+          assert.equal(variant.forgeVersion, "14.23.5.2859");
+          return {
+            ...runtimeOptions,
+            versionId: forgeVersionId,
+          };
+        },
+      },
+    );
+
+    assert.equal(result.runtimeVersionId, forgeVersionId);
+    assert.equal(result.javaVersion, 8);
+    assert.equal(await readFile(result.jar, "utf8"), "forge-1122-mod");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("downloadClientModToDir rejects unsupported Forge build and modern Java for 1.12.2", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
+  try {
+    await assert.rejects(
+      downloadClientModToDir(tempDir, path.join(tempDir, "client"), {
+        version: "1.12.2",
+        loader: "forge",
+        forgeVersion: "14.23.5.9999",
+      }),
+      { name: "MctError", code: "UNSUPPORTED_LOADER_VERSION" },
+    );
+
+    await assert.rejects(
+      downloadClientModToDir(
+        tempDir,
+        path.join(tempDir, "client"),
+        {
+          version: "1.12.2",
+          loader: "forge",
+        },
+        {
+          detectJavaImpl: async () => ({
+            available: true,
+            command: "java",
+            majorVersion: 17,
+          }),
+        },
+      ),
+      { name: "MctError", code: "JAVA_VERSION_UNSUPPORTED" },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("downloadClientModToDir rejects missing local build artifacts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-download-"));
 

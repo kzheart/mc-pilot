@@ -74,6 +74,10 @@ export function createClientCommand() {
       "Client loader: fabric|forge|neoforge (default: fabric)",
     )
     .option(
+      "--forge-version <version>",
+      "Forge build to install when the selected variant offers multiple builds",
+    )
+    .option(
       "--ws-port <port>",
       "WebSocket port (auto-assigned if omitted)",
       Number,
@@ -95,6 +99,7 @@ export function createClientCommand() {
             options: {
               version?: string;
               loader?: LoaderType;
+              forgeVersion?: string;
               wsPort?: number;
               account?: string;
               headless?: boolean;
@@ -113,6 +118,7 @@ export function createClientCommand() {
             {
               version,
               loader,
+              forgeVersion: options.forgeVersion,
               java: options.java,
             },
           );

@@ -16,15 +16,18 @@ export interface ModVariant {
   support: SupportLevel;
   validation: ValidationLevel;
   modVersion?: string;
+  releaseTag?: string;
   fabricLoaderVersion?: string;
   yarnMappings?: string;
   mappings?: string;
   forgeVersion?: string;
+  forgeVersions?: string[];
   neoforgeVersion?: string;
   loomPlatform?: string;
   yarnForgePatch?: string;
   yarnNeoforgePatch?: string;
   javaVersion?: number;
+  javaVersionMax?: number;
   gradleModule?: string;
   gradleBuild?: string;
   notes?: string;

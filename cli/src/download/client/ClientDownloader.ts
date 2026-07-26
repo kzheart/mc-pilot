@@ -23,6 +23,7 @@ const GITHUB_RELEASE_BASE_URL =
 export interface DownloadClientOptions {
   loader?: LoaderType;
   version?: string;
+  forgeVersion?: string;
   dir?: string;
   name?: string;
   wsPort?: number;
@@ -172,7 +173,7 @@ export async function resolveArtifact(
 
   // 3. Download from GitHub Releases
   const modVersion = variant.modVersion ?? "0.9.1";
-  const releaseTag = `v${modVersion}`;
+  const releaseTag = variant.releaseTag ?? `v${modVersion}`;
   const downloadUrl = `${GITHUB_RELEASE_BASE_URL}/${releaseTag}/${artifactFileName}`;
 
   try {
@@ -346,6 +347,23 @@ async function ensureJavaReady(
     );
   }
 
+  if (
+    variant.javaVersionMax !== undefined &&
+    (result.majorVersion ?? 0) > variant.javaVersionMax
+  ) {
+    throw new MctError(
+      {
+        code: "JAVA_VERSION_UNSUPPORTED",
+        message: `Java ${requiredVersion}-${variant.javaVersionMax} is required for ${variant.id}`,
+        details: {
+          detected: result.majorVersion,
+          command: result.command,
+        },
+      },
+      4,
+    );
+  }
+
   return result;
 }
 
@@ -362,13 +380,13 @@ export async function downloadClientModToDir(
   const prepareManagedRuntimeImpl =
     dependencies.prepareManagedRuntimeImpl ?? prepareManagedClientRuntime;
   const catalog = await loadModVariantCatalog();
-  const variant = options.version
+  const catalogVariant = options.version
     ? findVariantByVersionAndLoader(catalog, options.version, loader)
     : loader === "fabric"
       ? getDefaultVariant(catalog)
       : undefined;
 
-  if (!variant) {
+  if (!catalogVariant) {
     throw new MctError(
       {
         code: "VARIANT_NOT_FOUND",
@@ -377,6 +395,38 @@ export async function downloadClientModToDir(
       4,
     );
   }
+
+  if (options.forgeVersion && loader !== "forge") {
+    throw new MctError(
+      {
+        code: "INVALID_PARAMS",
+        message: "--forge-version can only be used with --loader forge",
+      },
+      4,
+    );
+  }
+
+  if (
+    options.forgeVersion &&
+    !catalogVariant.forgeVersions?.includes(options.forgeVersion)
+  ) {
+    throw new MctError(
+      {
+        code: "UNSUPPORTED_LOADER_VERSION",
+        message: `Forge ${options.forgeVersion} is not supported for Minecraft ${catalogVariant.minecraftVersion}`,
+        details: {
+          supportedVersions: catalogVariant.forgeVersions ?? [
+            catalogVariant.forgeVersion,
+          ],
+        },
+      },
+      4,
+    );
+  }
+
+  const variant: ModVariant = options.forgeVersion
+    ? { ...catalogVariant, forgeVersion: options.forgeVersion }
+    : catalogVariant;
 
   ensureSupportedVariant(variant);
   const java = await ensureJavaReady(variant, detectJavaImpl, options.java);

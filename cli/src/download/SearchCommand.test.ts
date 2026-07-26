@@ -129,6 +129,19 @@ test("buildClientSearchResults exposes configured Forge variants", () => {
   });
 });
 
+test("buildClientSearchResults exposes selectable 1.12.2 Forge builds", () => {
+  const [result] = buildClientSearchResults({
+    loader: "forge",
+    version: "1.12.2",
+  });
+
+  assert.deepEqual(result?.loaders[0]?.loaderVersions, [
+    "14.23.5.2859",
+    "14.23.5.2860",
+    "14.23.5.2864",
+  ]);
+});
+
 test("buildProgram registers discovery-oriented CLI commands", () => {
   const leaves = collectLeafCommands();
 

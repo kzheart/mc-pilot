@@ -44,6 +44,7 @@ export function isProxyType(type: ServerType): type is ProxyType {
 export interface ClientLoaderSupportInfo {
   supported: boolean;
   loaderVersion?: string;
+  loaderVersions?: readonly string[];
   modVersion?: string;
   validation?: CompatibilityValidation;
   notes?: string;
@@ -85,6 +86,7 @@ export interface ClientSearchResult {
   minecraftVersion: string;
   supported: boolean;
   loaderVersion?: string;
+  loaderVersions?: readonly string[];
   modVersion?: string;
   validation?: CompatibilityValidation;
   notes?: string;
@@ -410,7 +412,7 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   },
   {
     minecraftVersion: "1.12.2",
-    javaVersion: "8+",
+    javaVersion: "8",
     servers: {
       vanilla: { supported: true },
       paper: { supported: true, latestBuild: 1620 },
@@ -446,6 +448,9 @@ function overlayClientSupport(
       variant.fabricLoaderVersion ??
       variant.forgeVersion ??
       variant.neoforgeVersion,
+    ...(variant.forgeVersions?.length
+      ? { loaderVersions: variant.forgeVersions }
+      : {}),
     modVersion: variant.modVersion,
     validation: variant.validation,
     notes: variant.notes,
@@ -563,6 +568,9 @@ export function searchClientVersions(filter?: {
         supported: support.supported,
         ...(support.loaderVersion
           ? { loaderVersion: support.loaderVersion }
+          : {}),
+        ...(support.loaderVersions?.length
+          ? { loaderVersions: support.loaderVersions }
           : {}),
         ...(support.modVersion ? { modVersion: support.modVersion } : {}),
         ...(support.validation ? { validation: support.validation } : {}),
