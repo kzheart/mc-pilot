@@ -192,7 +192,10 @@ public final class LegacyForgeEntrypoint {
             }
             if ("chat.send".equals(action) || "chat.command".equals(action)) {
                 EntityPlayerSP player = requirePlayer(client);
-                String message = stringValue(params, "message");
+                // The CLI sends chat.command with a "command" param and chat.send with "message".
+                String message = "chat.command".equals(action)
+                    ? stringValue(params, "command")
+                    : stringValue(params, "message");
                 if ("chat.command".equals(action) && !message.startsWith("/")) {
                     message = "/" + message;
                 }
