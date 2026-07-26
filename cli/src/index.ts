@@ -33,6 +33,7 @@ import { createScreenshotCommand } from "./commands/screenshot.js";
 import { createSchemaCommand } from "./commands/schema.js";
 import { createServerCommand } from "./commands/server.js";
 import { createSignCommand } from "./commands/sign.js";
+import { createSkillCommand } from "./commands/skill.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
 import { createWaitLogCommand } from "./commands/wait-log.js";
@@ -111,6 +112,7 @@ export function buildProgram() {
   program.addCommand(createClientCommand());
   program.addCommand(createPluginCommand());
   program.addCommand(createSchemaCommand(() => program));
+  program.addCommand(createSkillCommand());
 
   // Game interaction commands
   program.addCommand(createChatCommand());
