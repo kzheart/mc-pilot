@@ -114,6 +114,7 @@ public final class VersionAdaptersImpl {
             @Override
             public Map<String, Object> accept(MinecraftClient client, ClientStateTracker stateTracker) {
                 if (pressResourcePackPromptButton(client, true)) {
+                    stateTracker.recordResourcePackState("allowed", 0);
                     return stateTracker.getResourcePackState();
                 }
                 if (client.currentScreen != null) {
@@ -128,6 +129,7 @@ public final class VersionAdaptersImpl {
             @Override
             public Map<String, Object> reject(MinecraftClient client, ClientStateTracker stateTracker) {
                 if (pressResourcePackPromptButton(client, false)) {
+                    stateTracker.recordResourcePackState("declined", 0);
                     return stateTracker.getResourcePackState();
                 }
                 if (client.currentScreen != null) {

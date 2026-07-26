@@ -140,7 +140,7 @@ test("searchClientVersions exposes all loaders and java requirements", () => {
   assert.equal(neoforge?.supported, true);
   assert.equal(neoforge?.loaderVersion, "21.4.157");
   assert.equal(neoforge?.modVersion, "0.9.1");
-  assert.equal(neoforge?.validation, "limited");
+  assert.equal(neoforge?.validation, "verified");
   assert.equal(neoforge?.javaVersion, "21+");
 });
 
@@ -188,7 +188,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       supported: true,
       loaderVersion: "49.0.49",
       modVersion: "0.9.1",
-      validation: "limited",
+      validation: "verified",
       javaVersion: "17+",
     },
     {
@@ -197,7 +197,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       supported: true,
       loaderVersion: "48.1.0",
       modVersion: "0.9.1",
-      validation: "limited",
+      validation: "verified",
       javaVersion: "17+",
     },
     {
@@ -206,7 +206,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       supported: true,
       loaderVersion: "47.3.0",
       modVersion: "0.9.1",
-      validation: "limited",
+      validation: "verified",
       javaVersion: "17+",
     },
   ]);
@@ -226,7 +226,7 @@ test("Minecraft 1.12.2 exposes selectable Forge builds from the real variant", (
     "14.23.5.2864",
   ]);
   assert.equal(forge?.javaVersion, "8");
-  assert.equal(forge?.validation, "limited");
+  assert.equal(forge?.validation, "verified");
 });
 
 test("isProxyType returns true only for proxy types", () => {

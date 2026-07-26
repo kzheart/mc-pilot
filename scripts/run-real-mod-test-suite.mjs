@@ -8,7 +8,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
+import { loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport, searchClientVersions } from "../cli/dist/download/VersionMatrix.js";
 import {
   findDistinctPorts,
@@ -33,6 +33,7 @@ const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(os.homedir(), ".mct", "cache");
 const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "server");
 const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
+const LEGACY_FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture-legacy", "build", "libs", "mct-paper-fixture-legacy-0.1.0.jar");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
 const INTER_VERSION_DELAY_MS = 6000;
@@ -41,6 +42,7 @@ const MACOS_JAVA_HOME = "/usr/libexec/java_home";
 function parseCliOptions(argv) {
   const selectedGroups = [];
   const selectedVersions = [];
+  const selectedLoaders = [];
 
   parseSharedCliOptions(argv, {
     "--group": {
@@ -49,9 +51,12 @@ function parseCliOptions(argv) {
     "--version": {
       apply: (value) => selectedVersions.push(value),
     },
+    "--loader": {
+      apply: (value) => selectedLoaders.push(value),
+    },
   });
 
-  return { selectedGroups, selectedVersions };
+  return { selectedGroups, selectedVersions, selectedLoaders };
 }
 
 function resolveServerTarget(minecraftVersion, loader) {
@@ -86,9 +91,36 @@ function resolveServerTarget(minecraftVersion, loader) {
   return null;
 }
 
-function resolveVersionMatrix(selectedVersions) {
+function isBuildableVariant(variant) {
+  if (!variant.gradleModule) {
+    return false;
+  }
+  if (variant.support !== "ready" && variant.support !== "configured") {
+    return false;
+  }
+  if (variant.loader === "fabric") {
+    return Boolean(
+      (variant.yarnMappings || variant.mappings === "mojang") &&
+        variant.fabricLoaderVersion,
+    );
+  }
+  if (variant.loader === "forge") {
+    return Boolean(variant.forgeVersion);
+  }
+  if (variant.loader === "neoforge") {
+    return Boolean(variant.neoforgeVersion);
+  }
+  return false;
+}
+
+function resolveVersionMatrix(selectedVersions, selectedLoaders) {
   const catalog = loadModVariantCatalogSync();
-  const buildableVariants = getBuildableFabricVariants(catalog);
+  const loaders = new Set(
+    selectedLoaders.length > 0 ? selectedLoaders : ["fabric"],
+  );
+  const buildableVariants = catalog.variants.filter(
+    (variant) => loaders.has(variant.loader) && isBuildableVariant(variant),
+  );
   const requestedVersions = new Set(selectedVersions);
   const runnable = [];
   const skipped = [];
@@ -140,18 +172,29 @@ function javaMajorForMinecraft(minecraftVersion) {
   if (Number.parseInt(major, 10) >= 26) {
     return 25;
   }
-  return Number.parseInt(minor, 10) >= 21 ? 21 : 17;
+  const minorNumber = Number.parseInt(minor, 10);
+  if (minorNumber <= 12) {
+    return 8;
+  }
+  return minorNumber >= 21 ? 21 : 17;
 }
 
 function resolveJavaCommand(minecraftVersion) {
-  const envKey = `MCT_JAVA_${javaMajorForMinecraft(minecraftVersion)}`;
+  const javaMajor = javaMajorForMinecraft(minecraftVersion);
+  const envKey = `MCT_JAVA_${javaMajor}`;
   if (process.env[envKey]) {
     return process.env[envKey];
   }
 
   if (process.platform === "darwin") {
+    // 1.12.2 ships LWJGL2 x86_64 natives only, so the client (and by extension
+    // this shared resolver) must pick an x86_64 Java 8 on Apple Silicon.
+    // Note: java_home wants "1.8", not "8".
+    const javaHomeArgs = javaMajor === 8
+      ? ["-v", "1.8", "-a", "x86_64"]
+      : ["-v", String(javaMajor)];
     try {
-      const javaHome = execFileSync(MACOS_JAVA_HOME, ["-v", String(javaMajorForMinecraft(minecraftVersion))], {
+      const javaHome = execFileSync(MACOS_JAVA_HOME, javaHomeArgs, {
         encoding: "utf8"
       }).trim();
       if (javaHome) {
@@ -192,7 +235,24 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const gradleDir = entry.gradleBuild
     ? path.join(CLIENT_MOD_DIR, entry.gradleBuild)
     : CLIENT_MOD_DIR;
-  const javaCommand = resolveJavaCommand(entry.minecraftVersion);
+  // Loom 1.13 requires Gradle itself on JVM >= 21; the per-version runtime Java
+  // is still used for server/client processes via appendJavaOption.
+  const runtimeJavaMajor = javaMajorForMinecraft(entry.minecraftVersion);
+  const buildJavaVersion = entry.gradleBuild === "legacy"
+    ? "8"
+    : String(Math.max(21, runtimeJavaMajor));
+  const javaCommand = process.env[`MCT_JAVA_${buildJavaVersion}`]
+    ?? (process.platform === "darwin"
+      ? path.join(
+          execFileSync(
+            MACOS_JAVA_HOME,
+            ["-v", buildJavaVersion === "8" ? "1.8" : buildJavaVersion],
+            { encoding: "utf8" },
+          ).trim(),
+          "bin",
+          "java",
+        )
+      : "java");
   const javaHome = javaCommand === "java"
     ? null
     : path.dirname(path.dirname(javaCommand));
@@ -255,6 +315,9 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   if (entry.serverBuild != null) {
     serverCreateArgs.push("--build", String(entry.serverBuild));
   }
+  if (process.env.MCT_SUITE_SERVER_JVM_ARGS) {
+    serverCreateArgs.push("--jvm-args", process.env.MCT_SUITE_SERVER_JVM_ARGS);
+  }
   const serverCreate = await runCommandWithRetry(
     process.execPath,
     appendJavaOption(serverCreateArgs, entry.serverVersion),
@@ -310,7 +373,12 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
       [profileName]: {
         server: serverName,
         clients: [clientName],
-        deployPlugins: [FIXTURE_PLUGIN_JAR]
+        deployPlugins: [
+          entry.gradleBuild === "legacy" ? LEGACY_FIXTURE_PLUGIN_JAR : FIXTURE_PLUGIN_JAR,
+          ...(process.env.MCT_SUITE_EXTRA_PLUGINS
+            ? process.env.MCT_SUITE_EXTRA_PLUGINS.split(",").filter(Boolean)
+            : []),
+        ]
       }
     },
     screenshot: {
@@ -355,7 +423,10 @@ async function main() {
     assert.equal(knownGroups.has(group), true, `Unknown group: ${group}`);
   }
 
-  const matrix = resolveVersionMatrix(options.selectedVersions);
+  const matrix = resolveVersionMatrix(
+    options.selectedVersions,
+    options.selectedLoaders,
+  );
   assert.notEqual(matrix.runnable.length, 0, "No runnable multi-version E2E targets were resolved");
 
   const summary = {
@@ -391,6 +462,21 @@ async function main() {
   });
   if (!fixtureBuild.ok) {
     throw new Error(`Failed to build paper fixture: ${fixtureBuild.stderr || fixtureBuild.stdout}`);
+  }
+
+  if (matrix.runnable.some((entry) => entry.gradleBuild === "legacy")) {
+    const legacyFixtureBuild = await runCommand("gradle", ["build", "-q"], {
+      cwd: path.join(ROOT_DIR, "paper-fixture-legacy"),
+      env: {
+        ...process.env,
+        JAVA_HOME: path.dirname(path.dirname(resolveJavaCommand("1.18.2")))
+      },
+      allowFailure: true,
+      timeoutMs: 120_000
+    });
+    if (!legacyFixtureBuild.ok) {
+      throw new Error(`Failed to build legacy paper fixture: ${legacyFixtureBuild.stderr || legacyFixtureBuild.stdout}`);
+    }
   }
 
   await logLine(`suite start groups=${selectedGroups.join(",")} variants=${summary.selectedVersions.join(",")}`);
