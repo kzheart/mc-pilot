@@ -32,7 +32,7 @@
       "javaVersionMax": 8,
       "gradleBuild": "legacy",
       "gradleModule": "version-1.12.2-forge",
-      "notes": "支持 Forge 推荐版 2859、常用版 2860 与最新版 2864。"
+      "notes": "支持 Forge 推荐版 2859、常用版 2860 与最新版 2864。协议子集(位置/状态/聊天/背包/移动)已真机验证;GUI、方块、战斗等 action 不适用于该薄壳变体。"
     },
     {
       "id": "1.18.2-fabric",
@@ -74,7 +74,7 @@
       "minecraftVersion": "1.20.1",
       "loader": "forge",
       "support": "configured",
-      "validation": "limited",
+      "validation": "verified",
       "modVersion": "0.9.1",
       "forgeVersion": "47.3.0",
       "javaVersion": 17,
@@ -109,7 +109,7 @@
       "minecraftVersion": "1.20.2",
       "loader": "forge",
       "support": "configured",
-      "validation": "limited",
+      "validation": "verified",
       "modVersion": "0.9.1",
       "forgeVersion": "48.1.0",
       "javaVersion": 17,
@@ -124,7 +124,8 @@
       "modVersion": "0.9.1",
       "neoforgeVersion": "20.2.93",
       "javaVersion": 17,
-      "gradleModule": "version-1.20.2-neoforge"
+      "gradleModule": "version-1.20.2-neoforge",
+      "notes": "NeoForge 20.2 客户端无法加入 Paper/Bukkit 系服务端(上游 REGISTER 握手兼容问题,NeoForge 20.4 起修复);vanilla 服务端可正常使用。"
     },
     {
       "id": "1.20.4-fabric",
@@ -143,7 +144,7 @@
       "minecraftVersion": "1.20.4",
       "loader": "forge",
       "support": "configured",
-      "validation": "limited",
+      "validation": "verified",
       "modVersion": "0.9.1",
       "forgeVersion": "49.0.49",
       "javaVersion": 17,
@@ -223,7 +224,7 @@
       "minecraftVersion": "1.21.4",
       "loader": "neoforge",
       "support": "configured",
-      "validation": "limited",
+      "validation": "verified",
       "modVersion": "0.9.1",
       "neoforgeVersion": "21.4.157",
       "yarnNeoforgePatch": "1.21+build.6",
@@ -259,7 +260,7 @@
       "minecraftVersion": "1.21.11",
       "loader": "neoforge",
       "support": "configured",
-      "validation": "limited",
+      "validation": "verified",
       "modVersion": "0.9.1",
       "neoforgeVersion": "21.11.42",
       "yarnNeoforgePatch": "1.21+build.6",

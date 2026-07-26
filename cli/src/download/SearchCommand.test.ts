@@ -123,7 +123,7 @@ test("buildClientSearchResults exposes configured Forge variants", () => {
         supported: true,
         loaderVersion: "48.1.0",
         modVersion: "0.9.1",
-        validation: "limited",
+        validation: "verified",
       },
     ],
   });
