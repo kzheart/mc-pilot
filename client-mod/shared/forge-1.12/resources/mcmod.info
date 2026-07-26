@@ -1,0 +1,10 @@
+[
+  {
+    "modid": "mct",
+    "name": "Minecraft Auto Test Client Mod",
+    "description": "Real client bridge for Minecraft Auto Test.",
+    "version": "${version}",
+    "mcversion": "${mc_version}",
+    "clientSideOnly": true
+  }
+]

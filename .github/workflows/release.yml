@@ -30,6 +30,15 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
+          java-version: 8
+
+      - name: Build legacy Forge 1.12.2 mod
+        run: ./gradlew build -q
+        working-directory: client-mod/legacy
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
           java-version: 25
 
       - name: Build mc26 mod variants
@@ -43,6 +52,9 @@ jobs:
             cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
           done
           for dir in client-mod/mc26/version-*/build/libs; do
+            cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
+          done
+          for dir in client-mod/legacy/version-*/build/libs; do
             cp "$dir"/mct-client-mod-*.jar release-artifacts/ 2>/dev/null || true
           done
           ls -la release-artifacts/

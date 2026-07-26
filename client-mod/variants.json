@@ -2,6 +2,7 @@
   "defaultVariant": "1.20.4-fabric",
   "buildSystem": "multi-module",
   "versions": [
+    "1.12.2",
     "1.18.2",
     "1.20.1",
     "1.20.2",
@@ -13,6 +14,26 @@
     "26.2"
   ],
   "variants": [
+    {
+      "id": "1.12.2-forge",
+      "minecraftVersion": "1.12.2",
+      "loader": "forge",
+      "support": "configured",
+      "validation": "limited",
+      "modVersion": "0.9.1",
+      "releaseTag": "v0.15.0",
+      "forgeVersion": "14.23.5.2864",
+      "forgeVersions": [
+        "14.23.5.2859",
+        "14.23.5.2860",
+        "14.23.5.2864"
+      ],
+      "javaVersion": 8,
+      "javaVersionMax": 8,
+      "gradleBuild": "legacy",
+      "gradleModule": "version-1.12.2-forge",
+      "notes": "支持 Forge 推荐版 2859、常用版 2860 与最新版 2864。"
+    },
     {
       "id": "1.18.2-fabric",
       "minecraftVersion": "1.18.2",
