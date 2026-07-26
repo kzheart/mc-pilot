@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { appendFile, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,7 @@ import {
   parseJsonMaybe,
   runCommand,
   runCommandWithRetry,
+  runGradleWrapper,
   sleep,
   slugifyProjectId,
 } from "./lib.mjs";
@@ -28,7 +30,7 @@ const CLIENT_MOD_DIR = path.join(ROOT_DIR, "client-mod");
 const MATRIX_ROOT = path.join(ROOT_DIR, "tmp", "real-e2e", "matrix");
 const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 // Shared cache dir: use CLI's cache hierarchy
-const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(process.env.HOME, ".mct", "cache");
+const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(os.homedir(), ".mct", "cache");
 const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "server");
 const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
@@ -194,17 +196,18 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const javaHome = javaCommand === "java"
     ? null
     : path.dirname(path.dirname(javaCommand));
-  const buildResult = await runCommand("./gradlew", [`:${gradleModule}:build`, "-q"], {
-    cwd: gradleDir,
+  const buildResult = await runGradleWrapper({
+    wrapperDir: gradleDir,
+    args: [`:${gradleModule}:build`, "-q"],
     env: javaHome
       ? {
           ...process.env,
           JAVA_HOME: javaHome,
-          PATH: `${path.join(javaHome, "bin")}:${process.env.PATH || ""}`,
+          PATH: `${path.join(javaHome, "bin")}${path.delimiter}${process.env.PATH || ""}`,
         }
       : process.env,
     allowFailure: true,
-    timeoutMs: 120_000
+    timeoutMs: 600_000
   });
   if (!buildResult.ok) {
     throw new Error(`Failed to build ${entry.variantId}: ${buildResult.stderr || buildResult.stdout}`);
@@ -370,14 +373,21 @@ async function main() {
   let requestLeafCommands = [];
   let nonRequestLeafCommands = [];
 
-  const fixtureBuild = await runCommand("gradle", ["build", "-q"], {
-    cwd: path.join(ROOT_DIR, "paper-fixture"),
-    env: {
-      ...process.env,
-      JAVA_HOME: path.dirname(path.dirname(resolveJavaCommand("1.18.2")))
-    },
+  // Build the fixture with the client-mod's pinned Gradle wrapper instead of
+  // requiring a system-wide `gradle` install.
+  const fixtureJavaCommand = resolveJavaCommand("1.18.2");
+  const fixtureBuild = await runGradleWrapper({
+    wrapperDir: CLIENT_MOD_DIR,
+    projectDir: path.join(ROOT_DIR, "paper-fixture"),
+    args: ["build", "-q"],
+    env: fixtureJavaCommand === "java"
+      ? process.env
+      : {
+          ...process.env,
+          JAVA_HOME: path.dirname(path.dirname(fixtureJavaCommand))
+        },
     allowFailure: true,
-    timeoutMs: 120_000
+    timeoutMs: 600_000
   });
   if (!fixtureBuild.ok) {
     throw new Error(`Failed to build paper fixture: ${fixtureBuild.stderr || fixtureBuild.stdout}`);

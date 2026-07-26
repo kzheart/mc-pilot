@@ -15,6 +15,26 @@ import { ClientInstanceManager } from "./ClientInstanceManager.js";
 import { GlobalStateStore } from "../util/global-state.js";
 import { resolveClientInstanceDir } from "../util/paths.js";
 
+/**
+ * Windows cannot remove a directory that is still some process's cwd; the
+ * detached fake-java launch may outlive the assertions by a moment.
+ */
+async function rmWithRetry(target: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(target, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code === "EBUSY" || code === "EPERM") && attempt < 20) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 4000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -41,15 +61,40 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     const manifestPath = path.join(instanceDir, "launch-manifest.json");
     const optionsPath = path.join(gameDir, "options.txt");
     const javaArgsPath = path.join(tempDir, "java-args.txt");
-    const fakeJavaPath = path.join(tempDir, "fake-java.sh");
+    const isWindows = process.platform === "win32";
+    const fakeJavaPath = path.join(
+      tempDir,
+      isWindows ? "fake-java.cmd" : "fake-java.sh",
+    );
 
     await mkdir(gameDir, { recursive: true });
-    await writeFile(
-      fakeJavaPath,
-      `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`,
-      "utf8",
-    );
-    await chmod(fakeJavaPath, 0o755);
+    if (isWindows) {
+      // Batch equivalent of the POSIX script: print each argument on its own
+      // line. %~1 strips the quotes added by the cmd.exe launch path.
+      await writeFile(
+        fakeJavaPath,
+        [
+          "@echo off",
+          `break > "${javaArgsPath}.tmp"`,
+          ":loop",
+          'if "%~1"=="" goto done',
+          `>>"${javaArgsPath}.tmp" echo %~1`,
+          "shift",
+          "goto loop",
+          ":done",
+          `move /y "${javaArgsPath}.tmp" "${javaArgsPath}" >nul`,
+          "",
+        ].join("\r\n"),
+        "utf8",
+      );
+    } else {
+      await writeFile(
+        fakeJavaPath,
+        `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`,
+        "utf8",
+      );
+      await chmod(fakeJavaPath, 0o755);
+    }
     await writeFile(
       manifestPath,
       JSON.stringify(
@@ -92,7 +137,8 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     });
     await waitFor(async () => {
       try {
-        const content = await readFile(javaArgsPath, "utf8");
+        const raw = await readFile(javaArgsPath, "utf8");
+        const content = raw.replace(/\r\n/g, "\n");
         return (
           content.includes("-Duser.language=zh\n") &&
           content.includes("-Duser.country=CN\n") &&
@@ -120,6 +166,6 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     } else {
       process.env.MCT_HOME = previousMctHome;
     }
-    await rm(tempDir, { recursive: true, force: true });
+    await rmWithRetry(tempDir);
   }
 });

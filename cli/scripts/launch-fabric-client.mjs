@@ -530,17 +530,35 @@ async function main() {
     `[mct-launch] lwjglCorePresent=${launch.classpathEntries.some((entry) => entry.endsWith(`${path.sep}org${path.sep}lwjgl${path.sep}lwjgl${path.sep}3.3.2${path.sep}lwjgl-3.3.2.jar`))}`
   );
   console.log(`[mct-launch] gameArgs=${launch.gameArgs.join(" ")}`);
-  const child = spawn(
-    launch.javaBin,
-    [...launch.javaArgs, "-cp", launch.classpath, launch.mainClass, ...launch.gameArgs],
-    {
-      cwd: launch.cwd,
-      env: {
-        ...process.env
-      },
-      stdio: "inherit"
-    }
-  );
+  const javaArgv = [...launch.javaArgs, "-cp", launch.classpath, launch.mainClass, ...launch.gameArgs];
+  // Node refuses to spawn .cmd/.bat directly (CVE-2024-27980); route java
+  // wrappers written as batch files through cmd.exe with each arg quoted.
+  const isBatchJava = process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.javaBin);
+  const child = isBatchJava
+    ? spawn(
+        [launch.javaBin, ...javaArgv]
+          .map((arg) => `"${String(arg).replace(/"/g, '""')}"`)
+          .join(" "),
+        {
+          cwd: launch.cwd,
+          env: {
+            ...process.env
+          },
+          stdio: "inherit",
+          shell: true
+        }
+      )
+    : spawn(
+        launch.javaBin,
+        javaArgv,
+        {
+          cwd: launch.cwd,
+          env: {
+            ...process.env
+          },
+          stdio: "inherit"
+        }
+      );
 
   const forwardSignal = (signal) => {
     if (!child.killed) {

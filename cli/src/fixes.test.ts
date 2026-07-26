@@ -195,12 +195,37 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
 
   try {
     const markerPath = path.join(tempDir, "java-args.txt");
-    const fakeJavaPath = path.join(tempDir, "fake-java.sh");
-    await writeFile(
-      fakeJavaPath,
-      `#!/bin/sh\nprintf '%s\\n' "$0" "$@" > "${markerPath}"\n`,
-      { encoding: "utf8", mode: 0o755 },
+    const isWindows = process.platform === "win32";
+    const fakeJavaPath = path.join(
+      tempDir,
+      isWindows ? "fake-java.cmd" : "fake-java.sh",
     );
+    if (isWindows) {
+      // Batch equivalent of the POSIX script: echo $0 then each argument.
+      await writeFile(
+        fakeJavaPath,
+        [
+          "@echo off",
+          `break > "${markerPath}.tmp"`,
+          `>>"${markerPath}.tmp" echo %~f0`,
+          ":loop",
+          'if "%~1"=="" goto done',
+          `>>"${markerPath}.tmp" echo %~1`,
+          "shift",
+          "goto loop",
+          ":done",
+          `move /y "${markerPath}.tmp" "${markerPath}" >nul`,
+          "",
+        ].join("\r\n"),
+        "utf8",
+      );
+    } else {
+      await writeFile(
+        fakeJavaPath,
+        `#!/bin/sh\nprintf '%s\\n' "$0" "$@" > "${markerPath}"\n`,
+        { encoding: "utf8", mode: 0o755 },
+      );
+    }
 
     const instanceDir = path.join(
       process.env.MCT_HOME!,
@@ -241,7 +266,7 @@ test("ServerInstanceManager.start uses the server instance javaCommand", async (
     while (Date.now() < deadline) {
       try {
         const content = await readFile(markerPath, "utf8");
-        assert.deepEqual(content.trim().split("\n"), [
+        assert.deepEqual(content.trim().split(/\r?\n/), [
           fakeJavaPath,
           "-Xmx1G",
           "-jar",
@@ -286,6 +311,58 @@ function spawnFifoReader(fifoPath: string) {
 }
 
 /**
+ * Platform-appropriate reader for the server stdin channel: an external bash
+ * FIFO reader on POSIX, a named-pipe server on Windows (mirroring the role of
+ * stdin-bridge.ts, which owns the pipe in production).
+ */
+function createPipeReader(pipePath: string) {
+  if (process.platform === "win32") {
+    let output = "";
+    const server = net.createServer((socket) => {
+      socket.setEncoding("utf8");
+      socket.on("data", (chunk: string) => {
+        output += chunk;
+      });
+      socket.on("error", () => {});
+    });
+    const listening = new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(pipePath, () => resolve());
+    });
+    return {
+      ready: () => listening,
+      waitForLine: async () => {
+        const deadline = Date.now() + 15_000;
+        while (!output.includes("\n") && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.ok(output.includes("\n"), "no line arrived on the named pipe");
+        return output.slice(0, output.indexOf("\n"));
+      },
+      close: () => {
+        server.close();
+      },
+    };
+  }
+
+  const { reader, getOutput } = spawnFifoReader(pipePath);
+  return {
+    ready: () => Promise.resolve(),
+    waitForLine: async () => {
+      const [code] = await once(reader, "exit", {
+        signal: AbortSignal.timeout(15_000),
+      });
+      assert.equal(code, 0);
+      return getOutput();
+    },
+    close: () => {
+      // reader 卡在 open(fifo) 时不 kill 会让整个测试进程永不退出
+      reader.kill("SIGKILL");
+    },
+  };
+}
+
+/**
  * FIFO open() rendezvous between an external reader process and the
  * non-blocking writer can rarely misfire under heavy load. Each attempt uses
  * a fresh FIFO; one retry keeps the test deterministic without masking real
@@ -306,18 +383,14 @@ test("ServerCommandPipe sends a command through a FIFO without sync fd calls", a
     try {
       const pipe = new ServerCommandPipe();
       const fifoPath = await pipe.create(tempDir, "demo", "paper");
-      const { reader, getOutput } = spawnFifoReader(fifoPath);
+      const reader = createPipeReader(fifoPath);
 
       try {
+        await reader.ready();
         await pipe.send(fifoPath, "say hello");
-        const [code] = await once(reader, "exit", {
-          signal: AbortSignal.timeout(15_000),
-        });
-        assert.equal(code, 0);
-        assert.equal(getOutput(), "say hello");
+        assert.equal(await reader.waitForLine(), "say hello");
       } finally {
-        // reader 卡在 open(fifo) 时不 kill 会让整个测试进程永不退出
-        reader.kill("SIGKILL");
+        reader.close();
       }
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -335,7 +408,10 @@ test("ServerInstanceManager.exec writes slash-prefixed commands through the asyn
 
     try {
       const pipe = new ServerCommandPipe();
-      const fifoPath = await pipe.create(tempDir, "demo", "paper");
+      // Distinct pipe name from the ServerCommandPipe test above: on Windows
+      // the named pipe namespace is global and the previous test's server may
+      // still be draining its close when this test starts listening.
+      const fifoPath = await pipe.create(tempDir, "demo-exec", "paper");
       const logPath = path.join(
         process.env.MCT_HOME!,
         "logs",
@@ -364,23 +440,20 @@ test("ServerInstanceManager.exec writes slash-prefixed commands through the asyn
         },
       });
 
-      const { reader, getOutput } = spawnFifoReader(fifoPath);
+      const reader = createPipeReader(fifoPath);
 
       const manager = new ServerInstanceManager(store, "demo");
       try {
+        await reader.ready();
         const result = await manager.exec("paper", "/say hello");
-        const [code] = await once(reader, "exit", {
-          signal: AbortSignal.timeout(15_000),
-        });
-        assert.equal(code, 0);
         assert.deepEqual(result, {
           sent: true,
           command: "/say hello",
           stdinPipe: fifoPath,
         });
-        assert.equal(getOutput(), "say hello");
+        assert.equal(await reader.waitForLine(), "say hello");
       } finally {
-        reader.kill("SIGKILL");
+        reader.close();
       }
     } finally {
       if (previousHome === undefined) {
@@ -900,10 +973,17 @@ test("ClientInstanceManager.stop waits until the WebSocket port is released", as
 
     assert.equal(stopped.stopped, true);
     assert.equal(await isPortListening(wsPort), false);
-    assert.ok(Date.now() - startedAt >= 500);
+    if (process.platform !== "win32") {
+      // Windows termination is immediate (taskkill /F): there is no graceful
+      // SIGTERM window, so only POSIX can assert the 600ms-close was awaited.
+      assert.ok(Date.now() - startedAt >= 500);
+    }
   } finally {
     try {
       process.kill(-(child.pid ?? 0), "SIGKILL");
+    } catch {}
+    try {
+      process.kill(child.pid ?? 0, "SIGKILL");
     } catch {}
     if (previousHome === undefined) {
       delete process.env.MCT_HOME;
@@ -978,7 +1058,11 @@ test("ServerInstanceManager.waitReady rejects a port owned by an unrelated proce
   // The listener is owned by the test process; the registered server pid is an
   // unrelated (but alive) child process, so the port must be treated as foreign.
   const listener = net.createServer();
-  const foreignServer = spawn("sleep", ["30"], { stdio: "ignore" });
+  const foreignServer = spawn(
+    process.execPath,
+    ["-e", "setTimeout(() => {}, 30000)"],
+    { stdio: "ignore" },
+  );
 
   try {
     await new Promise<void>((resolve, reject) => {

@@ -285,6 +285,11 @@ test("downloadClientModToDir rejects missing local build artifacts", async () =>
             command: "java",
             majorVersion: 17,
           }),
+          // The GitHub release fallback hosts this artifact for real; keep the
+          // test offline so the missing-local-build path stays deterministic.
+          fetchImpl: (async () => {
+            throw new Error("network disabled in test");
+          }) as typeof fetch,
         },
       ),
       {

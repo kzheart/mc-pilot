@@ -6,10 +6,11 @@ import {
   readFile,
   stat,
   writeFile,
-  unlink,
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
+
+import { platform } from "../platform/index.js";
 
 import type { GlobalStateStore } from "../util/global-state.js";
 import type {
@@ -250,29 +251,23 @@ export class ServerInstanceManager {
       serverName,
     );
 
-    // Use bash wrapper: hold FIFO open in read-write mode (fd 3 <>) to prevent EOF
-    // without blocking (write-only > would block until a reader opens the other end),
-    // then exec java with stdin reading from the FIFO
-    const child = spawn(
-      "bash",
-      [
-        "-c",
-        'exec 3<>"$MCT_STDIN_PIPE"; exec "$MCT_SERVER_JAVA" "$@" 0<&3',
-        "mct-server",
-        ...flavor.buildLaunchArgs(jvmArgs, jarFile),
-      ],
-      {
-        cwd: instanceDir,
-        detached: true,
-        stdio: ["ignore", stdout.fd, stdout.fd],
-        env: {
-          ...process.env,
-          MCT_SERVER_PORT: String(meta.port),
-          MCT_STDIN_PIPE: stdinPipe,
-          MCT_SERVER_JAVA: javaCommand,
-        },
+    // The platform adapter wires the detached server's stdin to the command
+    // channel (FIFO + bash wrapper on POSIX, named pipe + bridge on Windows).
+    const spawnSpec = platform.serverStdin.buildServerSpawn({
+      stdinChannel: stdinPipe,
+      javaCommand,
+      launchArgs: flavor.buildLaunchArgs(jvmArgs, jarFile),
+    });
+    const child = spawn(spawnSpec.command, spawnSpec.args, {
+      cwd: instanceDir,
+      detached: true,
+      stdio: ["ignore", stdout.fd, stdout.fd],
+      env: {
+        ...process.env,
+        MCT_SERVER_PORT: String(meta.port),
+        ...spawnSpec.env,
       },
-    );
+    });
 
     child.once("exit", () => {
       void stdout.close();
@@ -313,13 +308,9 @@ export class ServerInstanceManager {
       killProcessTree(entry.pid);
     }
 
-    // Clean up FIFO
+    // Clean up the stdin channel's filesystem artifact, if any
     if (entry.stdinPipe) {
-      try {
-        await unlink(entry.stdinPipe);
-      } catch {
-        /* ignore */
-      }
+      await this.commandPipe.cleanup(entry.stdinPipe);
     }
 
     delete state.servers[stateKey];

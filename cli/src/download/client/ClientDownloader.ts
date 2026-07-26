@@ -20,6 +20,9 @@ const GITHUB_RELEASE_BASE_URL =
   process.env.MCT_MOD_DOWNLOAD_BASE_URL ||
   "https://github.com/kzheart/mc-pilot/releases/download";
 
+/** Latest upstream release tag that ships the client mod jars. */
+const DEFAULT_MOD_RELEASE_TAG = "v0.14.0";
+
 export interface DownloadClientOptions {
   loader?: LoaderType;
   version?: string;
@@ -172,8 +175,14 @@ export async function resolveArtifact(
   } catch {}
 
   // 3. Download from GitHub Releases
-  const modVersion = variant.modVersion ?? "0.9.1";
-  const releaseTag = variant.releaseTag ?? `v${modVersion}`;
+  // The catalog's modVersion tracks the mod build (gradle mod_version), which
+  // is not necessarily a published GitHub release tag: v0.9.1 was deleted
+  // upstream while its artifacts live on under newer release tags. Default to
+  // a tag that actually hosts the mod jars.
+  const releaseTag =
+    variant.releaseTag ??
+    process.env.MCT_MOD_RELEASE_TAG ??
+    DEFAULT_MOD_RELEASE_TAG;
   const downloadUrl = `${GITHUB_RELEASE_BASE_URL}/${releaseTag}/${artifactFileName}`;
 
   try {

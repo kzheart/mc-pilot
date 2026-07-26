@@ -3,12 +3,18 @@
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { crc32 } from "node:zlib";
 import { access, appendFile, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { buildProgram } from "../cli/dist/index.js";
+import {
+  findPidsByCommandLine,
+  getListeningPids,
+  killProcessTree,
+} from "../cli/dist/util/process.js";
 import { TEST_GROUPS } from "./real-mod-full-test/groups/index.mjs";
 import {
   findAvailablePort,
@@ -269,6 +275,87 @@ async function ensureFileExists(filePath) {
   await stat(filePath);
 }
 
+/**
+ * Minimal single-pass ZIP writer (stored entries, no compression). Keeps the
+ * resource-pack fixture generation dependency-free and cross-platform.
+ */
+function buildStoredZip(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const { name, data } of entries) {
+    const nameBuf = Buffer.from(name, "utf8");
+    const crc = crc32(data) >>> 0;
+
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0x21, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, nameBuf, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0x21, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, nameBuf);
+
+    offset += 30 + nameBuf.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralSize, 12);
+  eocd.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...localParts, ...centralParts, eocd]);
+}
+
+/** Generate the resource-pack fixture zip when it is not already present. */
+async function ensureResourcePackFixture() {
+  try {
+    await stat(RESOURCEPACK_PATH);
+    return;
+  } catch {}
+
+  const packMeta = JSON.stringify(
+    {
+      pack: {
+        pack_format: 22,
+        supported_formats: [9, 99],
+        description: "MCT test resource pack"
+      }
+    },
+    null,
+    2
+  );
+  const zip = buildStoredZip([
+    { name: "pack.mcmeta", data: Buffer.from(`${packMeta}\n`, "utf8") }
+  ]);
+  await mkdir(path.dirname(RESOURCEPACK_PATH), { recursive: true });
+  await writeFile(RESOURCEPACK_PATH, zip);
+}
+
 async function runCommand(command, args, options = {}) {
   return runSharedCommand(command, args, {
     ...options,
@@ -521,46 +608,30 @@ async function stopEnvironment() {
   };
 }
 
-async function findPidsWithLsof(port) {
-  const result = await runCommand("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { allowFailure: true });
-  if (!result.ok || !result.stdout.trim()) {
-    return [];
-  }
-  return result.stdout
-    .split(/\s+/)
-    .map((value) => Number(value.trim()))
-    .filter((value) => Number.isInteger(value) && value > 0);
+// Port/process discovery and termination go through the CLI's platform
+// adapter (cli/src/platform/): lsof/pgrep/kill on POSIX, netstat/CIM/taskkill
+// on Windows.
+async function findPidsListeningOnPort(port) {
+  return getListeningPids(port);
 }
 
-async function findPidsWithPgrep(fragment) {
-  const result = await runCommand("pgrep", ["-f", fragment], { allowFailure: true });
-  if (!result.ok || !result.stdout.trim()) {
-    return [];
-  }
-  return result.stdout
-    .split(/\s+/)
-    .map((value) => Number(value.trim()))
-    .filter((value) => Number.isInteger(value) && value > 0 && value !== process.pid);
+async function findPidsByCmdline(fragment) {
+  return findPidsByCommandLine(fragment).filter((pid) => pid !== process.pid);
 }
 
 async function terminatePid(pid, signal) {
   try {
-    process.kill(-pid, signal);
+    killProcessTree(pid, signal);
     return true;
   } catch {
-    try {
-      process.kill(pid, signal);
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
 async function waitForPortRelease(port, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await findPidsWithLsof(port)).length === 0) {
+    if ((await findPidsListeningOnPort(port)).length === 0) {
       return;
     }
     await sleep(250);
@@ -570,10 +641,10 @@ async function waitForPortRelease(port, timeoutMs) {
 }
 
 async function collectClientResidue() {
-  const listeningPids = await findPidsWithLsof(REAL_CLIENT_WS_PORT);
+  const listeningPids = await findPidsListeningOnPort(REAL_CLIENT_WS_PORT);
   const patternPidSet = new Set(listeningPids);
   for (const pattern of await getClientResiduePatterns()) {
-    for (const pid of await findPidsWithPgrep(pattern)) {
+    for (const pid of await findPidsByCmdline(pattern)) {
       patternPidSet.add(pid);
     }
   }
@@ -629,9 +700,11 @@ async function waitForClientLogCountIncrease(fragment, baselineCount, timeoutSec
 async function forceKillClientResidueByPattern() {
   const patterns = await getClientResiduePatterns();
 
-  for (const signal of ["-TERM", "-KILL"]) {
+  for (const signal of ["SIGTERM", "SIGKILL"]) {
     for (const pattern of patterns) {
-      await runCommand("pkill", [signal, "-f", pattern], { allowFailure: true });
+      for (const pid of await findPidsByCmdline(pattern)) {
+        await terminatePid(pid, signal);
+      }
     }
     await sleep(1000);
   }
@@ -735,7 +808,7 @@ async function main() {
 
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(SCREENSHOT_DIR, { recursive: true });
-  await ensureFileExists(RESOURCEPACK_PATH);
+  await ensureResourcePackFixture();
   await syncBuiltFixturePlugin();
 
   const runReportPath =

@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import path from "node:path";
+import process from "node:process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -25,6 +27,36 @@ export function parseCliOptions(argv, handlers) {
     handler.apply(nextValue);
     index += 1;
   }
+}
+
+/**
+ * Run the Gradle wrapper found in `wrapperDir` with cross-platform handling:
+ * gradlew on POSIX, gradlew.bat via cmd.exe on Windows (Node refuses to
+ * execFile batch scripts directly). Pass `projectDir` to build a project
+ * outside the wrapper's own directory (gradle -p).
+ */
+export async function runGradleWrapper({
+  wrapperDir,
+  projectDir,
+  args,
+  env,
+  timeoutMs,
+  allowFailure,
+}) {
+  const projectArgs = projectDir ? ["-p", projectDir] : [];
+  // --configure-on-demand keeps sibling variant projects (and their remote
+  // toolchain/maven lookups) out of single-module builds.
+  const gradleArgs = ["--configure-on-demand", ...projectArgs, ...args];
+  const isWindows = process.platform === "win32";
+  const wrapper = path.join(wrapperDir, isWindows ? "gradlew.bat" : "gradlew");
+  const command = isWindows ? "cmd.exe" : wrapper;
+  const finalArgs = isWindows ? ["/d", "/s", "/c", wrapper, ...gradleArgs] : gradleArgs;
+  return runCommand(command, finalArgs, {
+    cwd: wrapperDir,
+    env,
+    timeoutMs,
+    allowFailure,
+  });
 }
 
 export async function runCommand(command, args, options = {}) {
