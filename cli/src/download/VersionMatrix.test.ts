@@ -226,7 +226,7 @@ test("Minecraft 1.12.2 exposes selectable Forge builds from the real variant", (
     "14.23.5.2864",
   ]);
   assert.equal(forge?.javaVersion, "8");
-  assert.equal(forge?.validation, "limited");
+  assert.equal(forge?.validation, "verified");
 });
 
 test("isProxyType returns true only for proxy types", () => {

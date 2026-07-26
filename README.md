@@ -264,7 +264,7 @@ Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/` and survive 
 
 | Minecraft | Fabric | Forge | NeoForge |
 |---|:-:|:-:|:-:|
-| 1.12.2 | — | ⚠️ | — |
+| 1.12.2 | — | ✅ | — |
 | 1.18.2 | ✅ | ✅ | — |
 | 1.20.1 | ✅ | ✅ | ✅ |
 | 1.20.2 | ✅ | ✅ | ⚠️ |
@@ -279,7 +279,7 @@ Version notes:
 
 - **26.1 servers** — Paper publishes no exact `26.1` artifact; the Fabric 26.1 client is verified against Paper 26.1.1 build 29 and 26.1.2 build 74. Paper 26.2 build 60 and Vanilla 26.2 are verified with the Fabric 26.2 client. `mct client search` / `mct server search` expose these verified pairings.
 - **NeoForge 1.20.2** — NeoForge 20.2 clients cannot join Paper/Bukkit-family 1.20.2 servers at all (upstream `Invalid payload REGISTER!` handshake incompatibility, fixed in NeoForge 20.4). The variant works against vanilla servers; this is why it stays at limited validation.
-- **Forge 1.12.2** — built with the legacy Java 8 toolchain; Forge builds 14.23.5.2859 / 2860 / 2864 are selectable via `--forge-version`. The legacy mod implements a protocol subset (position/rotation/status/chat/inventory/basic movement), all verified end-to-end against a vanilla 1.12.2 server; GUI, block, combat and other modern actions are not available. On Apple Silicon, use an x86_64 Java 8 runtime under Rosetta (Minecraft 1.12.2 ships LWJGL2 x86_64 natives only).
+- **Forge 1.12.2** — built with the legacy Java 8 toolchain; Forge builds 14.23.5.2859 / 2860 / 2864 are selectable via `--forge-version`. The legacy mod implements the full protocol (chat, status, movement, blocks, entities, combat, inventory, GUI interaction, crafting/anvil/enchant/trade, signs, books, HUD, screenshots, keyboard/mouse input, reconnect), verified end-to-end against a vanilla 1.12.2 server. Only `input scroll` is unavailable (LWJGL2 offers no event injection). On Apple Silicon, use an x86_64 Java 8 runtime under Rosetta (Minecraft 1.12.2 ships LWJGL2 x86_64 natives only).
 
 ## Development
 
