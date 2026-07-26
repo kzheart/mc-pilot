@@ -436,6 +436,14 @@ async function syncBuiltFixturePlugin() {
   await access(BUILT_PLUGIN_PATH);
   await mkdir(path.dirname(SERVER_PLUGIN_PATH), { recursive: true });
   await copyFile(BUILT_PLUGIN_PATH, SERVER_PLUGIN_PATH);
+  for (const extraPlugin of (process.env.MCT_SUITE_EXTRA_PLUGINS ?? "")
+    .split(",")
+    .filter(Boolean)) {
+    await copyFile(
+      extraPlugin,
+      path.join(path.dirname(SERVER_PLUGIN_PATH), path.basename(extraPlugin)),
+    );
+  }
 }
 
 async function updateServerProperties(resourcePackUrl = null, resourcePackSha1 = null) {
@@ -1032,7 +1040,8 @@ async function main() {
         });
         if (readyState.ready) {
           if (options.deferServerConnect) {
-            await waitForClientLogCountIncrease("Created: 256x128x0 minecraft:textures/atlas/mob_effects.png-atlas", 0, 30);
+            // Mipmap suffix differs per loader (x0 on Fabric, x4 on Forge) — match the atlas name only.
+            await waitForClientLogCountIncrease("minecraft:textures/atlas/mob_effects.png-atlas", 0, 30);
             await runClientLeaf("client reconnect", ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`], (data) => {
               expect(data.connecting === true, `${label} client reconnect did not start`);
             });
@@ -1223,7 +1232,9 @@ async function main() {
     await waitForLogEntry("Done", 120);
 
     await launchRealClientAndWaitReady("initial", {
-      deferServerConnect: CLIENT_MC_VERSION === "1.18.2"
+      deferServerConnect:
+        CLIENT_MC_VERSION === "1.18.2" ||
+        process.env.MCT_SUITE_DEFER_CONNECT === "1"
     });
     coveredNonRequestLeafCommands.add("client launch");
     coveredNonRequestLeafCommands.add("client wait-ready");

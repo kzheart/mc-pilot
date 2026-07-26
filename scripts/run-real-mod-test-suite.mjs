@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { getBuildableFabricVariants, loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
+import { loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
 import { getMinecraftSupport, searchClientVersions } from "../cli/dist/download/VersionMatrix.js";
 import {
   findDistinctPorts,
@@ -39,6 +39,7 @@ const MACOS_JAVA_HOME = "/usr/libexec/java_home";
 function parseCliOptions(argv) {
   const selectedGroups = [];
   const selectedVersions = [];
+  const selectedLoaders = [];
 
   parseSharedCliOptions(argv, {
     "--group": {
@@ -47,9 +48,12 @@ function parseCliOptions(argv) {
     "--version": {
       apply: (value) => selectedVersions.push(value),
     },
+    "--loader": {
+      apply: (value) => selectedLoaders.push(value),
+    },
   });
 
-  return { selectedGroups, selectedVersions };
+  return { selectedGroups, selectedVersions, selectedLoaders };
 }
 
 function resolveServerTarget(minecraftVersion, loader) {
@@ -84,9 +88,40 @@ function resolveServerTarget(minecraftVersion, loader) {
   return null;
 }
 
-function resolveVersionMatrix(selectedVersions) {
+function isBuildableVariant(variant) {
+  if (!variant.gradleModule) {
+    return false;
+  }
+  if (variant.support !== "ready" && variant.support !== "configured") {
+    return false;
+  }
+  // The legacy 1.12.2 shell implements a protocol subset; it cannot pass the full suite.
+  if (variant.gradleBuild === "legacy") {
+    return false;
+  }
+  if (variant.loader === "fabric") {
+    return Boolean(
+      (variant.yarnMappings || variant.mappings === "mojang") &&
+        variant.fabricLoaderVersion,
+    );
+  }
+  if (variant.loader === "forge") {
+    return Boolean(variant.forgeVersion);
+  }
+  if (variant.loader === "neoforge") {
+    return Boolean(variant.neoforgeVersion);
+  }
+  return false;
+}
+
+function resolveVersionMatrix(selectedVersions, selectedLoaders) {
   const catalog = loadModVariantCatalogSync();
-  const buildableVariants = getBuildableFabricVariants(catalog);
+  const loaders = new Set(
+    selectedLoaders.length > 0 ? selectedLoaders : ["fabric"],
+  );
+  const buildableVariants = catalog.variants.filter(
+    (variant) => loaders.has(variant.loader) && isBuildableVariant(variant),
+  );
   const requestedVersions = new Set(selectedVersions);
   const runnable = [];
   const skipped = [];
@@ -190,7 +225,20 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const gradleDir = entry.gradleBuild
     ? path.join(CLIENT_MOD_DIR, entry.gradleBuild)
     : CLIENT_MOD_DIR;
-  const javaCommand = resolveJavaCommand(entry.minecraftVersion);
+  // Loom 1.13 requires Gradle itself on JVM >= 21; the per-version runtime Java
+  // is still used for server/client processes via appendJavaOption.
+  const runtimeJavaMajor = javaMajorForMinecraft(entry.minecraftVersion);
+  const buildJavaVersion = entry.gradleBuild === "legacy"
+    ? "8"
+    : String(Math.max(21, runtimeJavaMajor));
+  const javaCommand = process.env[`MCT_JAVA_${buildJavaVersion}`]
+    ?? (process.platform === "darwin"
+      ? path.join(
+          execFileSync(MACOS_JAVA_HOME, ["-v", buildJavaVersion], { encoding: "utf8" }).trim(),
+          "bin",
+          "java",
+        )
+      : "java");
   const javaHome = javaCommand === "java"
     ? null
     : path.dirname(path.dirname(javaCommand));
@@ -252,6 +300,9 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   if (entry.serverBuild != null) {
     serverCreateArgs.push("--build", String(entry.serverBuild));
   }
+  if (process.env.MCT_SUITE_SERVER_JVM_ARGS) {
+    serverCreateArgs.push("--jvm-args", process.env.MCT_SUITE_SERVER_JVM_ARGS);
+  }
   const serverCreate = await runCommandWithRetry(
     process.execPath,
     appendJavaOption(serverCreateArgs, entry.serverVersion),
@@ -307,7 +358,12 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
       [profileName]: {
         server: serverName,
         clients: [clientName],
-        deployPlugins: [FIXTURE_PLUGIN_JAR]
+        deployPlugins: [
+          FIXTURE_PLUGIN_JAR,
+          ...(process.env.MCT_SUITE_EXTRA_PLUGINS
+            ? process.env.MCT_SUITE_EXTRA_PLUGINS.split(",").filter(Boolean)
+            : []),
+        ]
       }
     },
     screenshot: {
@@ -352,7 +408,10 @@ async function main() {
     assert.equal(knownGroups.has(group), true, `Unknown group: ${group}`);
   }
 
-  const matrix = resolveVersionMatrix(options.selectedVersions);
+  const matrix = resolveVersionMatrix(
+    options.selectedVersions,
+    options.selectedLoaders,
+  );
   assert.notEqual(matrix.runnable.length, 0, "No runnable multi-version E2E targets were resolved");
 
   const summary = {
