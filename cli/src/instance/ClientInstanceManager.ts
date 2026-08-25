@@ -28,6 +28,28 @@ const DEFAULT_CLIENT_MUTE = true;
 const CLIENT_STOP_TIMEOUT_MS = 15_000;
 const CLIENT_PORT_RELEASE_TIMEOUT_MS = 10_000;
 const CLIENT_STOP_POLL_MS = 250;
+/** How many times wait-ready may re-issue a reconnect within one window. */
+const WAIT_READY_MAX_RECONNECTS = 3;
+const WAIT_READY_RECONNECT_BACKOFF_MS = 4_000;
+/**
+ * Visible titles of screens a client never leaves without being told to
+ * reconnect. Used as a fallback because the mod classifies screens by class
+ * name, which is obfuscated on production clients.
+ */
+const STUCK_SCREEN_TITLES = [
+  "disconnect",
+  "failed to connect",
+  "can't connect",
+  "cannot connect",
+  "connection lost",
+  "connection failed",
+  "无法连接",
+  "连接失败",
+  "连接丢失",
+  "断开",
+  "已断开",
+  "minecraft", // vanilla title screen
+];
 
 function getLaunchScriptPath() {
   const thisFile = fileURLToPath(import.meta.url);
@@ -348,9 +370,14 @@ export class ClientInstanceManager {
     }
 
     // 阶段 B：轮询 position.get 直到不再 NOT_IN_WORLD
+    //
+    // 客户端停在标题屏/断开屏时不会自己进服，干等到超时只是浪费整个窗口。
+    // 按 mod 上报的 screen category（版本无关）判断是否"卡住了"，卡住就立刻
+    // 重连，并允许多次退避重试，而不是只在窗口末尾试一次。
     let lastErrorCode = "NOT_IN_WORLD";
     let lastStatus: unknown;
-    let reconnectAttempted = false;
+    let reconnectAttempts = 0;
+    let nextReconnectAt = 0;
     while (Date.now() < deadline) {
       try {
         const ws = new WebSocketClient(wsUrl);
@@ -364,17 +391,26 @@ export class ClientInstanceManager {
             url: wsUrl,
             inWorld: true,
             position: response.data,
+            ...(reconnectAttempts > 0 ? { reconnectAttempts } : {}),
           };
         }
         lastErrorCode = this.errorCode(response.error, lastErrorCode);
         if (lastErrorCode === "NOT_IN_WORLD") {
           lastStatus = await this.readClientStatus(wsUrl);
+          const screen = this.readScreenState(lastStatus);
+          const stuck = this.isStuckScreen(screen);
+          const now = Date.now();
           if (
-            !reconnectAttempted &&
             options.reconnectAddress &&
-            Date.now() > deadline - Math.max(5_000, timeoutSeconds * 250)
+            reconnectAttempts < WAIT_READY_MAX_RECONNECTS &&
+            now >= nextReconnectAt &&
+            // 卡在非游戏界面就立刻重连；否则（还在加载地形）留到窗口末尾兜底
+            (stuck || now > deadline - Math.max(5_000, timeoutSeconds * 250))
           ) {
-            reconnectAttempted = true;
+            reconnectAttempts += 1;
+            // 退避，避免在客户端还没处理完上一次重连时反复捅它
+            nextReconnectAt =
+              now + WAIT_READY_RECONNECT_BACKOFF_MS * reconnectAttempts;
             await this.requestReconnect(wsUrl, options.reconnectAddress);
           }
         }
@@ -393,17 +429,77 @@ export class ClientInstanceManager {
       inWorld: false,
       lastError: lastErrorCode,
       status: lastStatus,
-      reconnectAttempted,
+      reconnectAttempted: reconnectAttempts > 0,
+      reconnectAttempts,
       reconnectAddress: options.reconnectAddress,
     });
     throw new MctError(
       {
         code: "TIMEOUT",
-        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server).`,
+        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server). If it keeps bouncing back to a disconnect screen, check the server's log and \`online-mode\`: test clients use offline accounts and an authenticating server rejects them with "Failed to login: Invalid session" (fix with \`mct server config <server> --online-mode false\`, then restart it).`,
         details: diag,
       },
       2,
     );
+  }
+
+  /**
+   * Pull the version-independent screen classification out of a `status.all`
+   * payload. The mod reports `category` (game/title/disconnected/multiplayer/
+   * screen); the obfuscated `type` (class_442, ...) shifts between Minecraft
+   * versions and must never be matched on.
+   */
+  private readScreenState(status: unknown): {
+    category?: string;
+    type?: string;
+    title?: string;
+    disconnectReason?: string;
+  } {
+    const typed = status as
+      | {
+          screenCategory?: string;
+          disconnectReason?: string;
+          screen?: {
+            type?: string;
+            title?: string;
+            category?: string;
+            disconnectReason?: string;
+          };
+        }
+      | undefined;
+    return {
+      category: typed?.screenCategory ?? typed?.screen?.category,
+      type: typed?.screen?.type,
+      title: typed?.screen?.title,
+      disconnectReason:
+        typed?.disconnectReason ?? typed?.screen?.disconnectReason,
+    };
+  }
+
+  /**
+   * Whether the client is parked on a screen it will never leave on its own.
+   *
+   * The mod's `category` is authoritative when it says so, but its screen
+   * classification matches on class names, which are obfuscated on production
+   * clients (`class_419`), so a real disconnect can arrive as `screen`. Fall
+   * back to the visible title, which stays meaningful across builds.
+   */
+  private isStuckScreen(screen: {
+    category?: string;
+    title?: string;
+  }): boolean {
+    if (
+      screen.category === "disconnected" ||
+      screen.category === "title" ||
+      screen.category === "multiplayer"
+    ) {
+      return true;
+    }
+    if (screen.category === "game" || !screen.title) {
+      return false;
+    }
+    const title = screen.title.toLowerCase();
+    return STUCK_SCREEN_TITLES.some((needle) => title.includes(needle));
   }
 
   private buildDiagnostics(
@@ -415,6 +511,7 @@ export class ClientInstanceManager {
       lastError?: string;
       status?: unknown;
       reconnectAttempted?: boolean;
+      reconnectAttempts?: number;
       reconnectAddress?: string;
     },
   ) {
@@ -430,6 +527,7 @@ export class ClientInstanceManager {
       lastError: extras.lastError,
       status: extras.status,
       reconnectAttempted: extras.reconnectAttempted ?? false,
+      reconnectAttempts: extras.reconnectAttempts ?? 0,
       reconnectAddress: extras.reconnectAddress,
     };
   }
@@ -442,6 +540,7 @@ export class ClientInstanceManager {
     lastError?: string;
     status?: unknown;
     reconnectAttempted?: boolean;
+    reconnectAttempts?: number;
     reconnectAddress?: string;
   }): string {
     const parts = [
@@ -453,23 +552,12 @@ export class ClientInstanceManager {
     if (diag.lastError) {
       parts.push(`lastError=${diag.lastError}`);
     }
-    const status = diag.status as
-      | {
-          screenCategory?: string;
-          disconnectReason?: string;
-          screen?: {
-            type?: string;
-            title?: string;
-            category?: string;
-            disconnectReason?: string;
-          };
-        }
-      | undefined;
-    const screenCategory = status?.screenCategory ?? status?.screen?.category;
-    const disconnectReason =
-      status?.disconnectReason ?? status?.screen?.disconnectReason;
-    const screenType = status?.screen?.type;
-    const screenTitle = status?.screen?.title;
+    const {
+      category: screenCategory,
+      type: screenType,
+      title: screenTitle,
+      disconnectReason,
+    } = this.readScreenState(diag.status);
     if (screenCategory) {
       parts.push(`screenCategory=${screenCategory}`);
     }
@@ -483,7 +571,7 @@ export class ClientInstanceManager {
       parts.push(`disconnectReason=${disconnectReason}`);
     }
     if (diag.reconnectAttempted) {
-      parts.push(`reconnectAttempted=true`);
+      parts.push(`reconnectAttempts=${diag.reconnectAttempts ?? 1}`);
     }
     if (diag.reconnectAddress) {
       parts.push(`reconnectAddress=${diag.reconnectAddress}`);

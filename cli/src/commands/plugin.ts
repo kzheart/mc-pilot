@@ -131,7 +131,6 @@ export function createPluginCommand() {
       .description("Install a plugin (with dependencies) to a server")
       .argument("<id>", "Plugin ID")
       .requiredOption("--server <name>", "Target server instance name")
-      .option("--project <id>", "Project ID")
       .action(
         wrapCommand(
           async (
@@ -141,10 +140,10 @@ export function createPluginCommand() {
               options,
             }: {
               args: (string | undefined)[];
-              options: { server: string; project?: string };
+              options: { server: string };
             },
           ) => {
-            const project = options.project ?? context.projectId;
+            const project = context.projectId;
             if (!project) {
               throw new MctError(
                 {

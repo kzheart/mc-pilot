@@ -4,16 +4,49 @@ import path from "node:path";
 import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
 import { syncTopology } from "../instance/TopologySync.js";
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
-import { ERROR_MESSAGES, MctError, noProject } from "../util/errors.js";
+import { MctError, noProject } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
 import {
   createDefaultProjectFile,
   loadProjectFileForCwd,
+  requireActiveProfile,
   resolveProjectFilePath,
   resolveBackendNames,
-  resolveProfile,
   writeProjectFile,
 } from "../util/project.js";
+
+/**
+ * Refuse to point offline test clients at an authenticating instance.
+ *
+ * mct clients log in with offline accounts. A server (or, behind a proxy, the
+ * proxy) running `online-mode=true` asks Mojang to verify the session and
+ * rejects them with "Failed to login: Invalid session" — a failure that never
+ * resolves, so waiting out the readiness window only delays the diagnosis.
+ */
+export function assertOfflineAuthGate(input: {
+  instance: string;
+  onlineMode?: boolean;
+  isProxy: boolean;
+  clients: string[];
+}): void {
+  if (!input.onlineMode) {
+    return;
+  }
+  throw new MctError(
+    {
+      code: "ONLINE_MODE_CONFLICT",
+      message: `Instance '${input.instance}' runs with online-mode=true, but mct test clients use offline accounts and will be rejected with "Failed to login: Invalid session". Fix it with \`mct server config ${input.instance} --online-mode false\` and restart the instance, or run with --server-only-ok to skip clients.`,
+      details: {
+        instance: input.instance,
+        onlineMode: true,
+        isProxy: input.isProxy,
+        clients: input.clients,
+        fix: `mct server config ${input.instance} --online-mode false`,
+      },
+    },
+    4,
+  );
+}
 
 export function createInitCommand() {
   return new Command("init")
@@ -53,92 +86,105 @@ export function createInitCommand() {
 export function createDeployCommand() {
   return new Command("deploy")
     .description("Deploy plugin JARs to the server instance")
-    .option("--profile <name>", "Profile name")
     .action(
-      wrapCommand(
-        async (context, { options }: { options: { profile?: string } }) => {
-          const { projectFile, projectId, projectRootDir } = context;
-          if (!projectFile || !projectId || !projectRootDir) {
-            throw noProject();
-          }
+      wrapCommand(async (context, { globalOptions }) => {
+        const { projectFile, projectId, projectRootDir } = context;
+        if (!projectFile || !projectId || !projectRootDir) {
+          throw noProject();
+        }
 
-          const profile = resolveProfile(
-            projectFile,
-            options.profile ?? projectFile.defaultProfile,
+        const profile = requireActiveProfile({
+          projectFile,
+          activeProfile: context.activeProfile,
+          requestedProfile: globalOptions.profile,
+        });
+
+        const backends = resolveBackendNames(profile);
+        if (backends.length === 0) {
+          throw new MctError(
+            {
+              code: "NO_PROFILE",
+              message:
+                "Profile has no backend server configured (set 'server' or 'servers')",
+            },
+            4,
           );
-          if (!profile) {
-            throw new MctError(
-              {
-                code: "NO_PROFILE",
-                message: ERROR_MESSAGES.NO_PROFILE_SELECTED,
-              },
-              4,
-            );
-          }
+        }
 
-          const backends = resolveBackendNames(profile);
-          if (backends.length === 0) {
-            throw new MctError(
-              {
-                code: "NO_PROFILE",
-                message:
-                  "Profile has no backend server configured (set 'server' or 'servers')",
-              },
-              4,
-            );
-          }
+        const hasDeployPlugins =
+          profile.deployPlugins && profile.deployPlugins.length > 0;
+        const hasProxyPlugins =
+          profile.proxyPlugins && profile.proxyPlugins.length > 0;
+        if (!hasDeployPlugins && !hasProxyPlugins) {
+          return {
+            deployed: [],
+            profile: context.activeProfileName,
+            message: "No deployPlugins configured in profile",
+          };
+        }
 
-          const hasDeployPlugins =
-            profile.deployPlugins && profile.deployPlugins.length > 0;
-          const hasProxyPlugins =
-            profile.proxyPlugins && profile.proxyPlugins.length > 0;
-          if (!hasDeployPlugins && !hasProxyPlugins) {
-            return {
-              deployed: [],
-              message: "No deployPlugins configured in profile",
-            };
-          }
+        const manager = new ServerInstanceManager(
+          context.globalState,
+          projectId,
+        );
 
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            projectId,
-          );
-
-          const deployed: string[] = [];
-          if (hasDeployPlugins) {
-            for (const name of backends) {
-              const paths = await manager.deploy(
-                name,
-                profile.deployPlugins!,
-                projectRootDir,
-              );
-              deployed.push(...paths);
-            }
-          }
-
-          let proxyDeployed: string[] | undefined;
-          if (hasProxyPlugins && profile.proxy) {
-            proxyDeployed = await manager.deploy(
-              profile.proxy,
-              profile.proxyPlugins!,
+        const deployed: string[] = [];
+        if (hasDeployPlugins) {
+          for (const name of backends) {
+            const paths = await manager.deploy(
+              name,
+              profile.deployPlugins!,
               projectRootDir,
             );
+            deployed.push(...paths);
           }
+        }
 
-          return {
-            deployed,
-            servers: backends,
-            ...(proxyDeployed ? { proxyDeployed, proxy: profile.proxy } : {}),
-          };
-        },
-      ),
+        let proxyDeployed: string[] | undefined;
+        if (hasProxyPlugins && profile.proxy) {
+          proxyDeployed = await manager.deploy(
+            profile.proxy,
+            profile.proxyPlugins!,
+            projectRootDir,
+          );
+        }
+
+        // Hot-swapping a JAR under a live PluginClassLoader leaves lazily
+        // loaded classes unresolvable (NoClassDefFoundError). Tell the caller
+        // which instances still need a restart instead of letting the next
+        // test blame the plugin.
+        const restartTargets = [
+          ...backends,
+          ...(proxyDeployed && profile.proxy ? [profile.proxy] : []),
+        ];
+        const runningInstances: string[] = [];
+        for (const name of restartTargets) {
+          const state = (await manager.status(name)) as { running?: boolean };
+          if (state?.running) {
+            runningInstances.push(name);
+          }
+        }
+
+        return {
+          deployed,
+          servers: backends,
+          profile: context.activeProfileName,
+          ...(proxyDeployed ? { proxyDeployed, proxy: profile.proxy } : {}),
+          ...(runningInstances.length > 0
+            ? {
+                restartRequired: true,
+                runningInstances,
+                warning: `Deployed to running instance(s): ${runningInstances.join(", ")}. Restart them (\`mct down\` then \`mct up\`, or \`mct server stop/start <name>\`) before testing — the old PluginClassLoader keeps the previous JAR and lazily loaded classes will fail with NoClassDefFoundError.`,
+              }
+            : { restartRequired: false }),
+        };
+      }),
     );
 }
 
 export function createUpCommand() {
   return new Command("up")
     .description("Deploy plugins, start server and clients, wait for ready")
-    .option("--profile <name>", "Profile name")
     .option("--eula", "Auto-accept EULA")
     .option(
       "--server-only-ok",
@@ -154,13 +200,14 @@ export function createUpCommand() {
           context,
           {
             options,
+            globalOptions,
           }: {
             options: {
-              profile?: string;
               eula?: boolean;
               serverOnlyOk?: boolean;
               skipClientReady?: boolean;
             };
+            globalOptions: { profile?: string };
           },
         ) => {
           const { projectFile, projectId, projectRootDir } = context;
@@ -168,19 +215,11 @@ export function createUpCommand() {
             throw noProject();
           }
 
-          const profile = resolveProfile(
+          const profile = requireActiveProfile({
             projectFile,
-            options.profile ?? projectFile.defaultProfile,
-          );
-          if (!profile) {
-            throw new MctError(
-              {
-                code: "NO_PROFILE",
-                message: ERROR_MESSAGES.NO_PROFILE_SELECTED,
-              },
-              4,
-            );
-          }
+            activeProfile: context.activeProfile,
+            requestedProfile: globalOptions.profile,
+          });
 
           const backends = resolveBackendNames(profile);
           if (backends.length === 0) {
@@ -199,7 +238,9 @@ export function createUpCommand() {
             projectId,
           );
           const clientManager = new ClientInstanceManager(context.globalState);
-          const results: Record<string, unknown> = {};
+          const results: Record<string, unknown> = {
+            profile: context.activeProfileName,
+          };
 
           // 1. Deploy plugins
           if (profile.deployPlugins && profile.deployPlugins.length > 0) {
@@ -275,7 +316,22 @@ export function createUpCommand() {
             return results;
           }
 
-          // 6. Launch clients (reuse running clients via reconnect)
+          // 6. Refuse to launch offline test clients against an authenticating
+          // instance. The client would reach "登录失败：无效会话 / Failed to
+          // login: Invalid session" and we would sit out the whole wait window
+          // for a failure that can never resolve itself.
+          //
+          // Only the entry point authenticates: behind a proxy the backends are
+          // expected to run offline, so check the proxy in that case.
+          const authGate = profile.proxy ? profile.proxy : backends[0];
+          assertOfflineAuthGate({
+            instance: authGate,
+            onlineMode: (await serverManager.loadMeta(authGate)).onlineMode,
+            isProxy: Boolean(profile.proxy),
+            clients: profile.clients,
+          });
+
+          // 7. Launch clients (reuse running clients via reconnect)
           const serverAddress =
             profile.proxy && topology.proxy
               ? `localhost:${topology.proxy.port}`
@@ -297,7 +353,7 @@ export function createUpCommand() {
           }
           results.clients = clientResults;
 
-          // 7. Wait for clients (WS connected + in-world)
+          // 8. Wait for clients (WS connected + in-world)
           if (options.skipClientReady) {
             results.clientReadySkipped = true;
           } else {
@@ -323,28 +379,22 @@ export function createUpCommand() {
 export function createDownCommand() {
   return new Command("down")
     .description("Stop server and clients for the active profile")
-    .option("--profile <name>", "Profile name")
     .action(
       wrapCommand(
-        async (context, { options }: { options: { profile?: string } }) => {
+        async (
+          context,
+          { globalOptions }: { globalOptions: { profile?: string } },
+        ) => {
           const { projectFile, projectId } = context;
           if (!projectFile || !projectId) {
             throw noProject();
           }
 
-          const profile = resolveProfile(
+          const profile = requireActiveProfile({
             projectFile,
-            options.profile ?? projectFile.defaultProfile,
-          );
-          if (!profile) {
-            throw new MctError(
-              {
-                code: "NO_PROFILE",
-                message: ERROR_MESSAGES.NO_PROFILE_SELECTED,
-              },
-              4,
-            );
-          }
+            activeProfile: context.activeProfile,
+            requestedProfile: globalOptions.profile,
+          });
 
           const backends = resolveBackendNames(profile);
           if (backends.length === 0) {
@@ -363,7 +413,9 @@ export function createDownCommand() {
             projectId,
           );
           const clientManager = new ClientInstanceManager(context.globalState);
-          const results: Record<string, unknown> = {};
+          const results: Record<string, unknown> = {
+            profile: context.activeProfileName,
+          };
 
           // Stop clients first
           const clientResults: Array<{

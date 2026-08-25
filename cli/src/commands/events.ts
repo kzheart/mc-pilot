@@ -122,6 +122,60 @@ function buildPayloadText(event: EventEntry): string {
   });
 }
 
+/** Strip Minecraft section-sign colour codes so payloads read as plain text. */
+function stripFormatting(value: string): string {
+  return value.replace(/[§&][0-9a-fk-orA-FK-OR]/g, "");
+}
+
+const TIMEOUT_SAMPLE_SIZE = 10;
+
+/**
+ * Explain *why* nothing matched. A bare "timed out" cannot distinguish
+ * "the event never fired" from "it fired but the pattern missed it" (colour
+ * codes in chat payloads are the usual culprit), so hand back what actually
+ * arrived in the window.
+ */
+function buildTimeoutDetails(
+  filePath: string,
+  options: {
+    timeoutSeconds: number;
+    sinceMs: number;
+    type?: string;
+    match?: string;
+  },
+) {
+  const all = filterEvents(readAllEvents(filePath), {
+    sinceMs: options.sinceMs,
+  });
+  const ofType = filterEvents(all, { type: options.type });
+
+  const typeCounts: Record<string, number> = {};
+  for (const event of all) {
+    typeCounts[event.type] = (typeCounts[event.type] ?? 0) + 1;
+  }
+
+  return {
+    file: filePath,
+    type: options.type ?? null,
+    match: options.match ?? null,
+    sinceMs: options.sinceMs,
+    observedInWindow: all.length,
+    observedOfType: ofType.length,
+    typeCounts,
+    recentEvents: ofType.slice(-TIMEOUT_SAMPLE_SIZE).map((event) => ({
+      iso: event.iso,
+      type: event.type,
+      text: stripFormatting(buildPayloadText(event)),
+    })),
+    hint:
+      ofType.length === 0
+        ? all.length === 0
+          ? "No events at all in the window — the client may not be in-world, or the action never reached the server."
+          : `No '${options.type}' events in the window; observed types: ${Object.keys(typeCounts).join(", ")}. Check --type.`
+        : "Events of this type did arrive but none matched --match. Compare your pattern against recentEvents (already stripped of § colour codes; the raw payload still contains them).",
+  };
+}
+
 function buildMatchPattern(raw: string | undefined): RegExp | null {
   if (!raw) return null;
   try {
@@ -175,12 +229,7 @@ async function waitForEvent(
     {
       code: "TIMEOUT",
       message: `Timed out after ${options.timeoutSeconds}s waiting for events in ${filePath}`,
-      details: {
-        file: filePath,
-        type: options.type ?? null,
-        match: options.match ?? null,
-        sinceMs: options.sinceMs,
-      },
+      details: buildTimeoutDetails(filePath, options),
     },
     2,
   );

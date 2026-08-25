@@ -45,6 +45,7 @@ import {
   createDownCommand,
   createUseCommand,
 } from "./commands/project.js";
+import { createPruneCommand } from "./commands/prune.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
 export function buildProgram() {
@@ -106,6 +107,7 @@ export function buildProgram() {
   program.addCommand(createUpCommand());
   program.addCommand(createDownCommand());
   program.addCommand(createUseCommand());
+  program.addCommand(createPruneCommand());
 
   // Instance management
   program.addCommand(createServerCommand());

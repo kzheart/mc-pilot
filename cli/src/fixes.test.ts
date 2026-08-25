@@ -923,6 +923,186 @@ test("ClientInstanceManager.waitReady actively reconnects and reports screen dia
   }
 });
 
+/**
+ * Harness for the wait-ready reconnect policy: a stub client that reports a
+ * given screen category while out of world, and joins either after it is told
+ * to reconnect or after a fixed delay.
+ */
+async function withStubClient(
+  behaviour: {
+    screenCategory: string;
+    screenTitle?: string;
+    joinAfterReconnect?: boolean;
+    joinAfterMs?: number;
+  },
+  run: (
+    manager: ClientInstanceManager,
+    requests: Array<{ action: string; params?: Record<string, unknown> }>,
+  ) => Promise<void>,
+) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-wait-ready-"));
+  const previousHome = process.env.MCT_HOME;
+  process.env.MCT_HOME = path.join(tempDir, "mct-home");
+  const wsPort = await getFreePort();
+  const requests: Array<{ action: string; params?: Record<string, unknown> }> =
+    [];
+  const startedAt = Date.now();
+  let reconnected = false;
+  const server = new WebSocketServer({ port: wsPort });
+
+  server.on("connection", (socket) => {
+    socket.on("message", (raw) => {
+      const request = JSON.parse(raw.toString()) as {
+        id: string;
+        action: string;
+        params?: Record<string, unknown>;
+      };
+      requests.push({ action: request.action, params: request.params });
+
+      const joined =
+        (behaviour.joinAfterReconnect && reconnected) ||
+        (behaviour.joinAfterMs !== undefined &&
+          Date.now() - startedAt >= behaviour.joinAfterMs);
+
+      if (request.action === "position.get") {
+        socket.send(
+          JSON.stringify(
+            joined
+              ? { id: request.id, success: true, data: { x: 0, y: 64, z: 0 } }
+              : { id: request.id, success: false, error: "NOT_IN_WORLD" },
+          ),
+        );
+        return;
+      }
+      if (request.action === "status.all") {
+        socket.send(
+          JSON.stringify({
+            id: request.id,
+            success: true,
+            data: {
+              inWorld: false,
+              screenCategory: behaviour.screenCategory,
+              screen: {
+                category: behaviour.screenCategory,
+                type: "class_419",
+                title: behaviour.screenTitle ?? "",
+              },
+            },
+          }),
+        );
+        return;
+      }
+      if (request.action === "client.reconnect") {
+        reconnected = true;
+        socket.send(
+          JSON.stringify({ id: request.id, success: true, data: {} }),
+        );
+        return;
+      }
+      socket.send(JSON.stringify({ id: request.id, success: true, data: {} }));
+    });
+  });
+
+  try {
+    const store = new GlobalStateStore();
+    await store.writeClientState({
+      defaultClient: "real",
+      clients: {
+        real: {
+          pid: process.pid,
+          name: "real",
+          wsPort,
+          startedAt: new Date().toISOString(),
+          logPath: path.join(process.env.MCT_HOME!, "logs", "real.log"),
+          instanceDir: path.join(process.env.MCT_HOME!, "clients", "real"),
+        },
+      },
+    });
+    await run(new ClientInstanceManager(store), requests);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousHome === undefined) {
+      delete process.env.MCT_HOME;
+    } else {
+      process.env.MCT_HOME = previousHome;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+test("waitReady reconnects immediately when the client is stuck on a non-game screen", async () => {
+  await withStubClient(
+    { screenCategory: "title", joinAfterReconnect: true },
+    async (manager, requests) => {
+      const startedAt = Date.now();
+      // A 60s window: the old policy waited until the last 15s before trying a
+      // single reconnect, so this would have taken ~45s.
+      const result = (await manager.waitReady("real", 60, {
+        reconnectAddress: "127.0.0.1:25565",
+      })) as { inWorld?: boolean; reconnectAttempts?: number };
+      const elapsed = Date.now() - startedAt;
+
+      assert.equal(result.inWorld, true);
+      assert.ok(
+        elapsed < 10_000,
+        `expected an early reconnect, but it took ${elapsed}ms`,
+      );
+      assert.equal(result.reconnectAttempts, 1);
+      assert.ok(
+        requests.some((request) => request.action === "client.reconnect"),
+        "waitReady never reconnected",
+      );
+    },
+  );
+});
+
+test("waitReady recognises an obfuscated disconnect screen the mod failed to classify", async () => {
+  // Production clients report class_419 and the mod's class-name matching
+  // misses it, so the category arrives as "screen" for a real disconnect.
+  // The visible title is what still carries the truth.
+  await withStubClient(
+    {
+      screenCategory: "screen",
+      screenTitle: "无法连接至服务器",
+      joinAfterReconnect: true,
+    },
+    async (manager, requests) => {
+      const startedAt = Date.now();
+      const result = (await manager.waitReady("real", 60, {
+        reconnectAddress: "127.0.0.1:25565",
+      })) as { inWorld?: boolean };
+
+      assert.equal(result.inWorld, true);
+      assert.ok(
+        Date.now() - startedAt < 10_000,
+        "a disconnect screen must not be mistaken for a loading screen",
+      );
+      assert.ok(
+        requests.some((request) => request.action === "client.reconnect"),
+      );
+    },
+  );
+});
+
+test("waitReady does not reconnect while the client is still loading into the world", async () => {
+  await withStubClient(
+    { screenCategory: "screen", joinAfterMs: 1_500 },
+    async (manager, requests) => {
+      const result = (await manager.waitReady("real", 60, {
+        reconnectAddress: "127.0.0.1:25565",
+      })) as { inWorld?: boolean };
+
+      assert.equal(result.inWorld, true);
+      assert.equal(
+        requests.filter((request) => request.action === "client.reconnect")
+          .length,
+        0,
+        "waitReady interrupted a client that was joining on its own",
+      );
+    },
+  );
+});
+
 test("ClientInstanceManager.stop waits until the WebSocket port is released", async () => {
   const tempDir = await mkdtemp(
     path.join(os.tmpdir(), "mct-client-stop-wait-"),

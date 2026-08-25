@@ -23,6 +23,8 @@ export interface CommandContext {
   globalState: GlobalStateStore;
   projectFile: MctProjectFile | null;
   activeProfile: MctProfile | null;
+  /** Name of the profile actually in effect, for echoing back to the caller. */
+  activeProfileName: string | null;
   projectId: string | null;
   projectName: string | null;
   projectRootDir: string | null;
@@ -48,6 +50,8 @@ export async function createCommandContext(
 
   const projectId = options.project ?? resolvedProject?.projectId ?? null;
   const projectName = projectFile?.project ?? null;
+  const activeProfileName =
+    options.profile ?? projectFile?.defaultProfile ?? null;
   const activeProfile = projectFile
     ? resolveProfile(projectFile, options.profile)
     : null;
@@ -58,6 +62,7 @@ export async function createCommandContext(
     globalState,
     projectFile,
     activeProfile,
+    activeProfileName: activeProfile ? activeProfileName : null,
     projectId,
     projectName,
     projectRootDir: projectFile?.rootDir ?? null,

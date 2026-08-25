@@ -130,13 +130,28 @@ mct schema   # machine-readable CLI + WebSocket protocol schema
 mct info     # current project, active profile, state root
 ```
 
+## Reclaiming Disk Space
+
+Test projects under `~/.mct/projects` are never removed automatically and a
+single server instance easily reaches several hundred MiB. `mct prune` reports
+what it would delete and only acts when you pass `--yes`:
+
+```bash
+mct prune                      # dry run: what is idle, how big, when last used
+mct prune --older-than 14d     # widen or narrow the idle window (default 7d)
+mct prune --older-than 14d --yes
+```
+
+Projects with a running server, and the project you are standing in, are never
+considered. Deletion is permanent — it does not go to the Trash.
+
 ## Command Reference
 
 All commands output JSON by default; add `--human` for human-readable output. Run `mct <command> --help` for details.
 
 | Area | Commands |
 |---|---|
-| **Project** | `init` `up` `down` `use` `deploy` `info` `schema` |
+| **Project** | `init` `up` `down` `use` `deploy` `prune` `info` `schema` |
 | **Instances** | `server` (search/create/start/stop/config/exec/logs) · `client` (search/create/launch/stop/wait-ready) · `plugin` · `skill` |
 | **Movement & world** | `move` `look` `position` `rotation` `block` `entity` |
 | **Chat & UI** | `chat` `gui` `sign` `book` `hud` `resourcepack` |

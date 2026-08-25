@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { ERROR_CODES, ERROR_MESSAGES, MctError } from "./errors.js";
 import {
   resolveProjectConfigPath,
   resolveProjectScreenshotsDir,
@@ -155,6 +156,45 @@ export function resolveProfile(
   }
 
   return projectFile.profiles[name] ?? null;
+}
+
+/**
+ * Resolve the profile a command should act on.
+ *
+ * Always reads `context.activeProfile`, which is derived from the merged global
+ * options. Commands must not re-resolve the profile themselves: declaring a
+ * local `--profile` option shadowed the root one in commander and silently fell
+ * back to `defaultProfile`, so `--profile` was ignored in every position.
+ */
+export function requireActiveProfile(context: {
+  projectFile: MctProjectFile | null;
+  activeProfile: MctProfile | null;
+  requestedProfile?: string;
+}): MctProfile {
+  if (context.activeProfile) {
+    return context.activeProfile;
+  }
+
+  const available = Object.keys(context.projectFile?.profiles ?? {});
+  if (context.requestedProfile) {
+    throw new MctError(
+      {
+        code: ERROR_CODES.NO_PROFILE,
+        message: `Profile '${context.requestedProfile}' not found in this project`,
+        details: { requested: context.requestedProfile, available },
+      },
+      4,
+    );
+  }
+
+  throw new MctError(
+    {
+      code: ERROR_CODES.NO_PROFILE,
+      message: ERROR_MESSAGES.NO_PROFILE_SELECTED,
+      details: { available },
+    },
+    4,
+  );
 }
 
 export function resolveBackendNames(profile: MctProfile): string[] {

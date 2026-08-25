@@ -120,7 +120,33 @@ mct client launch <client>
 mct client wait-ready <client>
 ```
 
-`client wait-ready` means the client is connected and in-world by default. If it times out, use the returned diagnostics, `mct client reconnect`, `mct server readiness`, and logs instead of guessing.
+`client wait-ready` means the client is connected and in-world by default. It
+reconnects on its own when the client is parked on a title/disconnect screen, so
+a timeout means something else is wrong: use the returned diagnostics
+(`screenCategory`, `disconnectReason`, `reconnectAttempts`), `mct server
+readiness`, and logs instead of guessing.
+
+`up` refuses to launch clients when the entry-point instance (the proxy when
+there is one, otherwise the first backend) has `online-mode=true`: mct clients
+use offline accounts and the server rejects them with "Failed to login: Invalid
+session" (`登录失败：无效会话`). Fix the instance with `mct server config <name>
+--online-mode false` and restart it, or pass `--server-only-ok` when the run
+genuinely does not need a client. Never "fix" this by retrying — it never
+resolves on its own.
+
+`up`, `deploy` and `down` echo the `profile` they acted on — check it against the
+profile you asked for before treating any result as evidence. An unknown
+`--profile` is rejected with the available names, never silently replaced by the
+default.
+
+`deploy` returns `restartRequired: true` when it wrote into a running instance.
+Restart before asserting anything: the live PluginClassLoader keeps serving the
+old JAR and lazily loaded classes fail with `NoClassDefFoundError`.
+
+When `mct events wait` / `mct chat wait` times out, read the error `details`
+before touching the plugin: `observedOfType` and `recentEvents` show what
+actually arrived in the window (with `§` colour codes stripped), and `typeCounts`
+exposes a mistyped `--type`. A pattern that missed is not a plugin defect.
 
 ## Proxy Networks (Velocity / BungeeCord)
 
@@ -296,6 +322,12 @@ mct server stop <server>
 ```
 
 Always clean up after failures too. Stale clients, ports, and `~/.mct/state` entries are a common source of false failures.
+
+`mct down` stops processes but leaves the project's worlds and databases on
+disk, and they add up fast. To reclaim space, run `mct prune` (a dry run that
+reports idle projects, their size and last use) and only then `mct prune --yes`.
+It never touches a project with a running server or the one you are standing in,
+and deletion is permanent. Do not `rm -rf` under `~/.mct/projects` yourself.
 
 ## Pitfalls
 

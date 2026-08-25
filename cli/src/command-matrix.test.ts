@@ -84,6 +84,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "plugin remove",
   "plugin resolve",
   "plugin update",
+  "prune",
   "schema",
   "server config",
   "server create",
