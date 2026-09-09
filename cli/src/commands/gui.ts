@@ -53,7 +53,7 @@ export function createGuiCommand() {
     .action(
       createRequestAction("gui.click", ({ args, options }) => ({
         slot: Number(args[0]),
-        button: options.button,
+        button: options.key ? `number-${options.key}` : options.button,
         key: options.key ? Number(options.key) : undefined,
       })),
     );

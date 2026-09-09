@@ -81,9 +81,9 @@ export function renderVelocityToml(meta: ServerInstanceMeta): string {
   const tryList = meta.proxy?.try ?? [];
 
   const serverLines = Object.keys(servers).map(
-    (name) => `${name} = "${servers[name]}"`,
+    (name) => `${JSON.stringify(name)} = ${JSON.stringify(servers[name])}`,
   );
-  const tryEntries = tryList.map((name) => `"${name}"`).join(", ");
+  const tryEntries = tryList.map((name) => JSON.stringify(name)).join(", ");
 
   const lines = [
     "# Managed by mct - regenerated on every start; manual edits will be overwritten",
