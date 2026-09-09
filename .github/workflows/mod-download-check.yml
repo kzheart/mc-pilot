@@ -1,0 +1,48 @@
+name: Mod download regression
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Download regression tests
+        run: node --test cli/dist/download/client/ModRelease.test.js cli/dist/download/client/ClientDownloader.test.js
+      - name: Download the default Fabric 1.20.4 release from an empty cache
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { mkdtemp, readFile, rm } from 'node:fs/promises';
+          import os from 'node:os';
+          import path from 'node:path';
+          import { CacheManager } from './cli/dist/download/CacheManager.js';
+          import { resolveArtifact } from './cli/dist/download/client/ClientDownloader.js';
+          const root = await mkdtemp(path.join(os.tmpdir(), 'mct-release-ci-'));
+          try {
+            const artifact = await resolveArtifact(root, {
+              id: '1.20.4-fabric', minecraftVersion: '1.20.4', loader: 'fabric',
+              support: 'ready', validation: 'verified', modVersion: '0.9.1',
+            }, new CacheManager(path.join(root, 'cache')));
+            assert.equal(artifact.source, 'github-release');
+            const bytes = await readFile(artifact.sourcePath);
+            assert.equal(bytes.subarray(0, 4).toString('hex'), '504b0304');
+            console.log(`Downloaded ${artifact.artifactFileName}: ${bytes.length} bytes`);
+          } finally {
+            await rm(root, { recursive: true, force: true });
+          }
+          JS
