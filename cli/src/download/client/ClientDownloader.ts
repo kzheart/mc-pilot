@@ -202,6 +202,13 @@ export async function resolveArtifact(
           localBuild: buildArtifactPath,
           cache: cacheArtifactPath,
           downloadUrl,
+          releaseTag,
+          ...(error instanceof MctError &&
+          error.details &&
+          typeof error.details === "object" &&
+          "status" in error.details
+            ? { downloadStatus: error.details.status }
+            : {}),
           downloadError: error instanceof Error ? error.message : String(error),
         },
       },
