@@ -77,9 +77,27 @@ test("renderVelocityToml modern with servers", () => {
 
   assert.match(output, /bind = "0\.0\.0\.0:25577"/);
   assert.match(output, /player-info-forwarding-mode = "modern"/);
-  assert.match(output, /b1 = "127\.0\.0\.1:25566"/);
+  assert.match(output, /"b1" = "127\.0\.0\.1:25566"/);
   assert.match(output, /try = \["b1"\]/);
   assert.match(output, /\[forced-hosts\]/);
+});
+
+test("renderVelocityToml preserves dotted backend names as literal keys", () => {
+  const name = "paper-1.20.4";
+  const output = renderVelocityToml(
+    makeMeta({
+      name: "velocity-test",
+      port: 25577,
+      type: "velocity",
+      proxy: {
+        servers: { [name]: "127.0.0.1:25566" },
+        try: [name],
+        forwarding: "modern",
+      },
+    }),
+  );
+  assert.match(output, /^"paper-1\.20\.4" = "127\.0\.0\.1:25566"$/m);
+  assert.match(output, /try = \["paper-1\.20\.4"\]/);
 });
 
 test("renderVelocityToml legacy mode", () => {

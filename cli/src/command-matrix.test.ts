@@ -333,7 +333,7 @@ const REQUEST_CASES: RequestCase[] = [
     leaf: "gui click",
     argv: ["gui", "click", "13", "--button", "right", "--key", "2"],
     action: "gui.click",
-    params: { slot: 13, button: "right", key: 2 },
+    params: { slot: 13, button: "number-2", key: 2 },
   },
   {
     leaf: "gui close",
@@ -942,6 +942,20 @@ test("CLI request commands route every leaf command to the expected action and p
         );
       });
     }
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("GUI number key overrides the default left click", async () => {
+  const harness = await createRequestTestHarness();
+  try {
+    const result = await harness.runCli(["gui", "click", "13", "--key", "2"]);
+    assert.equal(result.success, true);
+    assert.deepEqual(
+      (result.data as { data: { params: unknown } }).data.params,
+      { slot: 13, button: "number-2", key: 2 },
+    );
   } finally {
     await harness.cleanup();
   }

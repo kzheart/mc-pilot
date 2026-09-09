@@ -23,6 +23,11 @@ jobs:
       - run: npm run build
       - name: Download regression tests
         run: node --test cli/dist/download/client/ModRelease.test.js cli/dist/download/client/ClientDownloader.test.js
+      - name: GUI input and proxy topology regressions
+        working-directory: cli
+        run: |
+          node --test dist/instance/server-flavor.test.js dist/instance/TopologySync.test.js
+          node --test --test-name-pattern='GUI number key' dist/command-matrix.test.js
       - name: Download the default Fabric 1.20.4 release from an empty cache
         run: |
           node --input-type=module <<'JS'

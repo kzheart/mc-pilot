@@ -138,7 +138,7 @@ test("velocity_modern_topology", async () => {
     assert.ok(b2Yaml.includes(secret));
     assert.equal(b1Yaml, b2Yaml);
     assert.ok(velocityToml.includes('player-info-forwarding-mode = "modern"'));
-    assert.ok(velocityToml.includes('b1 = "127.0.0.1:25566"'));
+    assert.ok(velocityToml.includes('"b1" = "127.0.0.1:25566"'));
     assert.equal(result.proxy?.forwarding, "modern");
   });
 });
