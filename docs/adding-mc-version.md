@@ -78,9 +78,8 @@ diff client-mod/variants.json cli/data/variants.json   # 必须无输出
 
 在 `cli/src/download/VersionMatrix.ts` 的 `VERSION_MATRIX` 数组**头部**插入新版本的 `MinecraftSupportEntry`：
 
-- `paper.latestBuild`：从 [fill.papermc.io v3 API](https://fill.papermc.io/v3/projects/paper) 实查对应 MC 版本的最新 build 号。
-- `purpur.latestBuild`：从 [purpurmc.org v2 API](https://api.purpurmc.org/v2/purpur) 实查。
 - `clients` 下三个 loader 的 `loaderVersion`、`validation` 与 `variants.json` 保持一致。
+- 在 `scripts/server-jar.mjs` 的 `SUITE_SERVER_TARGETS` 里登记真机套件使用的服务端：Paper build 号从 [fill.papermc.io v3 API](https://fill.papermc.io/v3/projects/paper) 实查。
 
 同步更新测试断言：
 
@@ -113,7 +112,8 @@ cd client-mod/mc26 && ./gradlew :version-<mc>:build :version-<mc>-forge:build :v
 
 ```bash
 mct init --name mc-<version>-smoke
-mct server create srv --type paper --version <mc> --eula
+mkdir -p run/srv && curl -fsSL -o run/srv/paper.jar "$(curl -fsSL https://fill.papermc.io/v3/projects/paper/versions/<mc>/builds/latest | jq -r '.downloads."server:default".url')"
+# 在 mct.json 里加 profile：servers: ["srv"]，clients: ["<loader>-<mc>"]
 mct client create <loader>-<mc> --version <mc> --loader <loader>
 mct up --eula
 ```

@@ -44,12 +44,12 @@ const MANIFEST_FILE = "manifest.json";
 const EVENTS_FILE = "events.jsonl";
 
 function requireRecordingsDir(context: CommandContext): string {
-  if (!context.projectId) {
+  if (!context.projectRootDir) {
     throw invalidParams(
       "record requires a project context (run inside a project or pass --project)",
     );
   }
-  return resolveProjectRecordingsDir(context.projectId);
+  return resolveProjectRecordingsDir(context.projectRootDir);
 }
 
 function requireClientName(
@@ -222,7 +222,7 @@ async function startRecording(
     eventLogPath: path.join(dir, HELPER_EVENT_LOG),
     startedAt: handle.startedAt,
     fps: handle.fps,
-    projectId: context.projectId,
+    projectRoot: context.projectRootDir,
   };
   await store.updateRecordings((state) => {
     state.active[clientName] = active;

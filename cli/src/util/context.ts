@@ -4,7 +4,7 @@ import { GlobalStateStore } from "./global-state.js";
 import type { OutputMode } from "./output.js";
 import {
   loadProjectFileForCwd,
-  loadProjectFileForId,
+  loadProjectFileForDir,
   resolveProfile,
   type MctProfile,
   type MctProjectFile,
@@ -25,7 +25,6 @@ export interface CommandContext {
   activeProfile: MctProfile | null;
   /** Name of the profile actually in effect, for echoing back to the caller. */
   activeProfileName: string | null;
-  projectId: string | null;
   projectName: string | null;
   projectRootDir: string | null;
   projectConfigPath: string | null;
@@ -44,12 +43,10 @@ export async function createCommandContext(
   const cwd = process.cwd();
   const globalState = new GlobalStateStore();
   const resolvedProject = options.project
-    ? await loadProjectFileForId(options.project)
+    ? await loadProjectFileForDir(options.project, cwd)
     : await loadProjectFileForCwd(cwd);
   const projectFile = resolvedProject?.projectFile ?? null;
 
-  const projectId = options.project ?? resolvedProject?.projectId ?? null;
-  const projectName = projectFile?.project ?? null;
   const activeProfileName =
     options.profile ?? projectFile?.defaultProfile ?? null;
   const activeProfile = projectFile
@@ -63,9 +60,8 @@ export async function createCommandContext(
     projectFile,
     activeProfile,
     activeProfileName: activeProfile ? activeProfileName : null,
-    projectId,
-    projectName,
-    projectRootDir: projectFile?.rootDir ?? null,
+    projectName: projectFile?.project ?? null,
+    projectRootDir: resolvedProject?.rootDir ?? null,
     projectConfigPath: resolvedProject?.filePath ?? null,
     timeout(key) {
       return projectFile?.timeout?.[key] ?? TIMEOUT_DEFAULTS[key];

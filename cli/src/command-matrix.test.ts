@@ -17,33 +17,21 @@ import { createDefaultProjectFile } from "./util/project.js";
 const execFileAsync = promisify(execFile);
 
 async function writeProjectConfig(
-  mctHome: string,
+  _mctHome: string,
   projectDir: string,
   overrides: Record<string, unknown>,
 ) {
-  const base = createDefaultProjectFile(
-    projectDir,
-    String(overrides.project ?? "test"),
-  );
+  const base = createDefaultProjectFile(String(overrides.project ?? "test"));
   const projectFile = {
     ...base,
     ...overrides,
-    screenshot: overrides.screenshot
-      ? { ...base.screenshot, ...(overrides.screenshot as object) }
-      : base.screenshot,
     timeout: overrides.timeout
       ? { ...base.timeout, ...(overrides.timeout as object) }
       : base.timeout,
   };
-  const projectFilePath = path.join(
-    mctHome,
-    "projects",
-    base.projectId,
-    "project.json",
-  );
-  await mkdir(path.dirname(projectFilePath), { recursive: true });
+  await mkdir(projectDir, { recursive: true });
   await writeFile(
-    projectFilePath,
+    path.join(projectDir, "mct.json"),
     JSON.stringify(projectFile, null, 2),
     "utf8",
   );
@@ -62,13 +50,13 @@ interface CliResult {
 }
 
 const NON_REQUEST_LEAF_COMMANDS = [
+  "cache clean",
   "client create",
   "client search",
   "client launch",
   "client list",
   "client stop",
   "client wait-ready",
-  "deploy",
   "down",
   "events clear",
   "events list",
@@ -77,27 +65,11 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "events wait",
   "gui click-title",
   "init",
-  "plugin add",
-  "plugin info",
-  "plugin install",
-  "plugin list",
-  "plugin remove",
-  "plugin resolve",
-  "plugin update",
-  "prune",
   "schema",
-  "server config",
-  "server create",
   "server exec",
-  "server logs",
-  "server logs-mark",
-  "server readiness",
-  "server search",
   "server start",
-  "server list",
   "server status",
   "server stop",
-  "server wait-ready",
   "skill install",
   "skill status",
   "skill sync",
@@ -989,33 +961,6 @@ test("CLI request commands honor explicit timeout overrides", async () => {
       (waitResult.data as { data: { echoedAction: string } }).data.echoedAction,
       "wait.perform",
     );
-  } finally {
-    await harness.cleanup();
-  }
-});
-
-test("server search with velocity type lists proxy entry", async () => {
-  const harness = await createRequestTestHarness();
-
-  try {
-    const result = await harness.runCli([
-      "server",
-      "search",
-      "--type",
-      "velocity",
-    ]);
-    assert.equal(result.success, true);
-    const results = (
-      result.data as {
-        results: Array<{
-          type: string;
-          versions: Array<{ version: string }>;
-        }>;
-      }
-    ).results;
-    assert.equal(results.length, 1);
-    assert.equal(results[0]?.type, "velocity");
-    assert.equal(results[0]?.versions[0]?.version, "3.4.0");
   } finally {
     await harness.cleanup();
   }

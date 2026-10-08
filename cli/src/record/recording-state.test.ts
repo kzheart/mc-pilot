@@ -48,7 +48,7 @@ function buildActiveRecording(
     eventLogPath: path.join(dir, "helper.jsonl"),
     startedAt: 1000,
     fps: 30,
-    projectId: null,
+    projectRoot: null,
   };
 }
 

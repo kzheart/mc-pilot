@@ -5,13 +5,10 @@ import {
   getMinecraftSupport,
   getSupportedMinecraftVersions,
   getVersionMatrix,
-  isProxyType,
-  PROXY_MATRIX,
   searchClientVersions,
-  searchServerVersions,
 } from "./VersionMatrix.js";
 
-test("getVersionMatrix exposes documented server and client support entries", () => {
+test("getVersionMatrix exposes documented client support entries", () => {
   const matrix = getVersionMatrix();
 
   assert.equal(matrix.length, 14);
@@ -34,8 +31,6 @@ test("getVersionMatrix exposes documented server and client support entries", ()
 
   const latest = getMinecraftSupport("1.21.11");
   assert.ok(latest);
-  assert.equal(latest.servers.paper.latestBuild, 69);
-  assert.equal(latest.servers.purpur.latestBuild, 2568);
   assert.equal(latest.clients.fabric.supported, true);
   assert.equal(latest.clients.fabric.loaderVersion, "0.19.2");
   assert.equal(latest.clients.forge.supported, true);
@@ -44,15 +39,11 @@ test("getVersionMatrix exposes documented server and client support entries", ()
   assert.equal(latest.clients.neoforge.loaderVersion, "21.11.42");
 });
 
-test("Minecraft 26.1 exposes exact available server and client support", () => {
+test("Minecraft 26.1 exposes exact client support", () => {
   const support = getMinecraftSupport("26.1");
 
   assert.ok(support);
   assert.equal(support.javaVersion, "25+");
-  assert.equal(support.servers.vanilla.supported, true);
-  assert.equal(support.servers.spigot.supported, false);
-  assert.equal(support.servers.paper.supported, false);
-  assert.equal(support.servers.purpur.supported, false);
   assert.deepEqual(
     Object.values(support.clients).map((client) => client.validation),
     ["verified", "verified", "verified"],
@@ -62,57 +53,12 @@ test("Minecraft 26.1 exposes exact available server and client support", () => {
   assert.equal(support.clients.neoforge.loaderVersion, "26.1.0.19-beta");
 });
 
-test("Minecraft 26.1 patch servers expose the verified 26.1 Fabric client", () => {
-  for (const [version, build] of [
-    ["26.1.1", 29],
-    ["26.1.2", 74],
-  ] as const) {
+test("Minecraft 26.1 patch versions have no client of their own", () => {
+  for (const version of ["26.1.1", "26.1.2"]) {
     const support = getMinecraftSupport(version);
-
     assert.ok(support);
-    assert.equal(support.servers.paper.supported, true);
-    assert.equal(support.servers.paper.latestBuild, build);
-    assert.deepEqual(support.servers.paper.verifiedClients, [
-      { minecraftVersion: "26.1", loader: "fabric", build },
-    ]);
     assert.equal(support.clients.fabric.supported, false);
   }
-
-  const fabric = searchClientVersions({
-    loader: "fabric",
-    version: "26.1",
-  })[0];
-  assert.deepEqual(fabric?.verifiedServers, [
-    { type: "paper", minecraftVersion: "26.1.2", build: 74 },
-    { type: "paper", minecraftVersion: "26.1.1", build: 29 },
-    { type: "vanilla", minecraftVersion: "26.1" },
-  ]);
-});
-
-test("Minecraft 26.2 records verified Fabric joins for exact servers", () => {
-  const fabric = searchClientVersions({
-    loader: "fabric",
-    version: "26.2",
-  })[0];
-
-  assert.deepEqual(fabric?.verifiedServers, [
-    { type: "vanilla", minecraftVersion: "26.2" },
-    { type: "paper", minecraftVersion: "26.2", build: 60 },
-  ]);
-});
-
-test("searchServerVersions can filter by type and version", () => {
-  const results = searchServerVersions({ type: "paper", version: "1.20.4" });
-
-  assert.deepEqual(results, [
-    {
-      type: "paper",
-      minecraftVersion: "1.20.4",
-      supported: true,
-      latestBuild: 496,
-      requiresBuildTools: undefined,
-    },
-  ]);
 });
 
 test("searchClientVersions exposes all loaders and java requirements", () => {
@@ -227,19 +173,4 @@ test("Minecraft 1.12.2 exposes selectable Forge builds from the real variant", (
   ]);
   assert.equal(forge?.javaVersion, "8");
   assert.equal(forge?.validation, "verified");
-});
-
-test("isProxyType returns true only for proxy types", () => {
-  assert.equal(isProxyType("velocity"), true);
-  assert.equal(isProxyType("bungeecord"), true);
-  assert.equal(isProxyType("paper"), false);
-  assert.equal(isProxyType("purpur"), false);
-  assert.equal(isProxyType("spigot"), false);
-  assert.equal(isProxyType("vanilla"), false);
-});
-
-test("PROXY_MATRIX has pinned velocity build", () => {
-  assert.equal(PROXY_MATRIX.velocity.defaultVersion, "3.4.0");
-  assert.equal(PROXY_MATRIX.velocity.latestBuild, 566);
-  assert.equal(PROXY_MATRIX.bungeecord.defaultVersion, "latest");
 });

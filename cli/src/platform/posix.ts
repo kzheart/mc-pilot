@@ -99,15 +99,8 @@ const processes: ProcessControl = {
 };
 
 const serverStdin: ServerStdinChannel = {
-  async create(
-    stateDir: string,
-    project: string,
-    serverName: string,
-  ): Promise<string> {
-    const stdinPipe = path.join(
-      stateDir,
-      `stdin-${project}-${serverName}.fifo`,
-    );
+  async create(serverDir: string): Promise<string> {
+    const stdinPipe = path.join(serverDir, ".mct-stdin");
     try {
       await unlink(stdinPipe);
     } catch {

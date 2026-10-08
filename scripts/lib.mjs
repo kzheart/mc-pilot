@@ -210,8 +210,3 @@ export function slugify(value) {
     .slice(0, 48);
 }
 
-export function slugifyProjectId(value) {
-  return String(value)
-    .replace(/[^A-Za-z0-9._-]/g, "-")
-    .replace(/-+/g, "-");
-}

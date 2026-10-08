@@ -5,7 +5,7 @@ description: "Automated testing of Minecraft plugins and mods using the mct CLI 
 
 # MC Pilot
 
-MC Pilot (`mct`) drives a real Minecraft client and server so plugin/mod behavior can be verified in-game, not guessed from logs alone.
+MC Pilot (`mct`) drives a real Minecraft client against a server that lives in your project, so plugin/mod behavior can be verified in-game, not guessed from logs alone.
 
 ## When To Use
 
@@ -28,30 +28,26 @@ mct info
 ```
 
 - Use `mct schema` for current commands, options, protocol actions, and error codes.
-- Use `mct info` inside the project directory to confirm project id, active profile, configured server/client, and global state paths.
+- Use `mct info` inside the project directory to confirm the project root, `mct.json` path, active profile and configured server/client.
 - For detailed command examples, read `references/commands.md`.
 
 ## Version Compatibility Discovery
 
-Do not assume that the client and server must have identical version strings, and do not infer compatibility from version numbering alone. Query the CLI's verified compatibility metadata before creating test instances:
+Client versions are limited to what the mct client mod supports; query them instead of guessing:
 
 ```bash
-mct client search --loader fabric --version <client-version>
-mct server search --type paper --version <server-version>
+mct client search --loader fabric --version <mc-version>
 ```
 
-- Prefer `verifiedServers` returned by client search when selecting a test server. Pin the listed server `build` when one is present.
-- Use `verifiedClients` returned by server search when the requested server has no same-number client variant.
-- A pairing is supported only when it is explicitly listed as verified. Treat missing pairings as unverified and run a real join test before recording them.
-- Keep the client version and server version as separate values in profiles, scripts, reports, and instance names.
-- For example, the Fabric 26.1 client is verified with Paper 26.1.1 build 29 and Paper 26.1.2 build 74; Paper does not publish an exact 26.1 artifact.
+- Run the server on the same Minecraft version as the client unless `client search` notes say otherwise (e.g. a patch-only server version that should use a neighbouring client).
+- Keep the client version and server version as separate values in profiles, scripts, reports and instance names.
 
 ## Required Testing Posture
 
 When the user asks whether a Minecraft feature works, actually test it in a real server/client unless they explicitly only want a plan or static analysis.
 
 - Prefer state/event/condition waits over blind time waits.
-- Use `mct events wait`, `mct server logs --follow --first-match`, `mct gui wait-open`, `mct gui wait-update`, `mct client wait-ready`, or query commands with wait conditions where available.
+- Use `mct events wait`, `mct wait-log`, `mct gui wait-open`, `mct gui wait-update`, `mct client wait-ready`, or query commands with wait conditions where available.
 - Capture screenshots for visual behavior, GUI alignment, HUD/resource-pack work, or any confusing failure.
 - After every failure or surprising result, inspect `eventsSinceLastCall`, `lastEventType`, `mct events tail`, server logs, and a screenshot before retrying.
 - Clean up client/server processes unless the user explicitly wants the environment left running.
@@ -71,11 +67,27 @@ mct schema
 mct info
 ```
 
-3. If this is a new test project, initialize and create isolated instances. Names must include the plugin/test name, never generic names like `paper-1.20.4` or `fabric-1.20.4`.
+3. If this is a new test project, initialize it in the plugin's own repository. Everything for the test stays inside that directory: servers in `run/<name>/`, screenshots and recordings in `.mct/` (both git-ignored by `init`). Deleting the directory removes the whole environment.
 
 ```bash
 mct init --name <plugin-or-test-name>
-mct server create paper-<test>-<mc> --type paper --version <mc> --eula
+```
+
+4. Put a server in `run/<name>/`. mct does not download servers; fetch the jar yourself. Paper example:
+
+```bash
+mkdir -p run/paper-<mc>
+curl -fsSL -o run/paper-<mc>/paper.jar "$(curl -fsSL https://fill.papermc.io/v3/projects/paper/versions/<mc>/builds/latest | jq -r '.downloads."server:default".url')"
+cp build/libs/<plugin>.jar run/paper-<mc>/plugins/   # mkdir plugins/ first
+```
+
+Velocity uses the same API with `projects/velocity`. Spigot needs BuildTools; vanilla jars come from Mojang's version manifest.
+
+On first start mct writes `online-mode=false` and a free `server-port` into a missing `server.properties`, so a fresh Paper directory needs nothing else. Copy the rebuilt plugin jar into `plugins/` yourself and restart the server after every rebuild: a live PluginClassLoader keeps the old jar and lazily loaded classes fail with `NoClassDefFoundError`.
+
+5. Create a client. Names must include the plugin/test name, never generic names like `fabric-1.20.4`.
+
+```bash
 mct client create fabric-<test>-<mc> --version <mc> --mute
 ```
 
@@ -97,51 +109,56 @@ mct client create forge-<test>-1.12.2 --loader forge --version 1.12.2 \
 On Apple Silicon, use an x86_64 Java 8 runtime under Rosetta for 1.12.2
 because its LWJGL2 natives are x86_64.
 
-4. Configure the project profile in the path shown by `mct info`, including:
+6. Add a profile to `mct.json`. `servers` lists directories under `run/`; `servers` (top-level) holds optional per-server launch settings — use `java` whenever the server needs a different Java than the one on PATH:
 
-- `server` (single backend) or `servers` + `proxy` (proxy network topology, see below)
-- `clients`
-- `deployPlugins` (and `proxyPlugins` for proxy-side plugins)
-- screenshot output directory if useful
+```json
+{
+  "project": "<name>",
+  "defaultProfile": "dev",
+  "profiles": {
+    "dev": { "servers": ["paper-<mc>"], "clients": ["fabric-<test>-<mc>"] }
+  },
+  "servers": {
+    "paper-<mc>": { "java": "/path/to/java-21/bin/java", "jvmArgs": ["-Xmx2G"] }
+  }
+}
+```
 
-5. Start and wait for readiness:
+If a server directory holds more than one jar, also set `"jar": "<file>"` there.
+
+7. Start and wait for readiness:
 
 ```bash
-mct up --profile <profile>
+mct up --eula
 ```
 
 If debugging startup separately:
 
 ```bash
-mct deploy
-mct server start <server> --eula
-mct server wait-ready <server>
+mct server start <server> --eula      # waits until reachable; fails with phase + console tail
 mct client launch <client>
 mct client wait-ready <client>
 ```
 
+`server start` checks before launching: EULA accepted (`--eula` writes it), `online-mode` off, port free. A server that crashes during boot fails with `SERVER_EXITED` and the last console lines in `details.recentLines`; read them before retrying.
+
 `client wait-ready` means the client is connected and in-world by default. It
 reconnects on its own when the client is parked on a title/disconnect screen, so
 a timeout means something else is wrong: use the returned diagnostics
-(`screenCategory`, `disconnectReason`, `reconnectAttempts`), `mct server
-readiness`, and logs instead of guessing.
+(`screenCategory`, `disconnectReason`, `reconnectAttempts`), `mct server status`,
+and the server log instead of guessing.
 
-`up` refuses to launch clients when the entry-point instance (the proxy when
-there is one, otherwise the first backend) has `online-mode=true`: mct clients
-use offline accounts and the server rejects them with "Failed to login: Invalid
-session" (`登录失败：无效会话`). Fix the instance with `mct server config <name>
---online-mode false` and restart it, or pass `--server-only-ok` when the run
-genuinely does not need a client. Never "fix" this by retrying — it never
-resolves on its own.
+`up` refuses to launch clients when the entry point (the proxy when there is
+one, otherwise the first backend) has online-mode on: mct clients use offline
+accounts and the server rejects them with "Failed to login: Invalid session"
+(`登录失败：无效会话`). Set it to false in `server.properties` / `velocity.toml` /
+`config.yml` and restart. Never "fix" this by retrying — it never resolves on
+its own.
 
-`up`, `deploy` and `down` echo the `profile` they acted on — check it against the
+`up` and `down` echo the `profile` they acted on — check it against the
 profile you asked for before treating any result as evidence. An unknown
 `--profile` is rejected with the available names, never silently replaced by the
 default.
-
-`deploy` returns `restartRequired: true` when it wrote into a running instance.
-Restart before asserting anything: the live PluginClassLoader keeps serving the
-old JAR and lazily loaded classes fail with `NoClassDefFoundError`.
 
 When `mct events wait` / `mct chat wait` times out, read the error `details`
 before touching the plugin: `observedOfType` and `recentEvents` show what
@@ -150,38 +167,30 @@ exposes a mistyped `--type`. A pattern that missed is not a plugin defect.
 
 ## Proxy Networks (Velocity / BungeeCord)
 
-For cross-server plugins (server switching, proxy-side plugins), build a proxy topology. Proxies are server instances too — same lifecycle commands (`start`/`stop`/`exec`/`logs`/`wait-ready`) apply.
-
-```bash
-mct server create <test>-b1 --type paper --version <mc> --eula
-mct server create <test>-b2 --type paper --version <mc> --eula
-mct server create <test>-gate --type velocity   # or --type bungeecord; no EULA needed
-```
-
-Profile fields for topology (`servers` takes precedence over `server`; clients connect to the proxy port automatically):
+A proxy is just another directory under `run/`; `start`/`stop`/`exec`/`wait-log` work the same. mct does not write proxy or forwarding config — you do. Profile:
 
 ```json
-{
-  "servers": ["<test>-b1", "<test>-b2"],
-  "proxy": "<test>-gate",
-  "clients": ["<client>"],
-  "deployPlugins": ["path/to/backend-plugin.jar"],
-  "proxyPlugins": ["path/to/proxy-plugin.jar"]
-}
+{ "servers": ["lobby", "game"], "proxy": "velocity", "clients": ["<client>"] }
 ```
 
-`mct up` handles forwarding automatically: it picks modern (Velocity, all backends >= 1.13) or legacy (BungeeCord, or any older backend) mode, generates and syncs `forwarding.secret`, and writes the backend config files. Do not hand-edit the proxy's `velocity.toml`/`config.yml` — mct regenerates them on every start. Check `topologyWarnings` in the `up` output for degraded setups (spigot/vanilla backends).
+Start the proxy once so it generates its config, then edit it:
+
+- Velocity `velocity.toml`: `online-mode = false`, `[servers]` entries pointing at each backend's `127.0.0.1:<server-port>`, `try = [...]`, and keep an explicit empty `[forced-hosts]` section — without it Velocity falls back to example hosts referencing servers that do not exist and refuses to start.
+- Modern forwarding (`player-info-forwarding-mode = "modern"`, backends 1.13+ Paper): copy the proxy's `forwarding.secret` into each backend's `config/paper-global.yml` → `proxies.velocity.enabled: true` / `secret` (1.13–1.18: `paper.yml` → `settings.velocity-support`).
+- Legacy forwarding (BungeeCord, or Velocity `legacy`): `ip_forward: true` in the proxy `config.yml`, and `settings.bungeecord: true` in each backend's `spigot.yml`.
+- Switching modes: turn the other mode off on the backends. Leftover `bungeecord: true` next to Velocity modern forwarding (or the reverse) makes Paper reject the handshake.
+
+`mct up` checks this before starting anything: every backend port must be listed in the proxy, the forwarding secret must match, and the backend forwarding switch must be on. Mismatches fail with `PROXY_CONFIG_MISMATCH` listing each problem; `proxyWarnings` lists checks skipped because a config file was not generated yet. Clients connect to the proxy port.
 
 Cross-server switch test pattern:
 
 ```bash
-mct up --profile <profile>                    # client joins via proxy into the first backend
-mct chat command "server <test>-b2"           # proxy /server command switches backend
-mct client wait-ready <client>                # confirm re-entered world after switch
-mct server logs <test>-b2 --grep "joined the game"   # confirm arrival on target backend
+mct up                                         # client joins via proxy into the first backend
+C=$(mct server status game | jq .data.logCursor)
+mct chat command "server game"                 # proxy /server command switches backend
+mct client wait-ready <client>                 # confirm re-entered world after switch
+mct wait-log --server game --grep "joined the game" --after "$C"
 ```
-
-For proxy version selection use `mct server search --type velocity|bungeecord`; `--version` on a proxy instance means the proxy's own version, not a Minecraft version.
 
 ## Isolation Rules
 
@@ -219,10 +228,28 @@ Use event/log/condition waits:
 
 ```bash
 mct events wait --type chat.received --match "purchased" --timeout 10
-mct server logs --follow --grep "reward claimed" --timeout 20 --first-match
 mct gui wait-open --timeout 10
 mct inventory held --wait 10 --type minecraft:diamond
 ```
+
+### Server Console And Logs
+
+`mct server exec` returns the log lines the command produced, so no follow-up log read is needed:
+
+```bash
+mct server exec "data get entity @e[tag=probe,limit=1] Health"
+# → data.output: ["... has the following entity data: 20.0f"], data.cursor: 18234
+```
+
+To assert on something the server logs later, wait from a cursor taken before the action. `--after` also matches lines already written, so there is no race:
+
+```bash
+C=$(mct server status | jq .data.servers[0].logCursor)   # or .data.cursor from server exec
+mct chat command "shop buy diamond"
+mct wait-log --grep "purchased diamond" --after "$C" --timeout 10
+```
+
+For anything else read the server's own log directly: `run/<name>/logs/latest.log` (BungeeCord: `proxy.log.0`). `mct server status` prints its `logPath`. Startup output before logging initializes is in `run/<name>/.mct-console.log`.
 
 Clear state before a new assertion window:
 
@@ -323,20 +350,21 @@ mct server stop <server>
 
 Always clean up after failures too. Stale clients, ports, and `~/.mct/state` entries are a common source of false failures.
 
-`mct down` stops processes but leaves the project's worlds and databases on
-disk, and they add up fast. To reclaim space, run `mct prune` (a dry run that
-reports idle projects, their size and last use) and only then `mct prune --yes`.
-It never touches a project with a running server or the one you are standing in,
-and deletion is permanent. Do not `rm -rf` under `~/.mct/projects` yourself.
+`mct down` stops processes but leaves worlds and databases on disk. They live in
+the project's `run/` directory, so removing `run/<name>` (or the whole project)
+deletes them; nothing for the project is kept under `~/.mct`. Shared downloads
+and clients are under `~/.mct`: `mct cache clean` reports what it can reclaim
+(client runtimes no client uses, the old server-jar cache), `--clients-idle 30d`
+adds clients unused for that long, and `--yes` deletes.
 
 ## Pitfalls
 
-- Servers are created with `online-mode=false` by default (test clients use offline accounts). Pass `--online-mode` on create only when Mojang auth is genuinely needed; fix an existing instance with `mct server config <name> --online-mode <true|false>`.
-- Do not edit `server.properties` directly; `mct server start` rewrites managed keys (port, online-mode) from `instance.json`. Change them with `mct server config` while the server is stopped.
-- Test players usually need OP for setup commands.
+- Test clients use offline accounts: every entry-point server needs `online-mode=false`. `server start` refuses to boot otherwise.
+- Test players usually need OP for setup commands (`mct server exec "op <player>"`).
 - Use namespaced vanilla commands such as `minecraft:enchant` when plugins override command names.
 - Do not mutate a live player's `SelectedItem` NBT directly; use `/give`, plugin UI, or item entities.
-- Server logs are append-only; use `mct server logs-mark`, `--after-marker`, or `--since-start` to avoid stale matches.
+- Restart the server after replacing a plugin jar; never swap jars under a running server.
+- `latest.log` is recreated on every server start, so cursors from a previous run are stale; take a fresh one after restarting.
 - `mct screenshot` is slower than state queries; use explicit `--timeout` for busy scenes.
 
 ## Reference

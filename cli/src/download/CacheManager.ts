@@ -1,7 +1,6 @@
 import os from "node:os";
 import path from "node:path";
 
-import type { ServerType } from "./VersionMatrix.js";
 import type { LoaderType } from "./types.js";
 
 export function resolveCacheRoot() {
@@ -13,14 +12,6 @@ export class CacheManager {
 
   getRootDir() {
     return this.rootDir;
-  }
-
-  getServerJarPath(type: ServerType, version: string, build: string) {
-    return path.join(this.rootDir, "server", type, `${version}-${build}.jar`);
-  }
-
-  getServerFile(type: ServerType, version: string, build: string) {
-    return this.getServerJarPath(type, version, build);
   }
 
   getMinecraftDir(version: string) {

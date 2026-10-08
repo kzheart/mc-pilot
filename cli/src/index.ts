@@ -37,15 +37,13 @@ import { createSkillCommand } from "./commands/skill.js";
 import { createStatusCommand } from "./commands/status.js";
 import { createWaitCommand } from "./commands/wait.js";
 import { createWaitLogCommand } from "./commands/wait-log.js";
-import { createPluginCommand } from "./commands/plugin.js";
 import {
   createInitCommand,
-  createDeployCommand,
   createUpCommand,
   createDownCommand,
   createUseCommand,
 } from "./commands/project.js";
-import { createPruneCommand } from "./commands/prune.js";
+import { createCacheCommand } from "./commands/cache.js";
 import { attachGlobalOptions, wrapCommand } from "./util/command.js";
 
 export function buildProgram() {
@@ -58,10 +56,10 @@ export function buildProgram() {
         "Control a real Minecraft client via CLI to simulate player actions and verify plugin behavior.\n" +
         "All commands output JSON by default. Use --human for human-readable output.\n\n" +
         "Quick start:\n" +
-        "  mct init --name my-plugin\n" +
-        "  mct server create paper-1.20.4 --type paper --version 1.20.4\n" +
+        "  mct init --name my-plugin            # creates mct.json and run/\n" +
+        "  # put a server jar in run/paper-1.20.4/, add a profile to mct.json\n" +
         "  mct client create fabric-1.20.4 --version 1.20.4\n" +
-        "  mct up --profile 1.20\n" +
+        "  mct up --eula\n" +
         '  mct chat command "gamemode creative"\n' +
         "  mct move to 100 64 100\n" +
         "  mct screenshot --output ./test.png\n" +
@@ -91,7 +89,6 @@ export function buildProgram() {
       wrapCommand(async (context) => {
         return {
           cwd: context.cwd,
-          projectId: context.projectId,
           project: context.projectName,
           projectRootDir: context.projectRootDir,
           projectConfigPath: context.projectConfigPath,
@@ -103,16 +100,14 @@ export function buildProgram() {
 
   // Project lifecycle commands
   program.addCommand(createInitCommand());
-  program.addCommand(createDeployCommand());
   program.addCommand(createUpCommand());
   program.addCommand(createDownCommand());
   program.addCommand(createUseCommand());
-  program.addCommand(createPruneCommand());
+  program.addCommand(createCacheCommand());
 
   // Instance management
   program.addCommand(createServerCommand());
   program.addCommand(createClientCommand());
-  program.addCommand(createPluginCommand());
   program.addCommand(createSchemaCommand(() => program));
   program.addCommand(createSkillCommand());
 

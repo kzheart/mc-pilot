@@ -14,37 +14,26 @@ import { createDefaultProjectFile } from "./util/project.js";
 const execFileAsync = promisify(execFile);
 
 async function writeProjectConfig(
-  mctHome: string,
+  _mctHome: string,
   projectDir: string,
   overrides: Record<string, unknown>,
 ) {
-  const base = createDefaultProjectFile(
-    projectDir,
-    String(overrides.project ?? "test"),
-  );
+  const base = createDefaultProjectFile(String(overrides.project ?? "test"));
   const projectFile = {
     ...base,
     ...overrides,
-    screenshot: overrides.screenshot
-      ? { ...base.screenshot, ...(overrides.screenshot as object) }
-      : base.screenshot,
     timeout: overrides.timeout
       ? { ...base.timeout, ...(overrides.timeout as object) }
       : base.timeout,
   };
-  const projectFilePath = path.join(
-    mctHome,
-    "projects",
-    base.projectId,
-    "project.json",
-  );
-  await mkdir(path.dirname(projectFilePath), { recursive: true });
+  await mkdir(projectDir, { recursive: true });
+  const projectFilePath = path.join(projectDir, "mct.json");
   await writeFile(
     projectFilePath,
     JSON.stringify(projectFile, null, 2),
     "utf8",
   );
-  return { projectId: base.projectId, projectFilePath };
+  return { projectFilePath };
 }
 
 async function getFreePort() {
@@ -445,7 +434,8 @@ test("CLI schema command outputs machine-readable command and protocol metadata 
       ),
     );
     assert.ok(parsed.data.cli.leafCommands.includes("schema"));
-    assert.ok(parsed.data.cli.leafCommands.includes("server create"));
+    assert.ok(parsed.data.cli.leafCommands.includes("server exec"));
+    assert.ok(!parsed.data.cli.leafCommands.includes("server create"));
     assert.ok(parsed.data.cli.leafCommands.includes("chat send"));
     assert.ok(Array.isArray(parsed.data.protocol.actions));
     assert.ok(Array.isArray(parsed.data.protocol.queries));
@@ -561,41 +551,32 @@ test("CLI events wait exits with TIMEOUT when no matching event arrives", async 
   }
 });
 
-test("CLI server status without project context shows all running servers", async () => {
+test("CLI server status inside a project lists every server under run/", async () => {
   const tempDir = await mkdtemp(
     path.join(os.tmpdir(), "mct-cli-server-status-"),
   );
   const mctHome = path.join(tempDir, "mct-home");
-  const globalStateDir = path.join(mctHome, "state");
+  const projectDir = path.join(tempDir, "project");
 
   try {
-    await mkdir(globalStateDir, { recursive: true });
+    await writeProjectConfig(mctHome, projectDir, { project: "demo" });
+    await mkdir(path.join(projectDir, "run", "paper"), { recursive: true });
     await writeFile(
-      path.join(globalStateDir, "servers.json"),
-      JSON.stringify(
-        {
-          servers: {
-            "demo/paper": {
-              pid: process.pid,
-              project: "demo",
-              name: "paper",
-              port: 25569,
-              startedAt: new Date().toISOString(),
-              logPath: path.join(mctHome, "logs", "server-demo-paper.log"),
-              instanceDir: path.join(mctHome, "projects", "demo", "paper"),
-            },
-          },
-        },
-        null,
-        2,
-      ),
+      path.join(projectDir, "run", "paper", "paper-1.21.1.jar"),
+      "",
     );
+    await writeFile(
+      path.join(projectDir, "run", "paper", "server.properties"),
+      "server-port=25569\n",
+    );
+    // A directory without a jar is not a server.
+    await mkdir(path.join(projectDir, "run", "notes"), { recursive: true });
 
     const { stdout } = await execFileAsync(
       process.execPath,
       [path.join(process.cwd(), "dist/index.js"), "server", "status"],
       {
-        cwd: tempDir,
+        cwd: projectDir,
         env: {
           ...process.env,
           MCT_HOME: mctHome,
@@ -605,10 +586,11 @@ test("CLI server status without project context shows all running servers", asyn
 
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.success, true);
-    assert.equal(Array.isArray(parsed.data), true);
-    assert.equal(parsed.data.length, 1);
-    assert.equal(parsed.data[0].project, "demo");
-    assert.equal(parsed.data[0].running, true);
+    assert.equal(parsed.data.servers.length, 1);
+    assert.equal(parsed.data.servers[0].name, "paper");
+    assert.equal(parsed.data.servers[0].port, 25569);
+    assert.equal(parsed.data.servers[0].kind, "game");
+    assert.equal(parsed.data.servers[0].running, false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

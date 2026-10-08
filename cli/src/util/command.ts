@@ -21,12 +21,12 @@ export function attachGlobalOptions(command: Command) {
   return command
     .option("--human", "Human-readable output (default: JSON)")
     .option(
-      "--project <id>",
-      "Project ID (default: derived from cwd and loaded from ~/.mct/projects/<id>/project.json)",
+      "--project <dir>",
+      "Project root containing mct.json (default: nearest mct.json from cwd)",
     )
     .option(
       "--profile <name>",
-      "Profile name (default: from ~/.mct/projects/<id>/project.json)",
+      "Profile name (default: defaultProfile in mct.json)",
     )
     .option(
       "--client <name>",

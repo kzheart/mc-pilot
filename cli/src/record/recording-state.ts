@@ -20,7 +20,7 @@ export interface ActiveRecording {
   /** 首帧毫秒时间戳 */
   startedAt: number;
   fps: number;
-  projectId: string | null;
+  projectRoot: string | null;
 }
 
 export interface RecordingsState {

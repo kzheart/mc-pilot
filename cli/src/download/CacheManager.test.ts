@@ -9,10 +9,6 @@ test("CacheManager builds deterministic cache paths", () => {
 
   assert.equal(cache.getRootDir(), "/tmp/mct-cache");
   assert.equal(
-    cache.getServerFile("paper", "1.20.4", "496"),
-    path.join("/tmp/mct-cache", "server", "paper", "1.20.4-496.jar"),
-  );
-  assert.equal(
     cache.getMinecraftDir("1.20.4"),
     path.join("/tmp/mct-cache", "client", "minecraft", "1.20.4"),
   );

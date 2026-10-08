@@ -1,239 +1,93 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import type { ServerInstanceMeta, ServerType } from "../util/instance-types.js";
 import {
+  detectServerFlavor,
+  ensureServerProperties,
   getServerFlavor,
-  renderBungeeConfigYml,
-  renderVelocityToml,
 } from "./server-flavor.js";
 
-function makeMeta(
-  overrides: Partial<ServerInstanceMeta> & {
-    name: string;
-    type: ServerType;
-    port: number;
-  },
-): ServerInstanceMeta {
-  return {
-    project: "test-project",
-    mcVersion: "1.20.4",
-    jvmArgs: [],
-    createdAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  };
+async function tempDir() {
+  return mkdtemp(path.join(os.tmpdir(), "mct-flavor-"));
 }
 
-test("vanilla-like flavor launch args", () => {
-  const paper = getServerFlavor("paper");
-  const velocity = getServerFlavor("velocity");
-
-  assert.deepEqual(paper.buildLaunchArgs(["-Xmx2G"], "/tmp/s.jar"), [
-    "-Xmx2G",
-    "-jar",
-    "/tmp/s.jar",
-    "nogui",
-  ]);
-  assert.deepEqual(velocity.buildLaunchArgs(["-Xmx2G"], "/tmp/s.jar"), [
-    "-Xmx2G",
-    "-jar",
-    "/tmp/s.jar",
-  ]);
-});
-
-test("game flavors share behavior", () => {
-  for (const type of ["paper", "purpur", "spigot", "vanilla"] as const) {
-    const flavor = getServerFlavor(type);
-    assert.equal(flavor.kind, "game");
-    assert.equal(flavor.supportsEula, true);
-  }
-
-  for (const type of ["velocity", "bungeecord"] as const) {
-    const flavor = getServerFlavor(type);
-    assert.equal(flavor.kind, "proxy");
-    assert.equal(flavor.supportsEula, false);
-  }
-});
-
-test("renderVelocityToml modern with servers", () => {
-  const meta = makeMeta({
-    name: "velocity-1",
-    type: "velocity",
-    port: 25577,
-    proxy: {
-      servers: {
-        b1: "127.0.0.1:25566",
-        b2: "127.0.0.1:25567",
-      },
-      try: ["b1"],
-      forwarding: "modern",
-    },
-  });
-
-  const output = renderVelocityToml(meta);
-
-  assert.match(output, /bind = "0\.0\.0\.0:25577"/);
-  assert.match(output, /player-info-forwarding-mode = "modern"/);
-  assert.match(output, /"b1" = "127\.0\.0\.1:25566"/);
-  assert.match(output, /try = \["b1"\]/);
-  assert.match(output, /\[forced-hosts\]/);
-});
-
-test("renderVelocityToml preserves dotted backend names as literal keys", () => {
-  const name = "paper-1.20.4";
-  const output = renderVelocityToml(
-    makeMeta({
-      name: "velocity-test",
-      port: 25577,
-      type: "velocity",
-      proxy: {
-        servers: { [name]: "127.0.0.1:25566" },
-        try: [name],
-        forwarding: "modern",
-      },
-    }),
+test("launch args: game servers get nogui, proxies do not", () => {
+  assert.deepEqual(
+    getServerFlavor("game").buildLaunchArgs(["-Xmx2G"], "/tmp/s.jar"),
+    ["-Xmx2G", "-jar", "/tmp/s.jar", "nogui"],
   );
-  assert.match(output, /^"paper-1\.20\.4" = "127\.0\.0\.1:25566"$/m);
-  assert.match(output, /try = \["paper-1\.20\.4"\]/);
+  assert.deepEqual(
+    getServerFlavor("velocity").buildLaunchArgs(["-Xmx2G"], "/tmp/s.jar"),
+    ["-Xmx2G", "-jar", "/tmp/s.jar"],
+  );
 });
 
-test("renderVelocityToml legacy mode", () => {
-  const meta = makeMeta({
-    name: "velocity-legacy",
-    type: "velocity",
-    port: 25577,
-    proxy: {
-      servers: {},
-      try: [],
-      forwarding: "legacy",
-    },
-  });
-
-  const output = renderVelocityToml(meta);
-
-  assert.match(output, /player-info-forwarding-mode = "legacy"/);
-});
-
-test("renderVelocityToml without proxy meta", () => {
-  const meta = makeMeta({
-    name: "velocity-bare",
-    type: "velocity",
-    port: 25577,
-  });
-
-  const output = renderVelocityToml(meta);
-
-  assert.match(output, /try = \[\]/);
-  assert.doesNotMatch(output, /= "127\.0\.0\.1/);
-});
-
-test("renderBungeeConfigYml essentials", () => {
-  const meta = makeMeta({
-    name: "bungee-1",
-    type: "bungeecord",
-    port: 25578,
-    proxy: {
-      servers: {
-        lobby: "127.0.0.1:25566",
-      },
-      try: ["lobby"],
-      forwarding: "modern",
-    },
-  });
-
-  const output = renderBungeeConfigYml(meta);
-
-  assert.match(output, /host: 0\.0\.0\.0:25578/);
-  assert.match(output, /ip_forward: true/);
-  assert.match(output, /online_mode: false/);
-  assert.match(output, /address: 127\.0\.0\.1:25566/);
-});
-
-test("syncConfig idempotent for proxies", async () => {
-  const velocityMeta = makeMeta({
-    name: "velocity-sync",
-    type: "velocity",
-    port: 25577,
-    proxy: {
-      servers: { b1: "127.0.0.1:25566" },
-      try: ["b1"],
-      forwarding: "modern",
-    },
-  });
-  const bungeeMeta = makeMeta({
-    name: "bungee-sync",
-    type: "bungeecord",
-    port: 25578,
-    proxy: {
-      servers: { lobby: "127.0.0.1:25566" },
-      try: ["lobby"],
-      forwarding: "modern",
-    },
-  });
-
-  const velocityDir = await mkdtemp(path.join(os.tmpdir(), "mct-flavor-"));
-  const bungeeDir = await mkdtemp(path.join(os.tmpdir(), "mct-flavor-"));
-
-  const velocityFlavor = getServerFlavor("velocity");
-  const bungeeFlavor = getServerFlavor("bungeecord");
-
-  await mkdir(velocityDir, { recursive: true });
-  await mkdir(bungeeDir, { recursive: true });
-
-  await velocityFlavor.syncConfig({
-    instanceDir: velocityDir,
-    meta: velocityMeta,
-  });
-  await velocityFlavor.syncConfig({
-    instanceDir: velocityDir,
-    meta: velocityMeta,
-  });
-  const velocityToml1 = await readFile(
-    path.join(velocityDir, "velocity.toml"),
-    "utf8",
+test("detectServerFlavor recognizes proxies by jar name or config", async () => {
+  const dir = await tempDir();
+  assert.equal(
+    (await detectServerFlavor(dir, path.join(dir, "paper-1.21.1-119.jar")))
+      .kind,
+    "game",
+  );
+  assert.equal(
+    (await detectServerFlavor(dir, path.join(dir, "velocity-3.4.0.jar"))).kind,
+    "velocity",
+  );
+  assert.equal(
+    (await detectServerFlavor(dir, path.join(dir, "Waterfall.jar"))).kind,
+    "bungeecord",
   );
 
-  await bungeeFlavor.syncConfig({ instanceDir: bungeeDir, meta: bungeeMeta });
-  await bungeeFlavor.syncConfig({ instanceDir: bungeeDir, meta: bungeeMeta });
-  const bungeeConfig1 = await readFile(
-    path.join(bungeeDir, "config.yml"),
-    "utf8",
+  const renamedVelocity = await tempDir();
+  await writeFile(
+    path.join(renamedVelocity, "velocity.toml"),
+    'bind = "0.0.0.0:25600"\n',
   );
-
-  const velocityToml2 = await readFile(
-    path.join(velocityDir, "velocity.toml"),
-    "utf8",
+  const flavor = await detectServerFlavor(
+    renamedVelocity,
+    path.join(renamedVelocity, "proxy.jar"),
   );
-  const bungeeConfig2 = await readFile(
-    path.join(bungeeDir, "config.yml"),
-    "utf8",
-  );
-
-  assert.equal(velocityToml1, velocityToml2);
-  assert.equal(bungeeConfig1, bungeeConfig2);
+  assert.equal(flavor.kind, "velocity");
+  assert.equal(await flavor.readPort(renamedVelocity), 25600);
 });
 
-test("vanilla-like syncConfig writes server.properties", async () => {
-  const meta = makeMeta({
-    name: "paper-sync",
-    type: "paper",
-    port: 25565,
-  });
+test("game flavor reads port and online-mode from server.properties", async () => {
+  const dir = await tempDir();
+  const flavor = getServerFlavor("game");
 
-  const instanceDir = await mkdtemp(path.join(os.tmpdir(), "mct-flavor-"));
-  await mkdir(instanceDir, { recursive: true });
+  assert.equal(await flavor.readOnlineMode(dir), undefined);
+  assert.equal(await flavor.readPort(dir), 25565);
 
-  const flavor = getServerFlavor("paper");
-  await flavor.syncConfig({ instanceDir, meta });
-
-  const properties = await readFile(
-    path.join(instanceDir, "server.properties"),
-    "utf8",
+  await writeFile(path.join(dir, "server.properties"), "motd=x\n");
+  assert.equal(
+    await flavor.readOnlineMode(dir),
+    true,
+    "a missing key means vanilla's default online-mode=true",
   );
 
-  assert.match(properties, /^server-port=25565$/m);
-  assert.match(properties, /^online-mode=false$/m);
+  await ensureServerProperties(dir, {
+    "online-mode": "false",
+    "server-port": "25570",
+  });
+  assert.equal(await flavor.readOnlineMode(dir), false);
+  assert.equal(await flavor.readPort(dir), 25570);
+  assert.match(
+    await readFile(path.join(dir, "server.properties"), "utf8"),
+    /^motd=x$/m,
+  );
+});
+
+test("bungeecord flavor reads listener port and online_mode", async () => {
+  const dir = await tempDir();
+  await writeFile(
+    path.join(dir, "config.yml"),
+    "listeners:\n- host: 0.0.0.0:25590\n  motd: x\nonline_mode: false\n",
+  );
+  const flavor = getServerFlavor("bungeecord");
+  assert.equal(await flavor.readPort(dir), 25590);
+  assert.equal(await flavor.readOnlineMode(dir), false);
+  assert.equal(flavor.logFile, "proxy.log.0");
 });

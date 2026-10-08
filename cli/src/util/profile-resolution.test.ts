@@ -123,10 +123,7 @@ test("up refuses to launch offline clients against an online-mode instance", () 
 
   assert.equal(error.code, "ONLINE_MODE_CONFLICT");
   assert.match(error.message, /Invalid session/);
-  assert.equal(
-    (error.details as { fix: string }).fix,
-    "mct server config paper-1.20.4 --online-mode false",
-  );
+  assert.match(error.message, /online-mode to false/);
 });
 
 test("the auth gate stays out of the way for offline instances", () => {

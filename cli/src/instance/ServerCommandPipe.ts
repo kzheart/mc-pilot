@@ -1,4 +1,4 @@
-import { platform } from "../platform/index.js";
+import { platform, type ServerSpawnSpec } from "../platform/index.js";
 
 /**
  * Console-command channel into a detached server process.
@@ -8,12 +8,8 @@ import { platform } from "../platform/index.js";
  * process on Windows. See cli/src/platform/.
  */
 export class ServerCommandPipe {
-  async create(
-    stateDir: string,
-    project: string,
-    serverName: string,
-  ): Promise<string> {
-    return platform.serverStdin.create(stateDir, project, serverName);
+  async create(serverDir: string): Promise<string> {
+    return platform.serverStdin.create(serverDir);
   }
 
   async send(
@@ -26,5 +22,13 @@ export class ServerCommandPipe {
 
   async cleanup(stdinPipe: string): Promise<void> {
     return platform.serverStdin.cleanup(stdinPipe);
+  }
+
+  buildServerSpawn(spec: {
+    stdinChannel: string;
+    javaCommand: string;
+    launchArgs: string[];
+  }): ServerSpawnSpec {
+    return platform.serverStdin.buildServerSpawn(spec);
   }
 }

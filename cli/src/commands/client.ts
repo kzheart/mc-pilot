@@ -3,35 +3,42 @@ import { Command } from "commander";
 import { buildClientSearchResults } from "../download/SearchCommand.js";
 import type { ClientLoader } from "../download/VersionMatrix.js";
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
-import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
+import {
+  resolveServerTarget,
+  ServerManager,
+} from "../instance/ServerManager.js";
 import { createRequestAction, resolveInstanceName } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
 import { downloadClientModToDir } from "../download/client/ClientDownloader.js";
 import { resolveClientInstanceDir } from "../util/paths.js";
 import type { LoaderType } from "../util/instance-types.js";
 import type { CommandContext } from "../util/context.js";
+import { resolveBackendNames } from "../util/project.js";
 
 export async function resolveProfileServerAddress(
-  context: Pick<CommandContext, "projectId" | "activeProfile" | "globalState">,
+  context: Pick<
+    CommandContext,
+    "activeProfile" | "cwd" | "projectRootDir" | "projectFile"
+  >,
   explicitServer: string | undefined,
-  loadPort?: (projectId: string, serverName: string) => Promise<number>,
+  loadPort?: (serverName: string) => Promise<number>,
 ): Promise<string | undefined> {
   if (explicitServer) {
     return explicitServer;
   }
-  if (!context.projectId || !context.activeProfile?.server) {
+  const serverName = context.activeProfile
+    ? resolveBackendNames(context.activeProfile)[0]
+    : undefined;
+  if (!context.projectRootDir || !serverName) {
     return undefined;
   }
 
   try {
     const port = loadPort
-      ? await loadPort(context.projectId, context.activeProfile.server)
-      : (
-          await new ServerInstanceManager(
-            context.globalState,
-            context.projectId,
-          ).loadMeta(context.activeProfile.server)
-        ).port;
+      ? await loadPort(serverName)
+      : await new ServerManager().readPort(
+          await resolveServerTarget(context, serverName),
+        );
     return `127.0.0.1:${port}`;
   } catch {
     return undefined;

@@ -1,45 +1,7 @@
 import { loadModVariantCatalogSync } from "./ModVariantCatalog.js";
 
-export type ServerType =
-  | "paper"
-  | "purpur"
-  | "spigot"
-  | "vanilla"
-  | "velocity"
-  | "bungeecord";
 export type ClientLoader = "fabric" | "forge" | "neoforge";
 export type CompatibilityValidation = "verified" | "limited" | "planned";
-
-export interface VerifiedClientInfo {
-  minecraftVersion: string;
-  loader: ClientLoader;
-  build?: number;
-}
-
-export interface ServerSupportInfo {
-  supported: boolean;
-  latestBuild?: number;
-  requiresBuildTools?: boolean;
-  verifiedClients?: readonly VerifiedClientInfo[];
-}
-
-export type ProxyType = "velocity" | "bungeecord";
-
-export interface ProxySupportInfo {
-  defaultVersion: string;
-  latestBuild?: number;
-  javaVersion: string;
-}
-
-// Proxy 软件独立于 MC 版本矩阵:一个 jar 兼容全部后端版本
-export const PROXY_MATRIX: Record<ProxyType, ProxySupportInfo> = {
-  velocity: { defaultVersion: "3.4.0", latestBuild: 566, javaVersion: "17+" },
-  bungeecord: { defaultVersion: "latest", javaVersion: "8+" },
-};
-
-export function isProxyType(type: ServerType): type is ProxyType {
-  return type === "velocity" || type === "bungeecord";
-}
 
 export interface ClientLoaderSupportInfo {
   supported: boolean;
@@ -53,32 +15,7 @@ export interface ClientLoaderSupportInfo {
 export interface MinecraftSupportEntry {
   minecraftVersion: string;
   javaVersion: string;
-  servers: Record<Exclude<ServerType, ProxyType>, ServerSupportInfo>;
   clients: Record<ClientLoader, ClientLoaderSupportInfo>;
-}
-
-interface ResolvedMinecraftSupportEntry {
-  minecraftVersion: string;
-  javaVersion: string;
-  servers: Record<ServerType, ServerSupportInfo>;
-  clients: Record<ClientLoader, ClientLoaderSupportInfo>;
-}
-
-const UNSUPPORTED_PROXY_SERVER: ServerSupportInfo = { supported: false };
-
-export interface ServerSearchResult {
-  type: ServerType;
-  minecraftVersion: string;
-  supported: boolean;
-  latestBuild?: number;
-  requiresBuildTools?: boolean;
-  verifiedClients?: readonly VerifiedClientInfo[];
-}
-
-export interface ServerCatalogEntry {
-  version: string;
-  build?: string;
-  requiresBuildTools?: boolean;
 }
 
 export interface ClientSearchResult {
@@ -91,34 +28,12 @@ export interface ClientSearchResult {
   validation?: CompatibilityValidation;
   notes?: string;
   javaVersion: string;
-  verifiedServers?: readonly VerifiedServerInfo[];
-}
-
-export interface VerifiedServerInfo {
-  type: Exclude<ServerType, ProxyType>;
-  minecraftVersion: string;
-  build?: number;
 }
 
 const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "26.2",
     javaVersion: "25+",
-    servers: {
-      vanilla: {
-        supported: true,
-        verifiedClients: [{ minecraftVersion: "26.2", loader: "fabric" }],
-      },
-      paper: {
-        supported: true,
-        latestBuild: 60,
-        verifiedClients: [
-          { minecraftVersion: "26.2", loader: "fabric", build: 60 },
-        ],
-      },
-      purpur: { supported: true, latestBuild: 2607 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -143,18 +58,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "26.1.2",
     javaVersion: "25+",
-    servers: {
-      vanilla: { supported: true },
-      paper: {
-        supported: true,
-        latestBuild: 74,
-        verifiedClients: [
-          { minecraftVersion: "26.1", loader: "fabric", build: 74 },
-        ],
-      },
-      purpur: { supported: false },
-      spigot: { supported: false },
-    },
     clients: {
       fabric: { supported: false, notes: "使用已验证兼容的 26.1 客户端" },
       forge: { supported: false, notes: "未提供精确 26.1.2 客户端变体" },
@@ -164,18 +67,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "26.1.1",
     javaVersion: "25+",
-    servers: {
-      vanilla: { supported: true },
-      paper: {
-        supported: true,
-        latestBuild: 29,
-        verifiedClients: [
-          { minecraftVersion: "26.1", loader: "fabric", build: 29 },
-        ],
-      },
-      purpur: { supported: false },
-      spigot: { supported: false },
-    },
     clients: {
       fabric: { supported: false, notes: "使用已验证兼容的 26.1 客户端" },
       forge: { supported: false, notes: "未提供精确 26.1.1 客户端变体" },
@@ -185,15 +76,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "26.1",
     javaVersion: "25+",
-    servers: {
-      vanilla: {
-        supported: true,
-        verifiedClients: [{ minecraftVersion: "26.1", loader: "fabric" }],
-      },
-      paper: { supported: false },
-      purpur: { supported: false },
-      spigot: { supported: false },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -218,12 +100,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.21.11",
     javaVersion: "21+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 69 },
-      purpur: { supported: true, latestBuild: 2568 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -238,12 +114,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.21.4",
     javaVersion: "21+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 170 },
-      purpur: { supported: true, latestBuild: 2406 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -262,12 +132,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.21.1",
     javaVersion: "21+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 119 },
-      purpur: { supported: true, latestBuild: 2324 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -286,12 +150,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.20.4",
     javaVersion: "17+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 496 },
-      purpur: { supported: true, latestBuild: 2176 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -310,12 +168,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.20.3",
     javaVersion: "17+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: false },
-      purpur: { supported: false },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -335,12 +187,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.20.2",
     javaVersion: "17+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 318 },
-      purpur: { supported: true, latestBuild: 2095 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -354,12 +200,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.20.1",
     javaVersion: "17+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 196 },
-      purpur: { supported: true, latestBuild: 2062 },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -378,12 +218,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.18.2",
     javaVersion: "17+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 388 },
-      purpur: { supported: false },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: {
         supported: true,
@@ -398,12 +232,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.16.5",
     javaVersion: "8+",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 794 },
-      purpur: { supported: false },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: { supported: false, notes: "当前未接入此版本 mod" },
       forge: { supported: true, loaderVersion: "36.x", modVersion: "0.9.1" },
@@ -413,12 +241,6 @@ const VERSION_MATRIX: readonly MinecraftSupportEntry[] = [
   {
     minecraftVersion: "1.12.2",
     javaVersion: "8",
-    servers: {
-      vanilla: { supported: true },
-      paper: { supported: true, latestBuild: 1620 },
-      purpur: { supported: false },
-      spigot: { supported: true, requiresBuildTools: true },
-    },
     clients: {
       fabric: { supported: false, notes: "不支持此版本" },
       forge: { supported: true, loaderVersion: "14.23.x", modVersion: "0.9.1" },
@@ -459,15 +281,10 @@ function overlayClientSupport(
 
 function overlayMinecraftSupport(
   entry: MinecraftSupportEntry,
-): ResolvedMinecraftSupportEntry {
+): MinecraftSupportEntry {
   return {
     minecraftVersion: entry.minecraftVersion,
     javaVersion: entry.javaVersion,
-    servers: {
-      ...entry.servers,
-      velocity: UNSUPPORTED_PROXY_SERVER,
-      bungeecord: UNSUPPORTED_PROXY_SERVER,
-    },
     clients: {
       fabric: overlayClientSupport(entry, "fabric"),
       forge: overlayClientSupport(entry, "forge"),
@@ -476,7 +293,7 @@ function overlayMinecraftSupport(
   };
 }
 
-export function getVersionMatrix(): ResolvedMinecraftSupportEntry[] {
+export function getVersionMatrix(): MinecraftSupportEntry[] {
   return VERSION_MATRIX.map((entry) => overlayMinecraftSupport(entry));
 }
 
@@ -486,62 +303,11 @@ export function getSupportedMinecraftVersions() {
 
 export function getMinecraftSupport(
   version: string,
-): ResolvedMinecraftSupportEntry | undefined {
+): MinecraftSupportEntry | undefined {
   const entry = VERSION_MATRIX.find(
     (candidate) => candidate.minecraftVersion === version,
   );
   return entry ? overlayMinecraftSupport(entry) : undefined;
-}
-
-export function searchServerVersions(filter?: {
-  type?: Exclude<ServerType, ProxyType>;
-  version?: string;
-}) {
-  const types = filter?.type ? [filter.type] : getServerTypes();
-  const entries = filter?.version
-    ? VERSION_MATRIX.filter(
-        (entry) => entry.minecraftVersion === filter.version,
-      )
-    : VERSION_MATRIX;
-
-  return types.flatMap((type) =>
-    entries.map<ServerSearchResult>((entry) => ({
-      type,
-      minecraftVersion: entry.minecraftVersion,
-      supported: entry.servers[type].supported,
-      latestBuild: entry.servers[type].latestBuild,
-      requiresBuildTools: entry.servers[type].requiresBuildTools,
-      ...(entry.servers[type].verifiedClients?.length
-        ? { verifiedClients: entry.servers[type].verifiedClients }
-        : {}),
-    })),
-  );
-}
-
-function getVerifiedServers(
-  minecraftVersion: string,
-  loader: ClientLoader,
-): VerifiedServerInfo[] {
-  return VERSION_MATRIX.flatMap((entry) =>
-    getServerTypes().flatMap((type) => {
-      const support = entry.servers[type];
-      const verified = support.verifiedClients?.find(
-        (client) =>
-          client.minecraftVersion === minecraftVersion &&
-          client.loader === loader,
-      );
-      if (!verified) {
-        return [];
-      }
-      return [
-        {
-          type,
-          minecraftVersion: entry.minecraftVersion,
-          ...(verified.build != null ? { build: verified.build } : {}),
-        },
-      ];
-    }),
-  );
 }
 
 export function searchClientVersions(filter?: {
@@ -558,10 +324,6 @@ export function searchClientVersions(filter?: {
   return loaders.flatMap((loader) =>
     entries.map<ClientSearchResult>((entry) => {
       const support = overlayClientSupport(entry, loader);
-      const verifiedServers = getVerifiedServers(
-        entry.minecraftVersion,
-        loader,
-      );
       return {
         loader,
         minecraftVersion: entry.minecraftVersion,
@@ -576,51 +338,13 @@ export function searchClientVersions(filter?: {
         ...(support.validation ? { validation: support.validation } : {}),
         ...(support.notes ? { notes: support.notes } : {}),
         javaVersion: entry.javaVersion,
-        ...(verifiedServers.length > 0 ? { verifiedServers } : {}),
       };
     }),
   );
 }
 
-export function getServerVersionMatrix() {
-  return searchServerVersions();
-}
-
 export function getClientVersionMatrix() {
   return searchClientVersions();
-}
-
-export function getServerVersionCatalog(): Record<
-  Exclude<ServerType, ProxyType>,
-  ServerCatalogEntry[]
-> {
-  return getServerTypes().reduce<
-    Record<Exclude<ServerType, ProxyType>, ServerCatalogEntry[]>
-  >(
-    (catalog, type) => {
-      catalog[type] = VERSION_MATRIX.filter(
-        (entry) => entry.servers[type].supported,
-      ).map((entry) => ({
-        version: entry.minecraftVersion,
-        build:
-          entry.servers[type].latestBuild != null
-            ? String(entry.servers[type].latestBuild)
-            : undefined,
-        requiresBuildTools: entry.servers[type].requiresBuildTools,
-      }));
-      return catalog;
-    },
-    {
-      vanilla: [],
-      paper: [],
-      purpur: [],
-      spigot: [],
-    },
-  );
-}
-
-export function getServerTypes(): Exclude<ServerType, ProxyType>[] {
-  return ["vanilla", "paper", "purpur", "spigot"];
 }
 
 export function getClientLoaders(): ClientLoader[] {

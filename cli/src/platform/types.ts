@@ -48,14 +48,11 @@ export interface ServerSpawnSpec {
  */
 export interface ServerStdinChannel {
   /**
-   * Resolve (and, if necessary, materialize) the channel for a server.
-   * Returns the channel identifier stored in the server's runtime state.
+   * Resolve (and, if necessary, materialize) the channel for the server
+   * running in `serverDir`. Returns the channel identifier stored in the
+   * server's runtime state.
    */
-  create(
-    stateDir: string,
-    project: string,
-    serverName: string,
-  ): Promise<string>;
+  create(serverDir: string): Promise<string>;
 
   /** Write one command line into the channel. */
   send(channel: string, command: string, timeoutMs?: number): Promise<void>;

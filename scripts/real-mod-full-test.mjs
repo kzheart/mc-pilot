@@ -23,7 +23,6 @@ import {
   runCommand as runSharedCommand,
   sleep,
   slugify,
-  slugifyProjectId,
   waitForLogEntry as waitForLogFileEntry,
 } from "./lib.mjs";
 
@@ -38,8 +37,7 @@ const RESOURCEPACK_PORT = Number.parseInt(process.env.MCT_REAL_RESOURCEPACK_PORT
 const RESOURCEPACK_URL = `http://127.0.0.1:${RESOURCEPACK_PORT}/test-pack.zip`;
 let PROJECT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/project");
 let MCT_HOME_DIR = path.join(ROOT_DIR, "tmp/real-e2e/mct-home");
-let PROJECT_ID = slugifyProjectId(PROJECT_DIR);
-let PROJECT_FILE_PATH = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, "project.json");
+let PROJECT_FILE_PATH = path.join(PROJECT_DIR, "mct.json");
 let REPORT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/reports");
 let SCREENSHOT_DIR = path.join(ROOT_DIR, "tmp/real-e2e/screenshots");
 let PROJECT_NAME = "real-e2e";
@@ -47,7 +45,7 @@ let PROFILE_NAME = "default";
 let SERVER_NAME = "server";
 let CLIENT_NAME = "real";
 let CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", "client-real.log");
-let SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, SERVER_NAME);
+let SERVER_DIR = path.join(PROJECT_DIR, "run", SERVER_NAME);
 let SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
 let SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
 let SERVER_PORT = 25565;
@@ -63,8 +61,7 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "info",
   "server start",
   "server status",
-  "server stop",
-  "server wait-ready"
+  "server stop"
 ];
 
 const FIXTURE = {
@@ -168,8 +165,7 @@ function parseCliOptions(argv) {
 async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, screenshotDir) {
   PROJECT_DIR = projectDir;
   MCT_HOME_DIR = mctHome;
-  PROJECT_ID = slugifyProjectId(PROJECT_DIR);
-  PROJECT_FILE_PATH = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, "project.json");
+  PROJECT_FILE_PATH = path.join(PROJECT_DIR, "mct.json");
   REPORT_DIR = reportDir;
   SCREENSHOT_DIR = screenshotDir;
   CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
@@ -178,32 +174,31 @@ async function applyRuntimePathsFromProject(projectDir, mctHome, reportDir, scre
 
   try {
     const projectFile = JSON.parse(await readFile(PROJECT_FILE_PATH, "utf8"));
-    PROJECT_ID = projectFile.projectId ?? PROJECT_ID;
     PROJECT_NAME = projectFile.project ?? PROJECT_NAME;
     PROFILE_NAME = projectFile.defaultProfile ?? PROFILE_NAME;
     const profile = projectFile.profiles?.[PROFILE_NAME];
-    if (profile?.server) {
-      SERVER_NAME = profile.server;
+    const profileServer = profile?.servers?.[0] ?? profile?.server;
+    if (profileServer) {
+      SERVER_NAME = profileServer;
     }
     if (Array.isArray(profile?.clients) && profile.clients[0]) {
       CLIENT_NAME = profile.clients[0];
     }
   } catch {
-    PROJECT_ID = slugifyProjectId(PROJECT_DIR);
     PROJECT_NAME = "real-e2e";
     PROFILE_NAME = "default";
     SERVER_NAME = "server";
     CLIENT_NAME = "real";
   }
 
-  SERVER_DIR = path.join(MCT_HOME_DIR, "projects", PROJECT_ID, SERVER_NAME);
+  SERVER_DIR = path.join(PROJECT_DIR, "run", SERVER_NAME);
   SERVER_LOG_PATH = path.join(SERVER_DIR, "logs", "latest.log");
   SERVER_PLUGIN_PATH = path.join(SERVER_DIR, "plugins", "mct-paper-fixture-0.1.0.jar");
   CLIENT_LOG_PATH = path.join(MCT_HOME_DIR, "logs", `client-${CLIENT_NAME}.log`);
 
   try {
-    const serverMeta = JSON.parse(await readFile(path.join(SERVER_DIR, "instance.json"), "utf8"));
-    SERVER_PORT = Number(serverMeta.port ?? 25565);
+    const properties = await readFile(path.join(SERVER_DIR, "server.properties"), "utf8");
+    SERVER_PORT = Number(properties.match(/^server-port=(\d+)/m)?.[1] ?? 25565);
   } catch {
     SERVER_PORT = 25565;
   }
@@ -1027,7 +1022,7 @@ async function main() {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const resetCommand = await runCli(["server", "exec", "mctfixture", "reset"]);
       const resetData = unwrapCliSuccess(resetCommand);
-      expect(resetData.sent === true, "failed to send fixture reset command");
+      expect(typeof resetData.cursor === "number", "failed to send fixture reset command");
       recordStep(`${name} command`, resetCommand, { kind: "setup", attempt, verifiedData: resetData });
       try {
         const teleported = await waitForTeleport(30);
@@ -1174,11 +1169,8 @@ async function main() {
     recordStep(`${label} server stop`, serverStop, { kind: "setup" });
     await updateServerProperties(resourcePackServer.url, resourcePackServer.sha1);
 
-    await runNonRequestLeaf(`${label} server start`, ["server", "start", "--eula"], (data) => {
-      expect(data.running === true, "server did not restart with resource pack enabled");
-    });
-    await runNonRequestLeaf(`${label} server wait-ready`, ["server", "wait-ready", "--timeout", "120"], (data) => {
-      expect(data.reachable === true, "resource pack server was not reachable");
+    await runNonRequestLeaf(`${label} server start`, ["server", "start", "--eula", "--timeout", "120"], (data) => {
+      expect(data.running === true && data.ready === true, "server did not restart with resource pack enabled");
     });
     await waitForLogEntry("Done", 120);
     await sleep(1000);
@@ -1303,17 +1295,14 @@ async function main() {
       expect(data.globalStateDir === path.join(MCT_HOME_DIR, "state"), "info returned unexpected global state dir");
     });
 
-    await runNonRequestLeaf("server start", ["server", "start", "--eula"], (data) => {
-      expect(data.running === true, "server did not start");
+    await runNonRequestLeaf("server start", ["server", "start", "--eula", "--timeout", "120"], (data) => {
+      expect(data.running === true && data.ready === true, "server did not start");
     });
 
     await runNonRequestLeaf("server status", ["server", "status", "server"], (data) => {
       expect(data.running === true, "server status did not report running");
     });
 
-    await runNonRequestLeaf("server wait-ready", ["server", "wait-ready", "--timeout", "120"], (data) => {
-      expect(data.reachable === true, "server was not reachable");
-    });
     await waitForLogEntry("Done", 120);
 
     await launchRealClientAndWaitReady("initial", {

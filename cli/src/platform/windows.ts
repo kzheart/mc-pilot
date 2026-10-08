@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * Windows platform adapter: taskkill/CIM/netstat for process control, a named
  * pipe served by a bridge process (stdin-bridge.ts) for the server stdin
@@ -37,9 +38,13 @@ function getStdinBridgePath() {
  * the stdin-bridge process that wraps the server; it vanishes with the
  * process, so there is nothing to create or unlink on the filesystem.
  */
-export function windowsStdinPipeName(project: string, serverName: string) {
-  const safe = `${project}-${serverName}`.replace(/[\\/:*?"<>|]/g, "-");
-  return `\\\\.\\pipe\\mct-stdin-${safe}`;
+/** Named pipes are global, so derive a stable unique name from the server directory. */
+export function windowsStdinPipeName(serverDir: string) {
+  const digest = createHash("sha1")
+    .update(path.resolve(serverDir).toLowerCase())
+    .digest("hex")
+    .slice(0, 16);
+  return `\\\\.\\pipe\\mct-stdin-${digest}`;
 }
 
 const processes: ProcessControl = {
@@ -135,12 +140,8 @@ const processes: ProcessControl = {
 };
 
 const serverStdin: ServerStdinChannel = {
-  async create(
-    _stateDir: string,
-    project: string,
-    serverName: string,
-  ): Promise<string> {
-    return windowsStdinPipeName(project, serverName);
+  async create(serverDir: string): Promise<string> {
+    return windowsStdinPipeName(serverDir);
   },
 
   /**

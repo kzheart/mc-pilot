@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
+import { ServerManager } from "../instance/ServerManager.js";
 import type { CommandContext } from "../util/context.js";
 import { MctError } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
@@ -10,6 +10,7 @@ import {
   sendClientRequest,
   withTransportTimeoutBuffer,
 } from "./request-helpers.js";
+import { resolveServerArg } from "./server.js";
 
 function normalizeChatCommand(text: string | undefined): string {
   const command = text?.trim();
@@ -24,14 +25,11 @@ function normalizeChatCommand(text: string | undefined): string {
 
 async function executeServerCommand(
   context: CommandContext,
-  serverName: string,
+  serverName: string | undefined,
   command: string,
 ) {
-  const manager = new ServerInstanceManager(
-    context.globalState,
-    context.projectId!,
-  );
-  const result = await manager.exec(serverName, command);
+  const target = await resolveServerArg(context, serverName);
+  const result = await new ServerManager().exec(target, command, 2000);
   return {
     ...result,
     warning: "Commands that require a player sender should use --via client.",
@@ -135,13 +133,12 @@ export function createChatCommand() {
                 { command: commandText },
               );
             }
-            if (!context.projectId) {
+            if (!context.projectRootDir && !options.server) {
               return sendClientRequest(context, undefined, "chat.command", {
                 command: commandText,
               });
             }
-            const serverName = options.server ?? context.activeProfile?.server;
-            if (!serverName) {
+            if (!options.server && !context.activeProfile) {
               throw new MctError(
                 {
                   code: "INVALID_PARAMS",
@@ -151,7 +148,7 @@ export function createChatCommand() {
                 4,
               );
             }
-            return executeServerCommand(context, serverName, commandText);
+            return executeServerCommand(context, options.server, commandText);
           }
           if (via !== "server") {
             throw new MctError(
@@ -163,28 +160,7 @@ export function createChatCommand() {
             );
           }
 
-          if (!context.projectId) {
-            throw new MctError(
-              {
-                code: "NO_PROJECT",
-                message:
-                  "--via server requires a project context. Use --via client or run inside an mct project.",
-              },
-              4,
-            );
-          }
-          const serverName = options.server ?? context.activeProfile?.server;
-          if (!serverName) {
-            throw new MctError(
-              {
-                code: "INVALID_PARAMS",
-                message:
-                  "--via server requires --server <name> or an active profile with a server.",
-              },
-              4,
-            );
-          }
-          return executeServerCommand(context, serverName, commandText);
+          return executeServerCommand(context, options.server, commandText);
         },
       ),
     );

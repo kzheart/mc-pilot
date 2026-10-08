@@ -1,33 +1,26 @@
 import { Command } from "commander";
 
-import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
-import { MctError } from "../util/errors.js";
+import { ServerManager } from "../instance/ServerManager.js";
+import { invalidParams } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
-
-function requireProject(context: { projectId: string | null }): string {
-  if (!context.projectId) {
-    throw new MctError(
-      {
-        code: "NO_PROJECT",
-        message:
-          "No project context. Run inside an mct project or use --project <id>.",
-      },
-      4,
-    );
-  }
-  return context.projectId;
-}
+import { resolveServerArg } from "./server.js";
 
 export function createWaitLogCommand() {
   return new Command("wait-log")
-    .description("Wait for a server log line matching a regex")
-    .option(
-      "--server <name>",
-      "Server instance name (default: from active profile)",
+    .description(
+      "Wait for a server log line matching a regex. Pass --after <cursor> (from server exec/status) to also match lines already written.",
     )
     .requiredOption("--grep <pattern>", "Regex to match")
-    .option("--timeout <seconds>", "Timeout in seconds (default 30)", Number)
-    .option("--first-match", "Exit after the first matching line", true)
+    .option(
+      "--server <name>",
+      "Server name or directory (default: active profile's server)",
+    )
+    .option(
+      "--after <cursor>",
+      "Byte cursor to scan from (default: current end of the log)",
+      Number,
+    )
+    .option("--timeout <seconds>", "Timeout in seconds (default: 30)", Number)
     .action(
       wrapCommand(
         async (
@@ -36,29 +29,35 @@ export function createWaitLogCommand() {
             options,
           }: {
             options: {
-              server?: string;
               grep: string;
+              server?: string;
+              after?: number;
               timeout?: number;
-              firstMatch?: boolean;
             };
           },
         ) => {
-          const project = requireProject(context);
-          const serverName = options.server ?? context.activeProfile?.server;
-          if (!serverName) {
-            throw new MctError(
-              { code: "INVALID_PARAMS", message: "Server name is required" },
-              4,
+          let pattern: RegExp;
+          try {
+            pattern = new RegExp(options.grep);
+          } catch (error) {
+            throw invalidParams(
+              `Invalid --grep regex: ${(error as Error).message}`,
             );
           }
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.followLogs(serverName, {
-            grep: options.grep,
-            timeoutSeconds: options.timeout ?? context.timeout("default"),
-            firstMatchOnly: options.firstMatch !== false,
+          if (
+            options.after !== undefined &&
+            (!Number.isInteger(options.after) || options.after < 0)
+          ) {
+            throw invalidParams(
+              "--after must be a non-negative integer cursor",
+            );
+          }
+
+          const target = await resolveServerArg(context, options.server);
+          return new ServerManager().waitLog(target, {
+            pattern,
+            after: options.after,
+            timeoutSeconds: options.timeout ?? 30,
           });
         },
       ),

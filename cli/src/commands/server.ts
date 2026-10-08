@@ -1,217 +1,51 @@
 import { Command } from "commander";
 
-import { buildServerSearchResults } from "../download/SearchCommand.js";
-import { detectJava } from "../download/JavaDetector.js";
-import { downloadServerJarToCache } from "../download/server/ServerDownloader.js";
 import {
-  getMinecraftSupport,
-  isProxyType,
-  PROXY_MATRIX,
-  type ServerType,
-} from "../download/VersionMatrix.js";
-import { ServerInstanceManager } from "../instance/ServerInstanceManager.js";
-import { invalidParams, MctError, noProject } from "../util/errors.js";
+  listProjectServers,
+  resolveServerTarget,
+  ServerManager,
+  type ServerTarget,
+} from "../instance/ServerManager.js";
+import type { CommandContext } from "../util/context.js";
+import { ERROR_MESSAGES, invalidParams } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
-import type { ServerType as InstanceServerType } from "../util/instance-types.js";
-import type { MctProfile } from "../util/project.js";
-import { resolveInstanceName } from "./request-helpers.js";
+import { resolveBackendNames } from "../util/project.js";
 
-function requireProject(context: { projectId: string | null }): string {
-  if (!context.projectId) {
-    throw noProject(
-      "No project context. Run 'mct init' first or use --project <id>",
-    );
+const DEFAULT_EXEC_WAIT_SECONDS = 2;
+
+/** Resolve an explicit server name/dir, falling back to the profile's first backend. */
+export async function resolveServerArg(
+  context: CommandContext,
+  explicit: string | undefined,
+): Promise<ServerTarget> {
+  const name =
+    explicit ??
+    (context.activeProfile
+      ? resolveBackendNames(context.activeProfile)[0]
+      : undefined);
+  if (!name) {
+    throw invalidParams(ERROR_MESSAGES.SERVER_NAME_REQUIRED);
   }
-  return context.projectId;
-}
-
-function resolveServerName(
-  context: {
-    projectId: string | null;
-    activeProfile: MctProfile | null;
-  },
-  explicit?: string,
-): string {
-  return resolveInstanceName(context, explicit, "server");
-}
-
-export async function resolveServerJava(
-  type: ServerType,
-  version: string,
-  command = "java",
-  detectJavaImpl: typeof detectJava = detectJava,
-) {
-  const support = isProxyType(type) ? undefined : getMinecraftSupport(version);
-  if (!isProxyType(type) && !support?.servers[type].supported) {
-    throw new MctError(
-      {
-        code: "UNSUPPORTED_VERSION",
-        message: `Unsupported ${type} version ${version}`,
-      },
-      4,
-    );
-  }
-
-  const requirement = isProxyType(type)
-    ? PROXY_MATRIX[type].javaVersion
-    : support!.javaVersion;
-  const requiredVersion = Number.parseInt(requirement, 10);
-  const detected = await detectJavaImpl(command);
-
-  if (!detected.available) {
-    throw new MctError(
-      {
-        code: "JAVA_NOT_FOUND",
-        message: `Java ${requiredVersion}+ is required for ${type} ${version}`,
-        details: { command: detected.command },
-      },
-      4,
-    );
-  }
-
-  if ((detected.majorVersion ?? 0) < requiredVersion) {
-    throw new MctError(
-      {
-        code: "JAVA_VERSION_TOO_LOW",
-        message: `Java ${requiredVersion}+ is required for ${type} ${version}`,
-        details: {
-          detected: detected.majorVersion,
-          command: detected.command,
-        },
-      },
-      4,
-    );
-  }
-
-  return {
-    javaCommand: detected.command,
-    javaVersion: detected.majorVersion,
-  };
+  return resolveServerTarget(context, name);
 }
 
 export function createServerCommand() {
   const command = new Command("server").description(
-    "Manage Minecraft server instances",
+    "Run server directories (run/<name>/ in the project): start, stop, status, console commands",
   );
 
   command
-    .command("search")
-    .description("Search available server versions")
-    .option(
-      "--type <type>",
-      "Server type: vanilla|paper|purpur|spigot|velocity|bungeecord",
-    )
-    .option("--version <version>", "Minecraft version")
-    .action(
-      wrapCommand(
-        async (
-          _context,
-          { options }: { options: { type?: ServerType; version?: string } },
-        ) => {
-          return {
-            results: buildServerSearchResults({
-              type: options.type,
-              version: options.version,
-            }),
-          };
-        },
-      ),
-    );
-
-  command
-    .command("create")
-    .description("Create a new server instance")
-    .argument("<name>", "Server instance name (e.g. paper-1.20.4)")
-    .option(
-      "--type <type>",
-      "Server type: vanilla|paper|purpur|spigot|velocity|bungeecord (default: paper)",
-    )
-    .option(
-      "--version <version>",
-      "Minecraft version (default: 1.21.4); for proxy types this is the proxy version",
-    )
-    .option("--build <build>", "Specific build number")
-    .option("--port <number>", "Server port (auto-assigned if omitted)", Number)
-    .option("--jvm-args <args>", "JVM arguments (comma-separated)")
-    .option("--java <command>", "Java command to use")
-    .option("--eula", "Auto-accept EULA")
-    .option(
-      "--online-mode",
-      "Enable Mojang authentication (default: offline for test clients)",
-    )
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: {
-            args: (string | undefined)[];
-            options: {
-              type?: ServerType;
-              version?: string;
-              build?: string;
-              port?: number;
-              jvmArgs?: string;
-              java?: string;
-              eula?: boolean;
-              onlineMode?: boolean;
-            };
-          },
-        ) => {
-          const project = requireProject(context);
-          const serverType = (options.type ?? "paper") as InstanceServerType;
-          const version =
-            options.version ??
-            (isProxyType(serverType)
-              ? PROXY_MATRIX[serverType].defaultVersion
-              : "1.21.4");
-
-          const java = await resolveServerJava(
-            serverType,
-            version,
-            options.java,
-          );
-
-          const downloadResult = await downloadServerJarToCache({
-            type: serverType,
-            version,
-            build: options.build,
-            javaCommand: java.javaCommand,
-          });
-
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          const created = await manager.create({
-            name: args[0]!,
-            project,
-            type: serverType,
-            version,
-            port: options.port,
-            jvmArgs: options.jvmArgs?.split(",").map((a) => a.trim()) ?? [],
-            javaCommand: java.javaCommand,
-            javaVersion: java.javaVersion,
-            eula: options.eula,
-            onlineMode: options.onlineMode,
-            cachedJarPath: downloadResult.cachePath,
-          });
-          if (options.eula && isProxyType(serverType)) {
-            return { ...created, eulaIgnored: true };
-          }
-          return created;
-        },
-      ),
-    );
-
-  command
     .command("start")
-    .description("Start a server instance")
-    .argument("[name]", "Server instance name (default: from active profile)")
-    .option("--eula", "Auto-accept EULA")
-    .option("--jvm-args <args>", "Override JVM arguments (comma-separated)")
+    .description(
+      "Start a server and wait until it accepts connections. Checks EULA, online-mode and port first.",
+    )
+    .argument(
+      "[name]",
+      "Server name under run/, or a directory path (default: active profile's server)",
+    )
+    .option("--eula", "Accept the Minecraft EULA (writes eula=true)")
+    .option("--no-wait", "Return right after launching instead of waiting")
+    .option("--timeout <seconds>", "Seconds to wait for readiness", Number)
     .action(
       wrapCommand(
         async (
@@ -221,18 +55,14 @@ export function createServerCommand() {
             options,
           }: {
             args: (string | undefined)[];
-            options: { eula?: boolean; jvmArgs?: string };
+            options: { eula?: boolean; wait?: boolean; timeout?: number };
           },
         ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, args[0]);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.start(serverName, {
+          const target = await resolveServerArg(context, args[0]);
+          return new ServerManager().start(target, {
             eula: options.eula,
-            jvmArgs: options.jvmArgs?.split(",").map((a) => a.trim()),
+            wait: options.wait,
+            timeoutSeconds: options.timeout ?? context.timeout("serverReady"),
           });
         },
       ),
@@ -240,158 +70,44 @@ export function createServerCommand() {
 
   command
     .command("stop")
-    .description("Stop a server instance")
-    .argument("[name]", "Server instance name (default: from active profile)")
+    .description("Stop a server (console stop command first, then kill)")
+    .argument(
+      "[name]",
+      "Server name or directory (default: active profile's server)",
+    )
     .action(
       wrapCommand(async (context, { args }) => {
-        const project = requireProject(context);
-        const serverName = resolveServerName(context, args[0]);
-        const manager = new ServerInstanceManager(context.globalState, project);
-        return manager.stop(serverName);
+        const target = await resolveServerArg(context, args[0]);
+        return new ServerManager().stop(target);
       }),
     );
 
   command
-    .command("config")
-    .description("Update server instance settings (server must be stopped)")
-    .argument("[name]", "Server instance name (default: from active profile)")
-    .option("--port <number>", "New server port", Number)
-    .option(
-      "--online-mode <bool>",
-      "Enable or disable Mojang authentication (for proxies this is written to the proxy config)",
-      (value) => value === "true",
-    )
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: {
-            args: (string | undefined)[];
-            options: { port?: number; onlineMode?: boolean };
-          },
-        ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, args[0]);
-          if (options.port === undefined && options.onlineMode === undefined) {
-            throw invalidParams(
-              "Nothing to update. Specify --port <number> or --online-mode <true|false>.",
-            );
-          }
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.configure(serverName, {
-            port: options.port,
-            onlineMode: options.onlineMode,
-          });
-        },
-      ),
-    );
-
-  command
     .command("status")
-    .description("Show server status")
-    .argument("[name]", "Server instance name (omit to show all in project)")
-    .option("--all", "Show running servers across all projects")
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: { args: (string | undefined)[]; options: { all?: boolean } },
-        ) => {
-          if (options.all || (!context.projectId && !args[0])) {
-            return ServerInstanceManager.statusAll(context.globalState);
-          }
-          if (!context.projectId) {
-            throw noProject(
-              "No project context. Omit the name to inspect all running servers, or use --project <id>.",
-            );
-          }
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            context.projectId,
-          );
-          return manager.status(args[0]);
-        },
-      ),
-    );
-
-  command
-    .command("list")
-    .description("List server instances")
-    .option("--all", "List instances across all projects")
-    .action(
-      wrapCommand(
-        async (context, { options }: { options: { all?: boolean } }) => {
-          if (options.all) {
-            return {
-              instances: await ServerInstanceManager.listAll(
-                context.globalState,
-              ),
-            };
-          }
-          const project = requireProject(context);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return { instances: await manager.list() };
-        },
-      ),
-    );
-
-  command
-    .command("wait-ready")
-    .description("Wait until server port is connectable")
-    .argument("[name]", "Server instance name (default: from active profile)")
-    .option("--timeout <seconds>", "Timeout in seconds", Number)
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: { args: (string | undefined)[]; options: { timeout?: number } },
-        ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, args[0]);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.waitReady(
-            serverName,
-            options.timeout ?? context.timeout("serverReady"),
-          );
-        },
-      ),
-    );
-
-  command
-    .command("readiness")
-    .description("Report process, port and log readiness diagnostics")
-    .argument("[name]", "Server instance name (default: from active profile)")
+    .description(
+      "Show server state, port and logCursor. Without a name, lists every server under run/.",
+    )
+    .argument("[name]", "Server name or directory")
     .action(
       wrapCommand(async (context, { args }) => {
-        const project = requireProject(context);
-        const serverName = resolveServerName(context, args[0]);
-        const manager = new ServerInstanceManager(context.globalState, project);
-        return manager.readiness(serverName);
+        const manager = new ServerManager();
+        if (args[0] || !context.projectRootDir) {
+          return manager.status(await resolveServerArg(context, args[0]));
+        }
+        const servers = [];
+        for (const name of await listProjectServers(context.projectRootDir)) {
+          servers.push(
+            await manager.status(await resolveServerTarget(context, name)),
+          );
+        }
+        return { servers };
       }),
     );
 
   command
     .command("exec")
     .description(
-      "Send a console command directly to the server stdin FIFO (bypasses client chat)",
+      "Run a console command and return the log lines it produced plus a cursor for wait-log --after",
     )
     .argument(
       "<command...>",
@@ -399,63 +115,12 @@ export function createServerCommand() {
     )
     .option(
       "--server <name>",
-      "Server instance name (default: from active profile)",
+      "Server name or directory (default: active profile's server)",
     )
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: { args: (string | undefined)[]; options: { server?: string } },
-        ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, options.server);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.exec(
-            serverName,
-            args.filter((v): v is string => v !== undefined).join(" "),
-          );
-        },
-      ),
-    );
-
-  command
-    .command("logs")
-    .description("Read the server log file (with optional tail/grep/follow)")
-    .argument("[name]", "Server instance name (default: from active profile)")
-    .option("--tail <n>", "Show only the last N lines", Number)
-    .option("--grep <pattern>", "Filter lines by regex")
     .option(
-      "--since <lineNumber>",
-      "Skip the first N lines (0-indexed)",
+      "--wait <seconds>",
+      `Max seconds to collect output (default: ${DEFAULT_EXEC_WAIT_SECONDS})`,
       Number,
-    )
-    .option(
-      "--since-start",
-      "Only read log content written after the current server process was started",
-    )
-    .option(
-      "--after-marker <marker>",
-      "Only read log lines after the last line containing this marker",
-    )
-    .option("--follow", "Wait for new log lines (requires --timeout)")
-    .option(
-      "--timeout <seconds>",
-      "Max seconds to wait when --follow is set",
-      Number,
-    )
-    .option(
-      "--first-match",
-      "With --follow, exit as soon as the first matching line appears",
-    )
-    .option(
-      "--raw-colors",
-      "Preserve ANSI color escape sequences in returned lines",
     )
     .action(
       wrapCommand(
@@ -466,69 +131,17 @@ export function createServerCommand() {
             options,
           }: {
             args: (string | undefined)[];
-            options: {
-              tail?: number;
-              grep?: string;
-              since?: number;
-              sinceStart?: boolean;
-              afterMarker?: string;
-              follow?: boolean;
-              timeout?: number;
-              firstMatch?: boolean;
-              rawColors?: boolean;
-            };
+            options: { server?: string; wait?: number };
           },
         ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, args[0]);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
+          const target = await resolveServerArg(context, options.server);
+          return new ServerManager().exec(
+            target,
+            args
+              .filter((value): value is string => value !== undefined)
+              .join(" "),
+            (options.wait ?? DEFAULT_EXEC_WAIT_SECONDS) * 1000,
           );
-
-          if (options.follow) {
-            const timeoutSeconds = options.timeout ?? 30;
-            return manager.followLogs(serverName, {
-              grep: options.grep,
-              timeoutSeconds,
-              firstMatchOnly: Boolean(options.firstMatch),
-              rawColors: Boolean(options.rawColors),
-            });
-          }
-
-          return manager.readLogs(serverName, {
-            tail: options.tail,
-            grep: options.grep,
-            since: options.since,
-            sinceStart: Boolean(options.sinceStart),
-            afterMarker: options.afterMarker,
-            rawColors: Boolean(options.rawColors),
-          });
-        },
-      ),
-    );
-
-  command
-    .command("logs-mark")
-    .description("Append a marker line to the server log and return the marker")
-    .argument("[name]", "Server instance name (default: from active profile)")
-    .option("--label <label>", "Optional marker label")
-    .action(
-      wrapCommand(
-        async (
-          context,
-          {
-            args,
-            options,
-          }: { args: (string | undefined)[]; options: { label?: string } },
-        ) => {
-          const project = requireProject(context);
-          const serverName = resolveServerName(context, args[0]);
-          const manager = new ServerInstanceManager(
-            context.globalState,
-            project,
-          );
-          return manager.markLogs(serverName, options.label);
         },
       ),
     );

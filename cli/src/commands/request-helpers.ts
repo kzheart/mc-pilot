@@ -6,6 +6,7 @@ import { WebSocketClient } from "../client/WebSocketClient.js";
 import { appendTimelineEntry } from "../record/recording-state.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
 import { ERROR_MESSAGES, invalidParams } from "../util/errors.js";
+import { resolveProjectScreenshotsDir } from "../util/paths.js";
 import { resolveBackendNames, type MctProfile } from "../util/project.js";
 import { wrapCommand } from "../util/command.js";
 
@@ -119,10 +120,13 @@ export function resolveScreenshotOutputPath(
     return resolveProjectRelativePath(context, output);
   }
 
-  const outputDir = context.projectFile?.screenshot?.outputDir;
-  if (!outputDir) {
+  if (!context.projectRootDir) {
     throw invalidParams(ERROR_MESSAGES.OUTPUT_REQUIRED);
   }
+  const configured = context.projectFile?.screenshot?.outputDir;
+  const outputDir = configured
+    ? resolveProjectRelativePath(context, configured)
+    : resolveProjectScreenshotsDir(context.projectRootDir);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   return path.join(outputDir, `${prefix}-${timestamp}.png`);

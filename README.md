@@ -25,7 +25,7 @@ AI / Test Script
      ▼
 ┌─────────────────────────────┐
 │  mct CLI (Node.js)          │
-│  server/client lifecycle    │
+│  client + server processes  │
 │  WebSocket command dispatch │
 └────┬───────────────────┬────┘
      │ process mgmt      │ WebSocket
@@ -37,56 +37,62 @@ AI / Test Script
 
 ## Quick Start
 
-**Requirements:** Node.js ≥ 20, plus a Java runtime matching the Minecraft version (Java 8 for Forge 1.12.2, Java 17 for 1.18–1.20, Java 21 for 1.21.x, Java 25+ for 26.x — pass `--java <command>` when it is not the default `java`).
+**Requirements:** Node.js ≥ 20, plus a Java runtime matching the Minecraft version (Java 8 for Forge 1.12.2, Java 17 for 1.18–1.20, Java 21 for 1.21.x, Java 25+ for 26.x — pass `--java <command>` to `client create`, or set `servers.<name>.java` in `mct.json`, when it is not the default `java`).
 
 ```bash
 npm install -g @kzheart_/mc-pilot
 ```
 
 ```bash
-# 1. Initialize a project in your plugin's directory
+# 1. Initialize a project in your plugin's directory (creates mct.json and run/)
 mct init --name my-plugin
 
-# 2. Create a server and a client instance
-mct server create paper-1.20.4 --type paper --version 1.20.4 --eula
+# 2. Put a server in run/ (mct runs servers, it does not download them)
+mkdir -p run/paper-1.20.4/plugins
+curl -fsSL -o run/paper-1.20.4/paper.jar "$(curl -fsSL https://fill.papermc.io/v3/projects/paper/versions/1.20.4/builds/latest | jq -r '.downloads."server:default".url')"
+cp build/libs/my-plugin.jar run/paper-1.20.4/plugins/
+
+# 3. Create a client and wire both into a profile in mct.json (see below)
 mct client create fabric-1.20.4 --version 1.20.4
 
-# 3. Start everything (server + client + plugin deployment)
-mct up --profile 1.20
+# 4. Start everything and wait until the client is in-world
+mct up --eula
 
-# 4. Drive the player, verify behavior
+# 5. Drive the player, verify behavior
 mct chat command "gamemode creative"
 mct move to 100 64 100
 mct block break 100 65 100
 mct inventory get
 mct gui screenshot
 
-# 5. Tear down
+# 6. Tear down
 mct down
 ```
 
 Clients default to Simplified Chinese (`zh_cn`) with muted audio (`--no-mute` to opt out).
 
 <details>
-<summary><b>Project configuration</b> — profiles, server/client wiring, plugin deployment</summary>
+<summary><b>Project configuration</b> — mct.json, profiles, server directories</summary>
 
-`mct init` creates a global project config at `~/.mct/projects/<projectId>/project.json` (`projectId` is derived from the directory path). Profiles wire instances together:
+`mct init` creates `mct.json` in the project root and a `run/` directory, and adds `run/` and `.mct/` (screenshots, recordings) to `.gitignore`. Everything a test needs lives in the project: delete the directory and the environment is gone. Only shared downloads and client instances stay under `~/.mct`.
 
 ```json
 {
-  "projectId": "-Users-kzheart-code-minecraft-my-plugin",
   "project": "my-plugin",
-  "rootDir": "/Users/kzheart/code/minecraft/my-plugin",
   "defaultProfile": "1.20",
   "profiles": {
     "1.20": {
-      "server": "paper-1.20.4",
-      "clients": ["fabric-1.20.4"],
-      "deployPlugins": ["./build/libs/my-plugin.jar"]
+      "servers": ["paper-1.20.4"],
+      "clients": ["fabric-1.20.4"]
     }
+  },
+  "servers": {
+    "paper-1.20.4": { "java": "/path/to/java-17", "jvmArgs": ["-Xmx2G"] }
   }
 }
 ```
+
+Each name in `servers` is a directory under `run/` holding a server jar. The optional top-level `servers` map sets per-server `java`, `jvmArgs` and `jar` (when a directory holds several jars). On its first start mct seeds a missing `server.properties` with `online-mode=false` and a free port; after that it only checks: `server start` refuses an un-accepted EULA (`--eula` accepts it), online-mode, or a busy port before launching.
 
 `mct up` waits for every profile client to join a world. When that is not what you want:
 
@@ -101,15 +107,14 @@ mct up --server-only-ok      # server only; skip client launch entirely
 <summary><b>Non-default versions</b> — 26.x servers, legacy Forge 1.12.2</summary>
 
 ```bash
-# Minecraft 26.x requires Java 25
-mct server create vanilla-26.1 --type vanilla --version 26.1 --java /path/to/java-25 --eula
-
 # Forge 1.12.2 requires Java 8; three Forge builds are selectable
 mct client create forge-1.12.2 --loader forge --version 1.12.2 \
   --forge-version 14.23.5.2864 --java /path/to/java-8
 ```
 
-Use `mct client search` / `mct server search` to discover supported versions, loaders, and verified client/server pairings.
+Minecraft 26.x servers need Java 25: set `"java"` for that server in `mct.json`.
+
+Use `mct client search` to discover supported client versions and loaders.
 
 </details>
 
@@ -132,18 +137,15 @@ mct info     # current project, active profile, state root
 
 ## Reclaiming Disk Space
 
-Test projects under `~/.mct/projects` are never removed automatically and a
-single server instance easily reaches several hundred MiB. `mct prune` reports
-what it would delete and only acts when you pass `--yes`:
+Servers, worlds, screenshots and recordings live inside each project (`run/`, `.mct/`), so deleting a project or a `run/<name>` directory frees them. What remains under `~/.mct` is shared: client instances and the download cache. `mct cache clean` reports what can go and only deletes with `--yes`:
 
 ```bash
-mct prune                      # dry run: what is idle, how big, when last used
-mct prune --older-than 14d     # widen or narrow the idle window (default 7d)
-mct prune --older-than 14d --yes
+mct cache clean                        # dry run: unused client runtimes, old server-jar cache
+mct cache clean --clients-idle 30d     # also clients not launched for 30 days
+mct cache clean --clients-idle 30d --yes
 ```
 
-Projects with a running server, and the project you are standing in, are never
-considered. Deletion is permanent — it does not go to the Trash.
+Client runtimes still used by a remaining client, and running clients, are never removed.
 
 ## Command Reference
 
@@ -151,8 +153,8 @@ All commands output JSON by default; add `--human` for human-readable output. Ru
 
 | Area | Commands |
 |---|---|
-| **Project** | `init` `up` `down` `use` `deploy` `prune` `info` `schema` |
-| **Instances** | `server` (search/create/start/stop/config/exec/logs) · `client` (search/create/launch/stop/wait-ready) · `plugin` · `skill` |
+| **Project** | `init` `up` `down` `use` `info` `schema` `cache` |
+| **Instances** | `server` (start/stop/status/exec) · `client` (search/create/launch/stop/wait-ready) · `skill` |
 | **Movement & world** | `move` `look` `position` `rotation` `block` `entity` |
 | **Chat & UI** | `chat` `gui` `sign` `book` `hud` `resourcepack` |
 | **Items & stations** | `inventory` `craft` `recipe` `anvil` `enchant` `trade` |
@@ -214,15 +216,19 @@ mct block break 200 64 200
 mct block get 200 64 200              # block must be gone
 ```
 
-### Log diagnostics
+### Server console and logs
 
 ```bash
-# Append a marker, then inspect only newer matching lines
-MARKER=$(mct server logs-mark --human | tail -1)
-mct server logs --after-marker "$MARKER" --grep "ERROR|Exception"
+# exec returns the lines the command logged, plus a cursor
+mct server exec "data get entity @p Health"      # → data.output, data.cursor
 
-mct server logs --since-start --grep "Enabled|ERROR"   # ignore stale lines
-mct wait-log --grep "Done .* For help" --timeout 60    # wait for a fresh match
+# Wait for something the server logs later; --after also matches lines already written
+C=$(mct server status | jq '.data.servers[0].logCursor')
+mct chat command "shop buy diamond"
+mct wait-log --grep "purchased diamond" --after "$C" --timeout 10
+
+# Anything else: read the server's own log
+grep -E "ERROR|Exception" run/paper-1.20.4/logs/latest.log
 ```
 
 <details>
@@ -271,7 +277,7 @@ mct record stop --client bot1
 mct record view <recording-id>        # generates viewer.html and opens it
 ```
 
-Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/` and survive client crashes. When building from source, compile the helper once with `cd recorder/macos && swift build -c release` (or point `MCT_RECORDER_BIN` at a custom binary).
+Artifacts live in `.mct/recordings/<recording-id>/` inside the project and survive client crashes. When building from source, compile the helper once with `cd recorder/macos && swift build -c release` (or point `MCT_RECORDER_BIN` at a custom binary).
 
 ## Supported Versions
 
@@ -292,7 +298,7 @@ Artifacts live in `~/.mct/projects/<id>/recordings/<recording-id>/` and survive 
 
 Version notes:
 
-- **26.1 servers** — Paper publishes no exact `26.1` artifact; the Fabric 26.1 client is verified against Paper 26.1.1 build 29 and 26.1.2 build 74. Paper 26.2 build 60 and Vanilla 26.2 are verified with the Fabric 26.2 client. `mct client search` / `mct server search` expose these verified pairings.
+- **26.1 servers** — Paper publishes no exact `26.1` artifact; the Fabric 26.1 client is verified against Paper 26.1.1 build 29 and 26.1.2 build 74. Paper 26.2 build 60 and Vanilla 26.2 are verified with the Fabric 26.2 client.
 - **NeoForge 1.20.2** — NeoForge 20.2 clients cannot join Paper/Bukkit-family 1.20.2 servers at all (upstream `Invalid payload REGISTER!` handshake incompatibility, fixed in NeoForge 20.4). The variant works against vanilla servers; this is why it stays at limited validation.
 - **Forge 1.12.2** — built with the legacy Java 8 toolchain; Forge builds 14.23.5.2859 / 2860 / 2864 are selectable via `--forge-version`. The legacy mod implements the full protocol (chat, status, movement, blocks, entities, combat, inventory, GUI interaction, crafting/anvil/enchant/trade, signs, books, HUD, screenshots, keyboard/mouse input, reconnect), verified end-to-end against a vanilla 1.12.2 server. Only `input scroll` is unavailable (LWJGL2 offers no event injection). On Apple Silicon, use an x86_64 Java 8 runtime under Rosetta (Minecraft 1.12.2 ships LWJGL2 x86_64 natives only).
 

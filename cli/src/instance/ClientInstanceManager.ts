@@ -436,7 +436,7 @@ export class ClientInstanceManager {
     throw new MctError(
       {
         code: "TIMEOUT",
-        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server). If it keeps bouncing back to a disconnect screen, check the server's log and \`online-mode\`: test clients use offline accounts and an authenticating server rejects them with "Failed to login: Invalid session" (fix with \`mct server config <server> --online-mode false\`, then restart it).`,
+        message: `Timed out after ${timeoutSeconds}s waiting for client ${clientName} to join a world (${wsUrl}). ${this.formatDiagnostics(diag)} Tip: if the client is still at the main menu, run \`mct client reconnect --address <server>\` or relaunch with \`mct client launch --server <address>\` (inside a project, plain \`mct client launch\` uses the active profile server). If it keeps bouncing back to a disconnect screen, check the server's log and \`online-mode\`: test clients use offline accounts and an authenticating server rejects them with "Failed to login: Invalid session" (set online-mode=false in the server's config, then restart it).`,
         details: diag,
       },
       2,

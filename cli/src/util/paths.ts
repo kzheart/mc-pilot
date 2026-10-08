@@ -13,41 +13,24 @@ export function resolveClientInstanceDir(name: string): string {
   return path.join(resolveClientsDir(), name);
 }
 
-export function resolveProjectsDir(): string {
-  return path.join(resolveMctHome(), "projects");
-}
-
-export function resolveProjectDir(project: string): string {
-  return path.join(resolveProjectsDir(), project);
-}
-
-export function resolveProjectConfigPath(project: string): string {
-  return path.join(resolveProjectDir(project), "project.json");
-}
-
-export function resolveProjectScreenshotsDir(project: string): string {
-  return path.join(resolveProjectDir(project), "screenshots");
-}
-
-export function resolveProjectRecordingsDir(project: string): string {
-  return path.join(resolveProjectDir(project), "recordings");
-}
-
-export function resolveServerInstanceDir(
-  project: string,
-  server: string,
-): string {
-  return path.join(resolveProjectDir(project), server);
-}
-
 export function resolveGlobalStateDir(): string {
   return path.join(resolveMctHome(), "state");
 }
 
-export function resolvePluginsDir(): string {
-  return path.join(resolveMctHome(), "plugins");
+/** Server instances live next to the code under test: `<project>/run/<name>`. */
+export function resolveProjectRunDir(projectRoot: string): string {
+  return path.join(projectRoot, "run");
 }
 
-export function resolvePluginJarsDir(): string {
-  return path.join(resolvePluginsDir(), "jars");
+/** Per-project artifacts that are not server instances (screenshots, recordings). */
+export function resolveProjectDataDir(projectRoot: string): string {
+  return path.join(projectRoot, ".mct");
+}
+
+export function resolveProjectScreenshotsDir(projectRoot: string): string {
+  return path.join(resolveProjectDataDir(projectRoot), "screenshots");
+}
+
+export function resolveProjectRecordingsDir(projectRoot: string): string {
+  return path.join(resolveProjectDataDir(projectRoot), "recordings");
 }

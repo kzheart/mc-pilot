@@ -4,8 +4,8 @@
 
 ```
 --human                   Human-readable output (default: JSON)
---project <name>          Project name (default: from mct.project.json)
---profile <name>          Profile name (default: from mct.project.json)
+--project <dir>           Project root containing mct.json (default: nearest mct.json upward from cwd)
+--profile <name>          Profile name (default: defaultProfile in mct.json)
 --client <name>           Target client name (required when multiple clients are running)
 ```
 
@@ -13,31 +13,27 @@
 
 | Command | Description | Key Options |
 |---|---|---|
-| `init` | Initialize a new project (creates mct.project.json) | `--project <name>` |
-| `deploy` | Deploy plugin JARs to server instance | `--profile <name>` |
-| `up` | Deploy + start server + launch clients + wait ready | `--profile <name>`, `--eula` |
-| `down` | Stop server and clients for a profile | `--profile <name>` |
+| `init` | Create `mct.json`, `run/`, and add `run/` + `.mct/` to `.gitignore` | `--name <name>` |
+| `up` | Start backends, then proxy, then launch clients and wait until in-world | `--profile <name>`, `--eula`, `--server-only-ok`, `--skip-client-ready` |
+| `down` | Stop clients, proxy and servers for a profile | `--profile <name>` |
 | `use <profile>` | Set the default profile | |
 | `info` | Show current project and global state | |
+| `cache clean` | Reclaim disk: obsolete server-jar cache, client runtimes no client uses (dry run unless `--yes`) | `--clients-idle <30d>`, `--yes` |
 
-## server — Manage server instances
+## server — Run server directories
+
+A server is a directory holding a server jar: `run/<name>/` inside the project, or any path. mct does not download or configure servers; it starts, stops and talks to them.
 
 | Subcommand | Description | Key Options |
 |---|---|---|
-| `create <name>` | Create a new server instance (offline mode by default) | `--type <paper\|vanilla\|purpur\|spigot\|velocity\|bungeecord>`, `--version <ver>` (proxy types: proxy's own version), `--port`, `--eula` (ignored for proxies), `--online-mode` |
-| `search` | Search available server versions | `--type`, `--version` |
-| `start [name]` | Start a server instance | `--eula` |
-| `stop [name]` | Stop a server instance | |
-| `config [name]` | Update instance settings while stopped (syncs instance.json + server.properties) | `--port <number>`, `--online-mode <true\|false>` |
-| `status [name]` | Show server status | |
-| `list` | List server instances | `--all` (all projects) |
-| `wait-ready [name]` | Wait until server port is connectable | `--timeout <seconds>` |
-| `exec <command...>` | Send a console command directly to the server stdin FIFO (bypasses client chat) | `--server <name>` |
-| `logs [name]` | Read / tail / grep / follow the server log | `--tail <n>`, `--grep <pattern>`, `--since <lineNumber>`, `--follow`, `--timeout <s>`, `--first-match` |
+| `start [name]` | Check EULA / online-mode / port, start, and wait until reachable | `--eula`, `--no-wait`, `--timeout <s>` |
+| `stop [name]` | Console stop (saves worlds), kill if it hangs | |
+| `status [name]` | Running state, port, `logPath`, `logCursor`; no name lists every server under `run/` | |
+| `exec <command...>` | Run a console command; returns `output` (log lines it produced) and `cursor` | `--server <name>`, `--wait <s>` |
 
-Server name can be omitted if a profile is active (resolved from profile).
+`wait-log --grep <regex> [--server <name>] [--after <cursor>] [--timeout <s>]` waits for a server log line. With `--after` it also matches lines written before the call, so pass the `cursor` from `server exec` or `server status`. On timeout it fails with `TIMEOUT` and the last log lines.
 
-`server logs --follow` keeps polling the log file until either `--timeout` seconds elapse or (with `--first-match`) a line matching `--grep` appears. Returns `{ matched, matches, timedOut }`. Use this instead of `sleep N` when waiting for an async server-side event.
+Server name can be omitted if a profile is active (the profile's first backend).
 
 ## client — Manage client instances
 
@@ -309,17 +305,3 @@ mct wait --until-on-ground --timeout <seconds>
 | `type <text>` | Type text into focused field | |
 | `mouse-pos` | Get current mouse position | |
 | `keys-down` | Get currently held keys | |
-
-## plugin — Plugin center catalog
-
-| Subcommand | Description | Key Options |
-|---|---|---|
-| `list` | List all plugins | `--query <text>` |
-| `info <id>` | Show plugin details | |
-| `add <jar-path>` | Add a JAR to the catalog (id/name auto-derived) | `--id`, `--name` |
-| `update <id>` | Update plugin metadata | `--name`, `--version`, `--description`, `--author`, `--dependencies`, `--tags` |
-| `remove <id>` | Remove plugin from catalog + delete JAR | |
-| `install <id>` | Install plugin + dependencies to a server | `--server <name>`, `--project <name>` |
-| `resolve <ids...>` | Resolve dependency tree | |
-
-Storage: `~/.mct/plugins/catalog.json` + `~/.mct/plugins/jars/`

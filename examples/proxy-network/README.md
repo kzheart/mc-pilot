@@ -1,34 +1,48 @@
 # Proxy Network Example
 
-Minimal Velocity + two Paper backends workflow. Run from an empty project directory.
+Minimal Velocity + two Paper backends. Run from an empty project directory with `curl` and `jq` installed.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
 MCT_BIN="${MCT_BIN:-mct}"
+MC=1.21.4
+
+fill() { # project version -> latest build jar URL
+  curl -fsSL "https://fill.papermc.io/v3/projects/$1/versions/$2/builds/latest" \
+    | jq -r '.downloads."server:default".url'
+}
 
 "$MCT_BIN" init --name proxy-demo
 
-"$MCT_BIN" server create b1 --type paper --version 1.21.4 --eula
-"$MCT_BIN" server create b2 --type paper --version 1.21.4 --eula
-"$MCT_BIN" server create gate --type velocity
+mkdir -p run/lobby run/game run/velocity
+curl -fsSL -o run/lobby/paper.jar "$(fill paper "$MC")"
+cp run/lobby/paper.jar run/game/paper.jar
+curl -fsSL -o run/velocity/velocity.jar "$(fill velocity 3.4.0)"   # Velocity 4.x needs Java 25
 
-# Edit ~/.mct/projects/<projectId>/project.json — set defaultProfile and add the network profile:
+printf 'online-mode=false\nserver-port=25565\n' > run/lobby/server.properties
+printf 'online-mode=false\nserver-port=25566\n' > run/game/server.properties
+
+# First boot generates paper-global.yml, spigot.yml, velocity.toml and forwarding.secret.
+for s in lobby game; do "$MCT_BIN" server start "$s" --eula && "$MCT_BIN" server stop "$s"; done
+"$MCT_BIN" server start velocity --timeout 60 || true
+"$MCT_BIN" server stop velocity
 ```
+
+Then edit the generated files as described in [docs/proxy-network.md](../../docs/proxy-network.md): `[servers]`, `online-mode = false` and `player-info-forwarding-mode = "modern"` in `run/velocity/velocity.toml`, and the forwarding secret in each backend's `config/paper-global.yml`.
+
+Add the profile to `mct.json`:
 
 ```json
 {
-  "projectId": "<your-project-id>",
   "project": "proxy-demo",
-  "rootDir": "<your-project-root>",
   "defaultProfile": "network",
   "profiles": {
     "network": {
-      "servers": ["b1", "b2"],
-      "proxy": "gate",
-      "clients": ["fabric-1.21.4"],
-      "deployPlugins": []
+      "servers": ["lobby", "game"],
+      "proxy": "velocity",
+      "clients": ["fabric-1.21.4"]
     }
   }
 }
@@ -38,16 +52,9 @@ MCT_BIN="${MCT_BIN:-mct}"
 # Create a matching client if you have not already:
 # mct client create fabric-1.21.4 --version 1.21.4
 
-"$MCT_BIN" up --server-only-ok
-
-# Verify all three processes are running
-"$MCT_BIN" server status b1
-"$MCT_BIN" server status b2
-"$MCT_BIN" server status gate
-
+"$MCT_BIN" up --server-only-ok     # checks forwarding config, starts backends then proxy
+"$MCT_BIN" server status           # lists lobby, game and velocity
 "$MCT_BIN" down
 ```
 
-`--server-only-ok` starts backends and the proxy without blocking on client launch. Omit it when you want the client to connect through the proxy automatically.
-
-See [docs/proxy-network.md](../../docs/proxy-network.md) for forwarding rules, managed proxy config, and cross-server testing.
+`--server-only-ok` starts the servers without launching clients. Omit it to have the client connect through the proxy.

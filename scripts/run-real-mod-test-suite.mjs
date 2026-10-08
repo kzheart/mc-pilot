@@ -9,7 +9,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { loadModVariantCatalogSync } from "../cli/dist/download/ModVariantCatalog.js";
-import { getMinecraftSupport, searchClientVersions } from "../cli/dist/download/VersionMatrix.js";
 import {
   findDistinctPorts,
   parseCliOptions as parseSharedCliOptions,
@@ -18,8 +17,8 @@ import {
   runCommandWithRetry,
   runGradleWrapper,
   sleep,
-  slugifyProjectId,
 } from "./lib.mjs";
+import { installServerJar, SUITE_SERVER_TARGETS } from "./server-jar.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,9 +30,7 @@ const MATRIX_ROOT = path.join(ROOT_DIR, "tmp", "real-e2e", "matrix");
 const REPORT_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "reports");
 // Shared cache dir: use CLI's cache hierarchy
 const GLOBAL_CACHE_DIR = process.env.MCT_CACHE_DIR || path.join(os.homedir(), ".mct", "cache");
-const SHARED_SERVERS_DIR = path.join(GLOBAL_CACHE_DIR, "server");
-const FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture", "build", "libs", "mct-paper-fixture-0.1.0.jar");
-const LEGACY_FIXTURE_PLUGIN_JAR = path.join(ROOT_DIR, "paper-fixture-legacy", "build", "libs", "mct-paper-fixture-legacy-0.1.0.jar");
+const SHARED_SERVERS_DIR = path.join(ROOT_DIR, "tmp", "real-e2e", "server-jars");
 const SUITE_REPORT_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.json");
 const SUITE_LOG_PATH = path.join(REPORT_DIR, "real-mod-test-suite.latest.log");
 const INTER_VERSION_DELAY_MS = 6000;
@@ -59,36 +56,8 @@ function parseCliOptions(argv) {
   return { selectedGroups, selectedVersions, selectedLoaders };
 }
 
-function resolveServerTarget(minecraftVersion, loader) {
-  const client = searchClientVersions({ version: minecraftVersion, loader })[0];
-  const verifiedPaper = client?.verifiedServers
-    ?.filter((server) => server.type === "paper")
-    .at(0);
-  if (verifiedPaper) {
-    return {
-      serverType: verifiedPaper.type,
-      serverVersion: verifiedPaper.minecraftVersion,
-      serverBuild: verifiedPaper.build,
-    };
-  }
-
-  const support = getMinecraftSupport(minecraftVersion);
-  if (!support) {
-    return null;
-  }
-  if (support.servers.paper.supported) {
-    return { serverType: "paper", serverVersion: minecraftVersion };
-  }
-  if (support.servers.purpur.supported) {
-    return { serverType: "purpur", serverVersion: minecraftVersion };
-  }
-  if (support.servers.spigot.supported) {
-    return { serverType: "spigot", serverVersion: minecraftVersion };
-  }
-  if (support.servers.vanilla.supported) {
-    return { serverType: "vanilla", serverVersion: minecraftVersion };
-  }
-  return null;
+function resolveServerTarget(minecraftVersion) {
+  return SUITE_SERVER_TARGETS[minecraftVersion] ?? null;
 }
 
 function isBuildableVariant(variant) {
@@ -130,10 +99,7 @@ function resolveVersionMatrix(selectedVersions, selectedLoaders) {
       continue;
     }
 
-    const serverTarget = resolveServerTarget(
-      variant.minecraftVersion,
-      variant.loader || "fabric",
-    );
+    const serverTarget = resolveServerTarget(variant.minecraftVersion);
     if (!serverTarget) {
       skipped.push({
         variantId: variant.id,
@@ -298,39 +264,20 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
     throw new Error(`Failed to initialize project for ${entry.variantId}: ${initResult.stderr || initResult.stdout}`);
   }
 
-  await logLine(`server create start variant=${entry.variantId} provider=${entry.serverType} serverVersion=${entry.serverVersion}`);
-  const serverCreateArgs = [
-    CLI_PATH,
-    "server",
-    "create",
-    serverName,
-    "--type",
-    entry.serverType,
-    "--version",
-    entry.serverVersion,
-    "--port",
-    String(serverPort),
-    "--eula",
-  ];
-  if (entry.serverBuild != null) {
-    serverCreateArgs.push("--build", String(entry.serverBuild));
-  }
-  if (process.env.MCT_SUITE_SERVER_JVM_ARGS) {
-    serverCreateArgs.push("--jvm-args", process.env.MCT_SUITE_SERVER_JVM_ARGS);
-  }
-  const serverCreate = await runCommandWithRetry(
-    process.execPath,
-    appendJavaOption(serverCreateArgs, entry.serverVersion),
-    {
-      cwd: paths.projectDir,
-      env,
-      timeoutMs: 180_000
-    }
+  await logLine(`server install start variant=${entry.variantId} provider=${entry.serverType} serverVersion=${entry.serverVersion}`);
+  const serverDir = path.join(paths.projectDir, "run", serverName);
+  const serverJar = await installServerJar(entry, {
+    cacheDir: SHARED_SERVERS_DIR,
+    serverDir,
+    javaCommand: resolveJavaCommand(entry.serverVersion),
+  });
+  await mkdir(path.join(serverDir, "plugins"), { recursive: true });
+  await writeFile(path.join(serverDir, "eula.txt"), "eula=true\n");
+  await writeFile(
+    path.join(serverDir, "server.properties"),
+    `online-mode=false\nserver-port=${serverPort}\n`,
   );
-  const serverPayload = parseJsonMaybe(serverCreate.stdout) ?? parseJsonMaybe(serverCreate.stderr);
-  if (!serverCreate.ok || serverPayload?.success !== true) {
-    throw new Error(`Failed to create server for ${entry.variantId}: ${serverCreate.stderr || serverCreate.stdout}`);
-  }
+  const serverJavaCommand = resolveJavaCommand(entry.serverVersion);
 
   await logLine(`client create start variant=${entry.variantId} wsPort=${wsPort}`);
   const clientCreate = await runCommandWithRetry(
@@ -362,23 +309,22 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
   const installedModPath = path.join(paths.mctHome, "clients", clientName, "minecraft", "mods", artifactFileName);
   await copyFile(buildArtifactPath, installedModPath);
 
-  const projectId = initPayload?.data?.projectId ?? slugifyProjectId(paths.projectDir);
-  const projectFilePath = path.join(paths.mctHome, "projects", projectId, "project.json");
+  const projectFilePath = path.join(paths.projectDir, "mct.json");
   await writeFile(projectFilePath, `${JSON.stringify({
-    projectId,
-    rootDir: paths.projectDir,
     project: projectName,
     defaultProfile: profileName,
     profiles: {
       [profileName]: {
-        server: serverName,
-        clients: [clientName],
-        deployPlugins: [
-          entry.gradleBuild === "legacy" ? LEGACY_FIXTURE_PLUGIN_JAR : FIXTURE_PLUGIN_JAR,
-          ...(process.env.MCT_SUITE_EXTRA_PLUGINS
-            ? process.env.MCT_SUITE_EXTRA_PLUGINS.split(",").filter(Boolean)
-            : []),
-        ]
+        servers: [serverName],
+        clients: [clientName]
+      }
+    },
+    servers: {
+      [serverName]: {
+        ...(serverJavaCommand !== "java" ? { java: serverJavaCommand } : {}),
+        ...(process.env.MCT_SUITE_SERVER_JVM_ARGS
+          ? { jvmArgs: process.env.MCT_SUITE_SERVER_JVM_ARGS.split(",").map((arg) => arg.trim()) }
+          : {})
       }
     },
     screenshot: {
@@ -393,14 +339,13 @@ async function prepareVersionEnvironment(entry, wsPort, serverPort, logLine) {
 
   return {
     paths,
-    projectId,
     wsPort,
     projectName,
     profileName,
     serverName,
     clientName,
     init: initPayload?.data ?? initPayload,
-    serverCreate: serverPayload?.data ?? serverPayload,
+    serverJar,
     clientCreate: clientPayload?.data ?? clientPayload
   };
 }
@@ -510,7 +455,7 @@ async function main() {
         projectDir: environment.paths.projectDir,
         mctHome: environment.paths.mctHome,
         init: environment.init,
-        serverCreate: environment.serverCreate,
+        serverJar: environment.serverJar,
         clientCreate: environment.clientCreate
       };
 

@@ -1,32 +1,33 @@
 import { realpathSync } from "node:fs";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ERROR_CODES, ERROR_MESSAGES, MctError } from "./errors.js";
-import {
-  resolveProjectConfigPath,
-  resolveProjectScreenshotsDir,
-} from "./paths.js";
 
 export interface MctProfile {
-  /** Single backend server (legacy field, still supported). */
+  /** Single backend server (shorthand for `servers: [name]`). */
   server?: string;
   /** Backend servers; takes precedence over `server` when non-empty. */
   servers?: string[];
-  /** Proxy instance name (velocity/bungeecord) fronting the backends. */
+  /** Proxy server (velocity/bungeecord) fronting the backends. */
   proxy?: string;
   clients: string[];
-  deployPlugins?: string[];
-  /** Plugin JARs deployed to the proxy instance instead of backends. */
-  proxyPlugins?: string[];
+}
+
+/** Optional per-server launch overrides, keyed by server name. */
+export interface MctServerConfig {
+  /** Jar file name inside the server directory (default: auto-detected). */
+  jar?: string;
+  /** Java executable (default: `java`). */
+  java?: string;
+  jvmArgs?: string[];
 }
 
 export interface MctProjectFile {
-  projectId: string;
   project: string;
-  rootDir: string;
   profiles: Record<string, MctProfile>;
   defaultProfile?: string;
+  servers?: Record<string, MctServerConfig>;
   screenshot?: {
     outputDir: string;
   };
@@ -38,34 +39,29 @@ export interface MctProjectFile {
 }
 
 export interface ResolvedProjectConfig {
-  projectId: string;
+  rootDir: string;
   filePath: string;
   projectFile: MctProjectFile;
 }
 
-export const PROJECT_FILE_NAME = "project.json";
+export const PROJECT_FILE_NAME = "mct.json";
 
-export function normalizeProjectRoot(cwd: string): string {
+export function normalizeProjectRoot(dir: string): string {
   try {
-    return realpathSync(cwd);
+    return realpathSync(dir);
   } catch {
-    return path.resolve(cwd);
+    return path.resolve(dir);
   }
 }
 
-export function slugifyProjectId(cwd: string): string {
-  return cwd.replace(/[^A-Za-z0-9._-]/g, "-").replace(/-+/g, "-");
+export function resolveProjectFilePath(rootDir: string): string {
+  return path.join(rootDir, PROJECT_FILE_NAME);
 }
 
-export function resolveProjectFilePath(projectId: string): string {
-  return resolveProjectConfigPath(projectId);
-}
-
-export async function loadProjectFileById(
-  projectId: string,
-): Promise<MctProjectFile | null> {
-  const filePath = resolveProjectFilePath(projectId);
-
+async function loadProjectFileAt(
+  rootDir: string,
+): Promise<ResolvedProjectConfig | null> {
+  const filePath = resolveProjectFilePath(rootDir);
   try {
     await access(filePath);
   } catch {
@@ -73,23 +69,33 @@ export async function loadProjectFileById(
   }
 
   const raw = await readFile(filePath, "utf8");
-  return JSON.parse(raw) as MctProjectFile;
+  try {
+    return {
+      rootDir,
+      filePath,
+      projectFile: JSON.parse(raw) as MctProjectFile,
+    };
+  } catch (error) {
+    throw new MctError(
+      {
+        code: "INVALID_PROJECT_FILE",
+        message: `${filePath} is not valid JSON: ${(error as Error).message}`,
+      },
+      4,
+    );
+  }
 }
 
+/** Walk up from `cwd` to the nearest directory holding `mct.json`. */
 export async function loadProjectFileForCwd(
   cwd: string,
 ): Promise<ResolvedProjectConfig | null> {
   let current = normalizeProjectRoot(cwd);
 
   while (true) {
-    const projectId = slugifyProjectId(current);
-    const projectFile = await loadProjectFileById(projectId);
-    if (projectFile) {
-      return {
-        projectId,
-        filePath: resolveProjectFilePath(projectId),
-        projectFile,
-      };
+    const resolved = await loadProjectFileAt(current);
+    if (resolved) {
+      return resolved;
     }
 
     const parent = path.dirname(current);
@@ -100,44 +106,40 @@ export async function loadProjectFileForCwd(
   }
 }
 
-export async function loadProjectFileForId(
-  projectId: string,
-): Promise<ResolvedProjectConfig | null> {
-  const projectFile = await loadProjectFileById(projectId);
-  if (!projectFile) {
-    return null;
+/** Load the project rooted exactly at `dir` (the global `--project` option). */
+export async function loadProjectFileForDir(
+  dir: string,
+  cwd: string,
+): Promise<ResolvedProjectConfig> {
+  const rootDir = normalizeProjectRoot(path.resolve(cwd, dir));
+  const resolved = await loadProjectFileAt(rootDir);
+  if (!resolved) {
+    throw new MctError(
+      {
+        code: ERROR_CODES.NO_PROJECT,
+        message: `No ${PROJECT_FILE_NAME} found in ${rootDir}`,
+      },
+      4,
+    );
   }
-
-  return {
-    projectId,
-    filePath: resolveProjectFilePath(projectId),
-    projectFile,
-  };
+  return resolved;
 }
 
 export async function writeProjectFile(
-  projectId: string,
+  rootDir: string,
   project: MctProjectFile,
 ): Promise<void> {
-  const filePath = resolveProjectFilePath(projectId);
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(project, null, 2)}\n`, "utf8");
+  await writeFile(
+    resolveProjectFilePath(rootDir),
+    `${JSON.stringify(project, null, 2)}\n`,
+    "utf8",
+  );
 }
 
-export function createDefaultProjectFile(
-  cwd: string,
-  projectName: string,
-): MctProjectFile {
-  const rootDir = normalizeProjectRoot(cwd);
-  const projectId = slugifyProjectId(rootDir);
+export function createDefaultProjectFile(projectName: string): MctProjectFile {
   return {
-    projectId,
     project: projectName,
-    rootDir,
     profiles: {},
-    screenshot: {
-      outputDir: resolveProjectScreenshotsDir(projectId),
-    },
     timeout: {
       serverReady: 120,
       clientReady: 60,
