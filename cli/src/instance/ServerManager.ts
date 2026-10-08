@@ -32,6 +32,8 @@ import {
   collectOutput,
   detectServerStartupPhase,
   fileSize,
+  isReadyLine,
+  readLinesFrom,
   tailLines,
   waitForLine,
 } from "./server-log.js";
@@ -408,6 +410,10 @@ export class ServerManager {
     }
     const consoleLogPath = path.join(target.dir, CONSOLE_LOG_FILE);
     const deadline = Date.now() + timeoutSeconds * 1000;
+    // Paper opens its port while spawn chunks are still loading, so a
+    // reachable port alone is not "ready"; also wait for the Done line.
+    let consoleCursor = 0;
+    let readyLineSeen = false;
 
     const diagnostics = async () => {
       const recentLines = await tailLines(consoleLogPath, DIAGNOSTIC_LINES);
@@ -419,6 +425,10 @@ export class ServerManager {
     };
 
     while (Date.now() < deadline) {
+      const read = await readLinesFrom(consoleLogPath, consoleCursor);
+      consoleCursor = read.cursor;
+      readyLineSeen ||= read.lines.some((line) => isReadyLine(line.text));
+
       if (!isProcessRunning(runtime.pid)) {
         const info = await diagnostics();
         await clearRuntime(target.dir, runtime);
@@ -458,7 +468,9 @@ export class ServerManager {
             5,
           );
         }
-        return { ready: true, phase: (await diagnostics()).phase };
+        if (readyLineSeen) {
+          return { ready: true, phase: "ready" };
+        }
       }
 
       await sleep(READY_POLL_MS);
@@ -467,11 +479,12 @@ export class ServerManager {
     throw new MctError(
       {
         code: "TIMEOUT",
-        message: `Server ${target.name} not reachable on port ${runtime.port} after ${timeoutSeconds}s`,
+        message: `Server ${target.name} not ready after ${timeoutSeconds}s (port ${runtime.port} reachable: ${await isTcpPortReachable("127.0.0.1", runtime.port)}, Done line seen: ${readyLineSeen})`,
         details: {
           name: target.name,
           port: runtime.port,
           processAlive: isProcessRunning(runtime.pid),
+          readyLineSeen,
           ...(await diagnostics()),
         },
       },

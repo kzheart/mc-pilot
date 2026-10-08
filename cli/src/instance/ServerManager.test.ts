@@ -36,8 +36,11 @@ if (mode === "crash") {
 if (mode === "hang") {
   setInterval(() => {}, 1000);
 } else {
+  // late-done mimics Paper: the port opens while spawn chunks still load.
+  const doneDelay = mode === "late-done" ? 1500 : 0;
   net.createServer((socket) => socket.destroy()).listen(port, "127.0.0.1", () => {
-    log('Done (0.1s)! For help, type "help"');
+    log("Preparing start region for dimension minecraft:overworld");
+    setTimeout(() => log('Done (0.1s)! For help, type "help"'), doneDelay);
   });
 }
 
@@ -236,6 +239,24 @@ test("a server that dies during startup reports SERVER_EXITED with its console o
         return true;
       },
     );
+  });
+});
+
+test("start waits for the Done line, not just an open port", async () => {
+  await withServerDir(async ({ dir, java, port, manager }) => {
+    await writeFile(
+      path.join(dir, "server.properties"),
+      `online-mode=false\nserver-port=${port}\n`,
+    );
+    process.env.FAKE_SERVER_MODE = "late-done";
+
+    const startedAt = Date.now();
+    const started = await manager.start(target(dir, java), {
+      eula: true,
+      timeoutSeconds: 10,
+    });
+    assert.equal((started as { phase?: string }).phase, "ready");
+    assert.ok(Date.now() - startedAt >= 1400, "returned before Done");
   });
 });
 

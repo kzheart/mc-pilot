@@ -37,7 +37,10 @@ const props = fs.readFileSync("server.properties", "utf8");
 const port = Number(props.match(/^server-port=(\\d+)/m)[1]);
 fs.mkdirSync("logs", { recursive: true });
 fs.writeFileSync("logs/latest.log", "");
-const log = (message) => fs.appendFileSync("logs/latest.log", "[INFO]: " + message + "\\n");
+const log = (message) => {
+  fs.appendFileSync("logs/latest.log", "[INFO]: " + message + "\\n");
+  process.stdout.write("[INFO]: " + message + "\\n");
+};
 net.createServer((socket) => socket.destroy()).listen(port, "127.0.0.1", () => log("Done (0.1s)!"));
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (line === "stop") process.exit(0);

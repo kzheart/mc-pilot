@@ -134,13 +134,16 @@ export async function waitForLine(
   }
 }
 
+/** Game servers print "Done (…)!" once the world is loaded; proxies log their listener. */
+const READY_LINE = /Done \(.+?\)!|Listening on \//;
+
+export function isReadyLine(line: string): boolean {
+  return READY_LINE.test(line);
+}
+
 export function detectServerStartupPhase(lines: string[]) {
   const joined = lines.join("\n");
-  if (
-    /Done \(.+\)! For help, type "help"/.test(joined) ||
-    /Done \(\d+\.\d+s?\)!/.test(joined) ||
-    /Listening on \//.test(joined)
-  ) {
+  if (lines.some(isReadyLine)) {
     return "ready";
   }
   if (/Preparing start region|Preparing level/.test(joined)) {
