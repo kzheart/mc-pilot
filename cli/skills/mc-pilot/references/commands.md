@@ -152,30 +152,6 @@ mct screenshot --output <path>
 
 Take a screenshot and save to the specified path.
 
-## record — Test session recording (macOS)
-
-| Subcommand | Description | Key Options |
-|---|---|---|
-| `start` | Start recording the client window | `--client <name>`, `--fps <n>` (default 30), `--backend <name>` |
-| `stop` | Stop and finalize the recording (writes mp4, timeline, sliced events) | `--client <name>` |
-| `list` | List recordings of the current project | |
-| `view <id>` | Generate viewer.html (video + command/event timeline) and open it | `--no-open` |
-
-Records the client window as mp4 while commands run, then produces a synchronized
-replay page. Requires a project context. macOS-only for now; the recorder helper
-ships inside the npm package (universal binary), so it works out of the box —
-only the terminal's Screen Recording permission is required. (Source checkouts:
-build once with `cd recorder/macos && swift build -c release`, or set
-`MCT_RECORDER_BIN`.) Every mct command issued during recording is automatically
-captured into the timeline.
-
-```
-mct record start --client bot1 --fps 30
-# ... run test commands ...
-mct record stop --client bot1
-mct record view <recording-id>
-```
-
 ## screen
 
 | Subcommand | Description |

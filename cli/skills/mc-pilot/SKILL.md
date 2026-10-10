@@ -67,7 +67,7 @@ mct schema
 mct info
 ```
 
-3. If this is a new test project, initialize it in the plugin's own repository. Everything for the test stays inside that directory: servers in `run/<name>/`, screenshots and recordings in `.mct/` (both git-ignored by `init`). Deleting the directory removes the whole environment.
+3. If this is a new test project, initialize it in the plugin's own repository. Everything for the test stays inside that directory: servers in `run/<name>/`, screenshots in `.mct/` (both git-ignored by `init`). Deleting the directory removes the whole environment.
 
 ```bash
 mct init --name <plugin-or-test-name>
@@ -319,19 +319,6 @@ Then inspect the image file. For image geometry helpers:
 mct image bbox <image.png>
 mct image locate-template <screenshot.png> <template.png> --expected <x,y,w,h>
 ```
-
-## Recording On macOS
-
-When a replay would help the user, record the test session:
-
-```bash
-mct record start --client <client>
-# run test commands
-mct record stop --client <client>
-mct record view <recording-id>
-```
-
-If screen-recording permission is missing, tell the user and continue without recording. Recording is helpful, not a blocker.
 
 ## Cleanup
 

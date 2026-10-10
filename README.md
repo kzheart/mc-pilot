@@ -15,7 +15,6 @@ Unlike protocol-level bots, MC Pilot injects a mod into a genuine Minecraft clie
 - **Wide version coverage** — Minecraft 1.12.2 – 26.2, Fabric / Forge / NeoForge, 27 client variants
 - **Multiplayer testing** — run multiple clients simultaneously (PvP, trading, cross-player interactions)
 - **Proxy networks** — Velocity / BungeeCord topologies with automatic forwarding configuration
-- **Session recording** — capture mp4 + command timeline + game events, replay them side by side (macOS)
 
 ## How It Works
 
@@ -74,7 +73,7 @@ Clients default to Simplified Chinese (`zh_cn`) with muted audio (`--no-mute` to
 <details>
 <summary><b>Project configuration</b> — mct.json, profiles, server directories</summary>
 
-`mct init` creates `mct.json` in the project root and a `run/` directory, and adds `run/` and `.mct/` (screenshots, recordings) to `.gitignore`. Everything a test needs lives in the project: delete the directory and the environment is gone. Only shared downloads and client instances stay under `~/.mct`.
+`mct init` creates `mct.json` in the project root and a `run/` directory, and adds `run/` and `.mct/` (screenshots) to `.gitignore`. Everything a test needs lives in the project: delete the directory and the environment is gone. Only shared downloads and client instances stay under `~/.mct`.
 
 ```json
 {
@@ -137,7 +136,7 @@ mct info     # current project, active profile, state root
 
 ## Reclaiming Disk Space
 
-Servers, worlds, screenshots and recordings live inside each project (`run/`, `.mct/`), so deleting a project or a `run/<name>` directory frees them. What remains under `~/.mct` is shared: client instances and the download cache. `mct cache clean` reports what can go and only deletes with `--yes`:
+Servers, worlds and screenshots live inside each project (`run/`, `.mct/`), so deleting a project or a `run/<name>` directory frees them. What remains under `~/.mct` is shared: client instances and the download cache. `mct cache clean` reports what can go and only deletes with `--yes`:
 
 ```bash
 mct cache clean                        # dry run: unused client runtimes, old server-jar cache
@@ -265,19 +264,6 @@ mct screenshot --timeout 45 --retries 2 --output ./screenshots/check.png
 </details>
 
 More runnable examples live in [`examples/`](examples/) (shop, PvP, WorldGuard, proxy networks).
-
-## Session Recording (macOS)
-
-Record the client window as mp4 while commands run, then review a synchronized replay page (video + command timeline + game events). The recorder helper ships in the npm package — no build step.
-
-```bash
-mct record start --client bot1        # requires Screen Recording permission for your terminal
-mct chat command "gamemode creative"  # every mct command lands in the timeline
-mct record stop --client bot1
-mct record view <recording-id>        # generates viewer.html and opens it
-```
-
-Artifacts live in `.mct/recordings/<recording-id>/` inside the project and survive client crashes. When building from source, compile the helper once with `cd recorder/macos && swift build -c release` (or point `MCT_RECORDER_BIN` at a custom binary).
 
 ## Supported Versions
 

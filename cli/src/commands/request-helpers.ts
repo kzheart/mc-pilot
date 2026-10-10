@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
 import { WebSocketClient } from "../client/WebSocketClient.js";
-import { appendTimelineEntry } from "../record/recording-state.js";
 import type { CommandContext, GlobalOptions } from "../util/context.js";
 import { ERROR_MESSAGES, invalidParams } from "../util/errors.js";
 import { resolveProjectScreenshotsDir } from "../util/paths.js";
@@ -27,32 +26,11 @@ export async function sendClientRequest(
   const client = await manager.getClient(clientName);
   const ws = new WebSocketClient(`ws://127.0.0.1:${client.wsPort}`);
 
-  const requestedAt = Date.now();
-  try {
-    const result = await ws.send(
-      action,
-      params,
-      timeoutSeconds ?? context.timeout("default"),
-    );
-    await appendTimelineEntry(client.name, {
-      t: requestedAt,
-      action,
-      params,
-      success: true,
-      durationMs: Date.now() - requestedAt,
-    });
-    return result;
-  } catch (error) {
-    await appendTimelineEntry(client.name, {
-      t: requestedAt,
-      action,
-      params,
-      success: false,
-      durationMs: Date.now() - requestedAt,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
+  return ws.send(
+    action,
+    params,
+    timeoutSeconds ?? context.timeout("default"),
+  );
 }
 
 export function resolvePreferredClientName(

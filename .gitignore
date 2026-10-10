@@ -18,9 +18,6 @@ plan/
 issues/
 docs/
 
-recorder/macos/.build/
-cli/vendor/
-
 client-mod/.architectury-transformer/
 client-mod/.gradle-user-home/
 client-mod/run/

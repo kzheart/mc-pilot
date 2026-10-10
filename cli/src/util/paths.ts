@@ -22,15 +22,11 @@ export function resolveProjectRunDir(projectRoot: string): string {
   return path.join(projectRoot, "run");
 }
 
-/** Per-project artifacts that are not server instances (screenshots, recordings). */
+/** Per-project artifacts that are not server instances (screenshots). */
 export function resolveProjectDataDir(projectRoot: string): string {
   return path.join(projectRoot, ".mct");
 }
 
 export function resolveProjectScreenshotsDir(projectRoot: string): string {
   return path.join(resolveProjectDataDir(projectRoot), "screenshots");
-}
-
-export function resolveProjectRecordingsDir(projectRoot: string): string {
-  return path.join(resolveProjectDataDir(projectRoot), "recordings");
 }
