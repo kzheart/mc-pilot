@@ -142,12 +142,17 @@ function createPipeReader(pipePath: string) {
   }
 
   const { reader, getOutput } = spawnFifoReader(pipePath);
+  // Subscribe before sending: a fast reader may exit while send() is still
+  // closing its writer. close also waits for stdout to finish draining.
+  const closed = once(reader, "close", {
+    signal: AbortSignal.timeout(15_000),
+  });
+  // Keep a send failure from leaving an unobserved timeout rejection.
+  void closed.catch(() => {});
   return {
     ready: () => Promise.resolve(),
     waitForLine: async () => {
-      const [code] = await once(reader, "exit", {
-        signal: AbortSignal.timeout(15_000),
-      });
+      const [code] = await closed;
       assert.equal(code, 0);
       return getOutput();
     },
