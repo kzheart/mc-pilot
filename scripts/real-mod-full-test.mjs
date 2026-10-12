@@ -1093,6 +1093,9 @@ async function main() {
       if (options.deferServerConnect) {
         launchArgs.push("--no-server");
       }
+      if (options.resourcePackPolicy) {
+        launchArgs.push("--resource-pack", options.resourcePackPolicy);
+      }
       const baselineBindConflicts = await getBindConflictCount();
 
       const launch = await runCli(launchArgs, { allowFailure: true });
@@ -1183,12 +1186,12 @@ async function main() {
         kind: "setup",
         reusedClient: true
       });
-      await runClientLeaf(`${label} client reconnect`, ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`], (data) => {
+      await runClientLeaf(`${label} client reconnect`, ["client", "reconnect", "--address", `127.0.0.1:${SERVER_PORT}`, "--resource-pack", "prompt"], (data) => {
         expect(data.connecting === true, "resource pack client reconnect did not start");
       });
     } else {
       await cleanupClientResidue(recordStep, `${label} cleanup before fallback launch`);
-      await launchRealClientAndWaitReady(label, { rotateWsPort: true, requireWorld: false });
+      await launchRealClientAndWaitReady(label, { rotateWsPort: true, requireWorld: false, resourcePackPolicy: "prompt" });
     }
 
     const pendingPack = await waitForResourcePackPending(60);

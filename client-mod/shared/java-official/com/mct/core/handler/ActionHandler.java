@@ -11,8 +11,9 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import com.mct.core.concurrent.ClientTaskQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -37,18 +38,17 @@ public abstract class ActionHandler {
     // --- Client thread helpers ---
 
     protected <T> T runOnClientThread(Task<T> task) {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        client.execute(() -> {
-            try {
-                future.complete(task.run());
-            } catch (Exception exception) {
-                future.completeExceptionally(exception);
-            }
-        });
-
+        if (client.isSameThread()) {
+            return task.run();
+        }
         try {
-            return future.get(30, TimeUnit.SECONDS);
-        } catch (Exception exception) {
+            return ClientTaskQueue.getInstance().call(task::run, 30_000L);
+        } catch (TimeoutException exception) {
+            throw new ActionException("TIMEOUT");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ActionException("INTERNAL_ERROR");
+        } catch (ExecutionException exception) {
             Throwable cause = exception.getCause();
             if (cause instanceof ActionException actionException) {
                 throw actionException;

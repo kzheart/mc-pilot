@@ -11,6 +11,12 @@ minecraft {
 sourceSets {
     main {
         java.srcDir "../../shared/forge-1.12/java"
+        java.srcDir "../../shared/resourcepack-core/java"
+        java.srcDir "../../shared/command-core/java"
+        java.include "com/mct/legacy/**"
+        java.include "com/mct/core/concurrent/**"
+        java.include "com/mct/core/resourcepack/ResourcePackLifecycle.java"
+        java.include "com/mct/core/resourcepack/ResourcePackPolicy.java"
         resources.srcDir "../../shared/forge-1.12/resources"
     }
 }

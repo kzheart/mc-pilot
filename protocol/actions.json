@@ -344,7 +344,7 @@
     },
     {
       "name": "client.reconnect",
-      "params": ["address"],
+      "params": ["address", "resourcePackPolicy"],
       "description": "让客户端重新连接到指定服务器地址"
     },
     {

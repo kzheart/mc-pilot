@@ -121,6 +121,7 @@ public final class SessionHandler extends ActionHandler {
             throw new ActionException("INVALID_PARAMS");
         }
 
+        com.mct.core.resourcepack.ResourcePackSupport.setOverride(address, getOptionalString(params, "resourcePackPolicy"));
         Screen parent = client.currentScreen != null ? client.currentScreen : new TitleScreen();
         ServerAddress serverAddress = ServerAddress.parse(address);
         ClientVersionModulesHolder.get().reconnect().connect(client, parent, serverAddress, address);

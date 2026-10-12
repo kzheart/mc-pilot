@@ -24,6 +24,10 @@ public final class SessionReliability {
             return false;
         }
 
+        if (com.mct.core.resourcepack.ResourcePackLifecycle.blocksAutoReconnect(stateTracker.getResourcePackState())) {
+            return false;
+        }
+
         String address = System.getenv("MCT_CLIENT_SERVER");
         if (address == null || address.trim().isEmpty() || !ServerAddress.isValidAddress(address)) {
             return false;

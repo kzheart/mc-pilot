@@ -32,10 +32,14 @@ public final class LegacyForgeEntrypoint {
         if (server != null) {
             return;
         }
+        MinecraftForge.EVENT_BUS.register(new ClientTaskQueueTicker());
         chatRecorder = new ChatRecorder();
         MinecraftForge.EVENT_BUS.register(chatRecorder);
         titleTracker = new TitleTracker();
         MinecraftForge.EVENT_BUS.register(titleTracker);
+
+        LegacyResourcePacks resourcePacks = new LegacyResourcePacks();
+        MinecraftForge.EVENT_BUS.register(resourcePacks);
 
         MovementActions movement = new MovementActions();
         ActionRouter router = new ActionRouter();
@@ -44,7 +48,7 @@ public final class LegacyForgeEntrypoint {
         router.register(new InputActions(), "input.");
         router.register(movement, "look.", "move.");
         router.register(new InventoryGuiActions(), "inventory.", "gui.", "capture.screenshot");
-        router.register(new SessionActions(), "hud.", "client.", "resourcepack.");
+        router.register(new SessionActions(resourcePacks), "hud.", "client.", "resourcepack.");
         router.register(new WorldActions(), "block.");
         router.register(new SignBookActions(), "sign.", "book.");
         router.register(new EntityCombatActions(movement), "entity.", "combat.");

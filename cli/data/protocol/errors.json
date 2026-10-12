@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "errors": [
     {
+      "code": "RESOURCE_PACK_PROMPT",
+      "exitCode": 3,
+      "description": "资源包等待明确接受或拒绝"
+    },
+    {
+      "code": "RESOURCE_PACK_FAILED",
+      "exitCode": 3,
+      "description": "资源包下载或应用失败"
+    },
+    {
+      "code": "RESOURCE_PACK_REQUIRED_REJECTED",
+      "exitCode": 3,
+      "description": "拒绝了服务器要求的资源包"
+    },
+    {
       "code": "CONNECTION_FAILED",
       "exitCode": 1,
       "description": "无法连接到客户端 WebSocket"

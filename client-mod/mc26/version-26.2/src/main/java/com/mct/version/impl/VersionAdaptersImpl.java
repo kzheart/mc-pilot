@@ -12,8 +12,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
@@ -91,12 +89,13 @@ public final class VersionAdaptersImpl {
             @Override
             public Map<String, Object> status(Minecraft client, ClientStateTracker stateTracker) {
                 requireLoader(client);
+                com.mct.core.resourcepack.ResourcePackSupport.isPrompt(client);
                 return stateTracker.getResourcePackState();
             }
 
             @Override
             public Map<String, Object> accept(Minecraft client, ClientStateTracker stateTracker) {
-                if (pressResourcePackPromptButton(client, true)) {
+                if (answerResourcePackPrompt(client, true)) {
                     return status(client, stateTracker);
                 }
                 requireLoader(client).allowServerPacks();
@@ -105,7 +104,7 @@ public final class VersionAdaptersImpl {
 
             @Override
             public Map<String, Object> reject(Minecraft client, ClientStateTracker stateTracker) {
-                if (pressResourcePackPromptButton(client, false)) {
+                if (answerResourcePackPrompt(client, false)) {
                     return status(client, stateTracker);
                 }
                 requireLoader(client).rejectServerPacks();
@@ -122,37 +121,14 @@ public final class VersionAdaptersImpl {
         };
     }
 
-    private static boolean pressResourcePackPromptButton(Minecraft client, boolean accept) {
-        Screen screen = ClientVersionModulesHolder.get().compatibility().getScreen(client);
-        if (screen == null || !isResourcePackPrompt(screen)) {
-            return false;
-        }
-        List<Button> buttons = new ArrayList<>();
-        for (GuiEventListener child : screen.children()) {
-            if (child instanceof Button button) {
-                buttons.add(button);
-            }
-        }
-        if (buttons.isEmpty()) {
-            return false;
-        }
-        buttons.get(accept ? 0 : Math.min(1, buttons.size() - 1)).onPress(null);
-        return true;
-    }
-
-    private static boolean isResourcePackPrompt(Screen screen) {
-        String screenClass = screen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-        Component titleText = screen.getTitle();
-        String title = titleText != null ? titleText.getString().toLowerCase(java.util.Locale.ROOT) : "";
-        return screenClass.contains("resource")
-            || screenClass.contains("confirm")
-            || title.contains("resource pack")
-            || title.contains("server pack");
+    private static boolean answerResourcePackPrompt(Minecraft client, boolean accept) {
+        return com.mct.core.resourcepack.ResourcePackSupport.answerPrompt(client, accept);
     }
 
     private static ReconnectAdapter createReconnectAdapter() {
         return (client, parent, serverAddress, address) -> {
             ServerData serverInfo = new ServerData("MCT Auto Test", address, ServerData.Type.OTHER);
+            serverInfo = com.mct.core.resourcepack.ResourcePackSupport.connectionInfo(client, serverInfo);
             ConnectScreen.startConnecting(parent, client, serverAddress, serverInfo, false, null);
         };
     }

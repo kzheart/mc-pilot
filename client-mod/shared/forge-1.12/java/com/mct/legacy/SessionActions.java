@@ -8,13 +8,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiGameOver;
 import net.minecraft.client.gui.GuiIngame;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiPlayerTabOverlay;
-import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.GuiYesNo;
 import net.minecraft.client.gui.BossInfoClient;
 import net.minecraft.client.gui.GuiBossOverlay;
 import net.minecraft.client.multiplayer.GuiConnecting;
@@ -29,8 +26,11 @@ import net.minecraft.util.text.ITextComponent;
 /** hud.* / client.reconnect / client.respawn / resourcepack.* */
 public final class SessionActions extends LegacyActions {
 
-    private volatile String resourcePackStatus = "pending";
-    private volatile int resourcePackCount;
+    private final LegacyResourcePacks resourcePacks;
+
+    public SessionActions(LegacyResourcePacks resourcePacks) {
+        this.resourcePacks = resourcePacks;
+    }
 
     @Override
     public Map<String, Object> handle(String action, JsonObject params) {
@@ -68,13 +68,13 @@ public final class SessionActions extends LegacyActions {
             return onClient(this::respawnPlayer);
         }
         if ("resourcepack.status".equals(action)) {
-            return onClient(this::resourcePackStatusMap);
+            return onClient(resourcePacks::status);
         }
         if ("resourcepack.accept".equals(action)) {
-            return onClient(() -> answerResourcePackPrompt(true));
+            return onClient(() -> resourcePacks.answer(true));
         }
         if ("resourcepack.reject".equals(action)) {
-            return onClient(() -> answerResourcePackPrompt(false));
+            return onClient(() -> resourcePacks.answer(false));
         }
         throw new LegacyActionException("INVALID_ACTION");
     }
@@ -231,6 +231,9 @@ public final class SessionActions extends LegacyActions {
                 throw new LegacyActionException("INVALID_PARAMS");
             }
         }
+        String policy = Params.has(params, "resourcePackPolicy") ? Params.string(params, "resourcePackPolicy") : null;
+        String targetAddress = address;
+        onClient(() -> { resourcePacks.setOverride(targetAddress, policy); return true; });
         // Calling loadWorld(null) from a scheduled task deadlocks the client thread;
         // close the channel instead and let vanilla's own disconnect flow run.
         boolean hadWorld = onClient(() -> {
@@ -246,62 +249,11 @@ public final class SessionActions extends LegacyActions {
         }
         String serverAddress = address;
         onClient(() -> {
-            ServerData serverData = new ServerData("mct", serverAddress, false);
+            ServerData serverData = resourcePacks.connectionInfo(serverAddress);
             client.displayGuiScreen(new GuiConnecting(new GuiMainMenu(), client, serverData));
             return true;
         });
         return map("connecting", true, "address", host + ":" + port);
     }
 
-    private Map<String, Object> resourcePackStatusMap() {
-        if (client.currentScreen instanceof GuiYesNo) {
-            resourcePackStatus = "pending";
-            resourcePackCount = Math.max(1, resourcePackCount);
-            return currentResourcePackState();
-        }
-        if ("pending".equals(resourcePackStatus)) {
-            ServerData serverData = client.getCurrentServerData();
-            if (serverData != null) {
-                if (serverData.getResourceMode() == ServerData.ServerResourceMode.ENABLED) {
-                    resourcePackStatus = "enabled";
-                } else if (serverData.getResourceMode() == ServerData.ServerResourceMode.DISABLED) {
-                    resourcePackStatus = "disabled";
-                } else {
-                    resourcePackStatus = "prompt";
-                }
-            }
-        }
-        return currentResourcePackState();
-    }
-
-    private Map<String, Object> currentResourcePackState() {
-        return map("acceptanceStatus", resourcePackStatus, "packCount", resourcePackCount);
-    }
-
-    private Map<String, Object> answerResourcePackPrompt(boolean accept) {
-        GuiScreen screen = client.currentScreen;
-        if (screen instanceof GuiYesNo) {
-            List<?> buttons = Reflect.get(screen, GuiScreen.class, "buttonList", "field_146292_n");
-            GuiButton target = null;
-            for (Object value : buttons) {
-                GuiButton button = (GuiButton) value;
-                if ((accept && button.id == 0) || (!accept && button.id == 1)) {
-                    target = button;
-                    break;
-                }
-            }
-            if (target != null) {
-                Reflect.invoke(
-                    screen, GuiScreen.class,
-                    new Class<?>[] {GuiButton.class}, new Object[] {target},
-                    "actionPerformed", "func_146284_a"
-                );
-                resourcePackStatus = accept ? "allowed" : "declined";
-                resourcePackCount = accept ? Math.max(1, resourcePackCount) : 0;
-                return currentResourcePackState();
-            }
-        }
-        resourcePackStatus = accept ? "allowed" : "declined";
-        return currentResourcePackState();
-    }
 }

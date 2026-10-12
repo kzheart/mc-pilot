@@ -75,6 +75,37 @@ configured WebSocket port. They report `PORT_CONFLICT` (exit code 5); stop the
 conflicting process yourself or launch with a different `--ws-port`. `--force`
 only replaces the tracked client, and does not override this ownership check.
 
+Updated client mods accept server resource packs automatically by default.
+The policy is shared across Yarn, official-mapped 26.x and legacy Forge adapters.
+To test the confirmation or rejection flow, select a policy explicitly:
+
+```bash
+mct client launch fabric-1.20.4 --server 127.0.0.1:25565 --resource-pack prompt
+mct resourcepack status
+mct resourcepack accept
+mct client wait-ready fabric-1.20.4
+
+# Override the policy for a new connection
+mct client reconnect --address 127.0.0.1:25565 --resource-pack reject
+```
+
+`--resource-pack accept|prompt|reject` is also available on `client create` to
+save an instance policy. An explicit launch policy overrides that saved policy.
+Previously saved server rejections remain respected unless `accept` is selected
+explicitly. Accepting a pack starts its normal Minecraft download and reload;
+an acceptance response alone is not proof that the pack has finished loading.
+The 1.20.4–1.21.11 and 26.x adapters expose vanilla download/reload outcomes
+for `wait-ready`. Older Yarn adapters and Forge 1.12.2 report
+`resourcePackReadinessVerified: false`: 1.12 download completion is
+`unverified`, never fabricated as `loaded`, because its vanilla API does not
+reliably expose reload failure. Actual texture application must be checked
+separately on those adapters. A declared build variant is not a claim that every
+loader combination has passed live testing. See the
+[resource-pack architecture and adapter contract](docs/resourcepack-architecture.md).
+The automatic-accept default is implemented in the client mod, so it also works
+when launched by an older CLI. Use the matching updated CLI for
+`--resource-pack` overrides and verified download/reload-aware `wait-ready`.
+
 <details>
 <summary><b>Project configuration</b> — mct.json, profiles, server directories</summary>
 

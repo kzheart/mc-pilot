@@ -961,3 +961,52 @@ test("CLI request commands honor explicit timeout overrides", async () => {
     await harness.cleanup();
   }
 });
+
+test("client reconnect supports explicit resource-pack policies", async () => {
+  const harness = await createRequestTestHarness();
+  try {
+    for (const policy of ["accept", "prompt", "reject"]) {
+      const result = await harness.runCli([
+        "client",
+        "reconnect",
+        "--address",
+        "localhost:25565",
+        "--resource-pack",
+        policy,
+      ]);
+      assert.equal(result.success, true);
+      assert.deepEqual(
+        (result.data as { data: { params: unknown } }).data.params,
+        {
+          address: "localhost:25565",
+          resourcePackPolicy: policy,
+        },
+      );
+    }
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("resource-pack flags preserve absence and validate all supported client commands", async () => {
+  for (const commandName of ["create", "launch", "reconnect"]) {
+    const program = buildProgram();
+    const client = program.commands.find(
+      (command) => command.name() === "client",
+    )!;
+    const command = client.commands.find(
+      (child) => child.name() === commandName,
+    )!;
+    command.exitOverride().configureOutput({ writeErr: () => {} });
+    command.action(() => {});
+    const positional = commandName === "reconnect" ? [] : ["bot"];
+    await command.parseAsync(positional, { from: "user" });
+    assert.equal(command.opts().resourcePack, undefined);
+    await assert.rejects(
+      command.parseAsync([...positional, "--resource-pack", "always"], {
+        from: "user",
+      }),
+      /Allowed choices/,
+    );
+  }
+});

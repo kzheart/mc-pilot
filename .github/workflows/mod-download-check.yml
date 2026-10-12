@@ -25,6 +25,18 @@ jobs:
       - run: npm run build
       - name: Catalog, schema, and process ownership regressions
         run: node --test cli/dist/download/ModVariantCatalog.test.js cli/dist/download/VersionMatrix.test.js cli/dist/protocol-schema.test.js cli/dist/instance/client-process-ownership.test.js
+      - name: WebSocket transport regressions
+        run: node --test cli/dist/client/WebSocketClient.test.js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Shared main-thread command queue regressions
+        run: sh client-mod/tests/run-client-task-tests.sh
+      - name: Resource-pack contracts and connect hooks
+        run: |
+          sh client-mod/legacy/tests/run-resourcepack-tests.sh
+          python3 client-mod/tests/check-resourcepack-connect-hooks.py
       - name: Download regression tests
         run: node --test cli/dist/download/client/ModRelease.test.js cli/dist/download/client/ClientDownloader.test.js
       - name: GUI input and proxy topology regressions

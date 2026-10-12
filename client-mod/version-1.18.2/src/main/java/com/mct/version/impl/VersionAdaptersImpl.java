@@ -6,11 +6,9 @@ import com.mct.mixin.AbstractSignEditScreenAccessor;
 import com.mct.version.*;
 import net.minecraft.block.entity.SignBlockEntity;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.screen.ConnectScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.SignEditScreen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
@@ -84,96 +82,37 @@ public final class VersionAdaptersImpl {
         return new ResourcePackAdapter() {
             @Override
             public Map<String, Object> status(MinecraftClient client, ClientStateTracker stateTracker) {
-                if (client.currentScreen != null) {
-                    String screenFullClass = client.currentScreen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-                    net.minecraft.text.Text titleText = client.currentScreen.getTitle();
-                    String title = titleText != null ? titleText.getString().toLowerCase(java.util.Locale.ROOT) : "";
-                    if (screenFullClass.contains("resource") || screenFullClass.contains("confirm")
-                            || title.contains("resource pack") || title.contains("server pack")) {
-                        stateTracker.recordResourcePackState("pending", 1);
-                        return stateTracker.getResourcePackState();
-                    }
-                }
-                Map<String, Object> current = stateTracker.getResourcePackState();
-                if ("pending".equals(current.get("acceptanceStatus"))) {
-                    return current;
-                }
-                ServerInfo si = client.getCurrentServerEntry();
-                if (si == null) {
-                    return stateTracker.getResourcePackState();
-                }
-                String s = switch (si.getResourcePackPolicy()) {
-                    case ENABLED -> "enabled";
-                    case DISABLED -> "disabled";
-                    case PROMPT -> "prompt";
-                };
-                stateTracker.recordResourcePackState(s, 0);
+                boolean prompt = com.mct.core.resourcepack.ResourcePackSupport.isPrompt(client);
+                ServerInfo info = client.getCurrentServerEntry();
+                String acceptance = prompt ? "pending" : info == null ? "unknown"
+                    : info.getResourcePackPolicy() == ServerInfo.ResourcePackPolicy.ENABLED ? "allowed"
+                    : info.getResourcePackPolicy() == ServerInfo.ResourcePackPolicy.DISABLED ? "declined" : "prompt";
+                stateTracker.recordResourcePackState(acceptance, prompt ? 1 : 0);
                 return stateTracker.getResourcePackState();
             }
 
             @Override
             public Map<String, Object> accept(MinecraftClient client, ClientStateTracker stateTracker) {
-                if (pressResourcePackPromptButton(client, true)) {
-                    stateTracker.recordResourcePackState("allowed", 0);
-                    return stateTracker.getResourcePackState();
+                if (!com.mct.core.resourcepack.ResourcePackSupport.answerPrompt(client, true)) {
+                    throw new ActionException("INVALID_STATE");
                 }
-                if (client.currentScreen != null) {
-                    ServerInfo si = client.getCurrentServerEntry();
-                    if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.ENABLED);
-                    client.setScreen(null);
-                }
-                stateTracker.recordResourcePackState("allowed", 0);
-                return stateTracker.getResourcePackState();
+                return status(client, stateTracker);
             }
 
             @Override
             public Map<String, Object> reject(MinecraftClient client, ClientStateTracker stateTracker) {
-                if (pressResourcePackPromptButton(client, false)) {
-                    stateTracker.recordResourcePackState("declined", 0);
-                    return stateTracker.getResourcePackState();
+                if (!com.mct.core.resourcepack.ResourcePackSupport.answerPrompt(client, false)) {
+                    throw new ActionException("INVALID_STATE");
                 }
-                if (client.currentScreen != null) {
-                    ServerInfo si = client.getCurrentServerEntry();
-                    if (si != null) si.setResourcePackPolicy(ServerInfo.ResourcePackPolicy.PROMPT);
-                    client.setScreen(null);
-                }
-                stateTracker.recordResourcePackState("declined", 0);
-                return stateTracker.getResourcePackState();
+                return status(client, stateTracker);
             }
         };
-    }
-
-    private static boolean pressResourcePackPromptButton(MinecraftClient client, boolean accept) {
-        Screen screen = client.currentScreen;
-        if (screen == null || !isResourcePackPrompt(screen)) {
-            return false;
-        }
-        List<ButtonWidget> buttons = new ArrayList<>();
-        for (Element child : screen.children()) {
-            if (child instanceof ButtonWidget button) {
-                buttons.add(button);
-            }
-        }
-        if (buttons.isEmpty()) {
-            return false;
-        }
-        buttons.get(accept ? 0 : Math.min(1, buttons.size() - 1)).onPress();
-        return true;
-    }
-
-    private static boolean isResourcePackPrompt(Screen screen) {
-        String screenClass = screen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-        Text titleText = screen.getTitle();
-        String title = titleText != null ? titleText.getString().toLowerCase(java.util.Locale.ROOT) : "";
-        return screenClass.contains("resource")
-            || screenClass.contains("confirm")
-            || title.contains("resource pack")
-            || title.contains("server pack");
     }
 
     private static ReconnectAdapter createReconnectAdapter() {
         return (client, parent, serverAddress, address) -> {
             ServerInfo serverInfo = new ServerInfo("MCT Auto Test", address, false);
+            serverInfo = com.mct.core.resourcepack.ResourcePackSupport.connectionInfo(client, serverInfo);
             ConnectScreen.connect(parent, client, serverAddress, serverInfo);
         };
     }

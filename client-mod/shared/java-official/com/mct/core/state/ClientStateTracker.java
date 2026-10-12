@@ -25,7 +25,7 @@ public final class ClientStateTracker {
     private HudActionBarState hudActionBarState = HudActionBarState.empty();
     private TabListState tabListState = TabListState.empty();
     private List<Map<String, Object>> bossBars = Collections.emptyList();
-    private ResourcePackState resourcePackState = ResourcePackState.empty();
+    private final com.mct.core.resourcepack.ResourcePackLifecycle resourcePackState = new com.mct.core.resourcepack.ResourcePackLifecycle();
 
     private ClientStateTracker() {
     }
@@ -120,14 +120,15 @@ public final class ClientStateTracker {
     }
 
     public synchronized void recordResourcePackState(String acceptanceStatus, int packCount) {
-        resourcePackState = new ResourcePackState(
-            acceptanceStatus != null ? acceptanceStatus : "unknown",
-            Math.max(0, packCount)
-        );
+        resourcePackState.managerState(acceptanceStatus != null ? acceptanceStatus : "unknown", packCount);
+    }
+
+    public com.mct.core.resourcepack.ResourcePackLifecycle resourcePacks() {
+        return resourcePackState;
     }
 
     public synchronized Map<String, Object> getResourcePackState() {
-        return resourcePackState.toMap();
+        return resourcePackState.snapshot();
     }
 
     public synchronized void recordDeath(String deathMessage, double x, double y, double z) {
@@ -275,27 +276,6 @@ public final class ClientStateTracker {
 
         Map<String, Object> toMap() {
             return com.mct.core.util.MctMaps.mapOf("header", header, "footer", footer);
-        }
-    }
-
-    private static final class ResourcePackState {
-        final String acceptanceStatus;
-        final int packCount;
-
-        ResourcePackState(String acceptanceStatus, int packCount) {
-            this.acceptanceStatus = acceptanceStatus;
-            this.packCount = packCount;
-        }
-
-        static ResourcePackState empty() {
-            return new ResourcePackState("pending", 0);
-        }
-
-        Map<String, Object> toMap() {
-            return com.mct.core.util.MctMaps.mapOf(
-                "acceptanceStatus", acceptanceStatus,
-                "packCount", packCount
-            );
         }
     }
 

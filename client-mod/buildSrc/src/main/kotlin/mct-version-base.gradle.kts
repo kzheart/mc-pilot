@@ -55,6 +55,8 @@ tasks.register<GenerateVersionInfoTask>("generateVersionInfo") {
 
 sourceSets.main {
     java.srcDir(genDir)
+    java.srcDir(rootProject.file("shared/resourcepack-core/java"))
+    java.srcDir(rootProject.file("shared/command-core/java"))
 }
 
 tasks.named("compileJava") { dependsOn("generateVersionInfo") }

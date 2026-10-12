@@ -74,17 +74,12 @@ diff client-mod/variants.json cli/data/variants.json   # 必须无输出
 
 两份文件必须逐字节一致；CLI 的 mod 下载与变体选择逻辑读取 `cli/data/variants.json`。
 
-### 3. 更新 CLI 版本矩阵
+### 3. 检查 CLI 版本矩阵投影
 
-在 `cli/src/download/VersionMatrix.ts` 的 `VERSION_MATRIX` 数组**头部**插入新版本的 `MinecraftSupportEntry`：
+CLI 从 `variants.json` 自动投影可构建客户端清单、loader 版本、mod 版本、验证状态和 Java 版本范围，不再手动向 `VersionMatrix.ts` 添加重复条目。仅不能构建或仅兼容性说明的记录单独维护。
 
-- `clients` 下三个 loader 的 `loaderVersion`、`validation` 与 `variants.json` 保持一致。
+- 检查 `cli/src/download/VersionMatrix.test.ts`、`ModVariantCatalog` 相关测试与搜索测试，确认新条目从目录自动派生，避免硬编码总数掩盖遗漏。
 - 在 `scripts/server-jar.mjs` 的 `SUITE_SERVER_TARGETS` 里登记真机套件使用的服务端：Paper build 号从 [fill.papermc.io v3 API](https://fill.papermc.io/v3/projects/paper) 实查。
-
-同步更新测试断言：
-
-- `cli/src/download/VersionMatrix.test.ts` — 矩阵条目总数、各版本字段。
-- `cli/src/download/SearchCommand.test.ts` — 搜索结果的矩阵计数断言。
 
 ### 4. 创建版本模块
 
@@ -125,11 +120,12 @@ mct up --eula
 - `mct inventory list` — 背包读取
 - `mct screenshot` — 截图生成
 
-全部通过后，翻正三处状态：
+全部通过后，更新唯一来源及展示文档：
 
 1. `client-mod/variants.json`（及同步后的 `cli/data/variants.json`）→ `support: "ready"`、`validation: "verified"`
-2. `cli/src/download/VersionMatrix.ts` → 对应 loader 的 `validation: "verified"`
-3. `README.md` Supported Minecraft Versions 表 → `Supported`（或 `Supported (limited validation)`）
+2. `README.md` Supported Minecraft Versions 表 → `Supported`（或 `Supported (limited validation)`）
+
+CLI 矩阵的验证状态会从目录自动派生，无需重复修改 `VersionMatrix.ts`。
 
 ## yarn 时代：版本模块创建
 
@@ -232,3 +228,7 @@ cd client-mod
   - `@Inject` 方法描述符（descriptor）可能与自动转换结果不完全匹配
 
 转换完成并手修后，将输出目录命名为 `shared/<name>-official`，供 mojmap 时代的 `version-<mc>/build.gradle.kts` 引用。
+
+## 资源包功能接入
+
+资源包策略、生命周期和重连阻断规则应复用共同核心，避免按版本复制业务逻辑。模块边界、必要适配差异和验证契约见 [资源包架构](resourcepack-architecture.md)。

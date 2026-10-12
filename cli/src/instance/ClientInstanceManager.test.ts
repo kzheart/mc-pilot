@@ -50,6 +50,8 @@ async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 4000) {
 test("ClientInstanceManager launch defaults to Simplified Chinese and muted audio", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "mct-client-mute-"));
   const previousMctHome = process.env.MCT_HOME;
+  const previousPackPolicy = process.env.MCT_CLIENT_RESOURCE_PACK_POLICY;
+  delete process.env.MCT_CLIENT_RESOURCE_PACK_POLICY;
   process.env.MCT_HOME = path.join(tempDir, "mct-home");
 
   try {
@@ -61,6 +63,7 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     const manifestPath = path.join(instanceDir, "launch-manifest.json");
     const optionsPath = path.join(gameDir, "options.txt");
     const javaArgsPath = path.join(tempDir, "java-args.txt");
+    const javaEnvPath = path.join(tempDir, "java-env.txt");
     const isWindows = process.platform === "win32";
     const fakeJavaPath = path.join(
       tempDir,
@@ -75,6 +78,7 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
         fakeJavaPath,
         [
           "@echo off",
+          `>"${javaEnvPath}" echo policy:%MCT_CLIENT_RESOURCE_PACK_POLICY%`,
           `break > "${javaArgsPath}.tmp"`,
           ":loop",
           'if "%~1"=="" goto done',
@@ -90,7 +94,7 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     } else {
       await writeFile(
         fakeJavaPath,
-        `#!/bin/sh\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`,
+        `#!/bin/sh\nprintf 'policy:%s\\n' "$MCT_CLIENT_RESOURCE_PACK_POLICY" > "${javaEnvPath}"\nprintf '%s\\n' "$@" > "${javaArgsPath}"\n`,
         "utf8",
       );
       await chmod(fakeJavaPath, 0o755);
@@ -149,7 +153,19 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
       }
     });
 
-    await manager.launch(clientName, { mute: false });
+    // No CLI/config choice must remain absent so the mod can apply its default
+    // without overriding an explicit saved server preference.
+    assert.equal((await readFile(javaEnvPath, "utf8")).trim(), "policy:");
+    assert.equal(
+      (await manager.loadMeta(clientName)).resourcePackPolicy,
+      undefined,
+    );
+
+    await manager.launch(clientName, {
+      mute: false,
+      resourcePackPolicy: "reject",
+      force: true,
+    });
     await waitFor(async () => {
       const content = await readFile(optionsPath, "utf8");
       return (
@@ -157,14 +173,40 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
         content.includes("soundCategory_voice:1.0")
       );
     });
+    await waitFor(
+      async () =>
+        (await readFile(javaEnvPath, "utf8")).trim() === "policy:reject",
+    );
+
+    await manager.updateMeta(clientName, { resourcePackPolicy: "prompt" });
+    await manager.launch(clientName, { force: true });
+    await waitFor(
+      async () =>
+        (await readFile(javaEnvPath, "utf8")).trim() === "policy:prompt",
+    );
+
+    await manager.launch(clientName, {
+      resourcePackPolicy: "accept",
+      force: true,
+    });
+    await waitFor(
+      async () =>
+        (await readFile(javaEnvPath, "utf8")).trim() === "policy:accept",
+    );
 
     const meta = await manager.loadMeta(clientName);
     assert.equal(meta.mute, true);
+    assert.equal(meta.resourcePackPolicy, "prompt");
   } finally {
     if (previousMctHome === undefined) {
       delete process.env.MCT_HOME;
     } else {
       process.env.MCT_HOME = previousMctHome;
+    }
+    if (previousPackPolicy === undefined) {
+      delete process.env.MCT_CLIENT_RESOURCE_PACK_POLICY;
+    } else {
+      process.env.MCT_CLIENT_RESOURCE_PACK_POLICY = previousPackPolicy;
     }
     await rmWithRetry(tempDir);
   }

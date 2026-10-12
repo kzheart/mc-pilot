@@ -25,6 +25,11 @@ public final class SessionReliability {
             return false;
         }
 
+        // A retry must not clear a pending decision/download or conceal a pack failure/refusal.
+        if (com.mct.core.resourcepack.ResourcePackLifecycle.blocksAutoReconnect(stateTracker.getResourcePackState())) {
+            return false;
+        }
+
         String address = System.getenv("MCT_CLIENT_SERVER");
         if (address == null || address.trim().isEmpty() || !ServerAddress.isValid(address)) {
             return false;

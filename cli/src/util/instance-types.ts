@@ -1,4 +1,5 @@
 export type LoaderType = "fabric" | "forge" | "neoforge";
+export type ResourcePackPolicy = "accept" | "prompt" | "reject";
 
 export interface ClientInstanceMeta {
   name: string;
@@ -8,6 +9,7 @@ export interface ClientInstanceMeta {
   account?: string;
   headless?: boolean;
   mute?: boolean;
+  resourcePackPolicy?: ResourcePackPolicy;
   launchArgs?: string[];
   env?: Record<string, string>;
   javaCommand?: string;

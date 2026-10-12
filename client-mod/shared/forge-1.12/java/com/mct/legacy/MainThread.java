@@ -1,8 +1,8 @@
 package com.mct.legacy;
 
+import com.mct.core.concurrent.ClientTaskQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import net.minecraft.client.Minecraft;
 
@@ -28,7 +28,7 @@ public final class MainThread {
             }
         }
         try {
-            return client.addScheduledTask(callable).get(timeoutMillis, TimeUnit.MILLISECONDS);
+            return ClientTaskQueue.getInstance().call(callable, timeoutMillis);
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof LegacyActionException) {
                 throw (LegacyActionException) exception.getCause();

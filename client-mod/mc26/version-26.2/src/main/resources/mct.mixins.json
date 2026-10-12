@@ -17,7 +17,13 @@
     "MinecraftClientTickMixin",
     "MouseInvokerBridge",
     "PlayerListHudMixin",
-    "ServerResourcePackManagerMixin"
+    "ServerResourcePackManagerMixin",
+    "ConfirmScreenAccessor",
+    "ConnectScreenMixin",
+    "ServerListAccessor",
+    "ResourcePackLoaderMixin",
+    "ResourcePackNetworkHandlerMixin",
+    "ResourcePackStatusMixin"
   ],
   "injectors": {
     "defaultRequire": 1

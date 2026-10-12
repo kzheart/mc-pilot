@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 
 import { buildClientSearchResults } from "../download/SearchCommand.js";
 import type { ClientLoader } from "../download/VersionMatrix.js";
@@ -11,9 +11,18 @@ import { createRequestAction, resolveInstanceName } from "./request-helpers.js";
 import { wrapCommand } from "../util/command.js";
 import { downloadClientModToDir } from "../download/client/ClientDownloader.js";
 import { resolveClientInstanceDir } from "../util/paths.js";
-import type { LoaderType } from "../util/instance-types.js";
+import type { LoaderType, ResourcePackPolicy } from "../util/instance-types.js";
 import type { CommandContext } from "../util/context.js";
 import { resolveBackendNames } from "../util/project.js";
+
+function resourcePackOption() {
+  // Do not set a Commander default: absence must preserve an explicit saved
+  // policy. The mod defaults to accepting packs when no policy is configured.
+  return new Option(
+    "--resource-pack <policy>",
+    "Server resource packs: accept|prompt|reject (default: accept; preserves saved policy)",
+  ).choices(["accept", "prompt", "reject"]);
+}
 
 export async function resolveProfileServerAddress(
   context: Pick<
@@ -93,6 +102,7 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this client (default)")
     .option("--no-mute", "Keep in-game audio enabled for this client")
+    .addOption(resourcePackOption())
     .option("--java <command>", "Java command to use")
     .action(
       wrapCommand(
@@ -111,6 +121,7 @@ export function createClientCommand() {
               account?: string;
               headless?: boolean;
               mute?: boolean;
+              resourcePack?: ResourcePackPolicy;
               java?: string;
             };
           },
@@ -139,6 +150,7 @@ export function createClientCommand() {
             account: options.account,
             headless: options.headless,
             mute: options.mute,
+            resourcePackPolicy: options.resourcePack,
             launchArgs: downloaded.launchArgs,
             env: {
               MCT_CLIENT_MOD_VARIANT: downloaded.variantId,
@@ -174,6 +186,7 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this launch (default)")
     .option("--no-mute", "Keep in-game audio enabled for this launch")
+    .addOption(resourcePackOption())
     .option(
       "--no-server",
       "Launch without connecting to the active profile server",
@@ -197,6 +210,7 @@ export function createClientCommand() {
               wsPort?: number;
               headless?: boolean;
               mute?: boolean;
+              resourcePack?: ResourcePackPolicy;
               force?: boolean;
             };
           },
@@ -210,6 +224,7 @@ export function createClientCommand() {
           return manager.launch(clientName, {
             ...options,
             server: serverAddress,
+            resourcePackPolicy: options.resourcePack,
           });
         },
       ),
@@ -281,9 +296,11 @@ export function createClientCommand() {
     .command("reconnect")
     .description("Reconnect the client to the server")
     .option("--address <address>", "Target server address")
+    .addOption(resourcePackOption())
     .action(
       createRequestAction("client.reconnect", ({ options }) => ({
         address: options.address,
+        resourcePackPolicy: options.resourcePack,
       })),
     );
 
