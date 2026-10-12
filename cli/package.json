@@ -40,7 +40,7 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "format": "biome format --write .",
     "lint": "biome ci .",
-    "prepack": "npm run build",
+    "prepack": "node ../scripts/sync-protocol.mjs && node ../scripts/check-protocol-sync.mjs && npm run build",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "npm run clean && tsc -p tsconfig.json && node --test dist/*.test.js dist/**/*.test.js dist/**/**/*.test.js",
     "test:e2e": "npm run clean && tsc -p tsconfig.json && node --test dist/*.e2e.test.js"

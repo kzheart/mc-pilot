@@ -8,14 +8,16 @@
   "scripts": {
     "build": "npm --prefix cli run build",
     "check:protocol": "node scripts/check-protocol-sync.mjs",
-    "test:cli": "npm --prefix cli test",
+    "test:cli": "npm run check:protocol && npm run test:protocol && npm --prefix cli test",
     "test:cli:e2e": "npm --prefix cli run test:e2e",
     "test": "npm run test:cli && npm run test:cli:e2e && npm run test:real:smoke",
     "test:e2e": "npm run test:cli:e2e",
     "test:real:smoke": "node scripts/run-real-mod-test-suite.mjs --group status-input-move",
     "test:real": "node scripts/run-real-mod-test-suite.mjs",
     "test:real:group": "node scripts/real-mod-full-test.mjs",
-    "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups"
+    "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups",
+    "sync:protocol": "node scripts/sync-protocol.mjs",
+    "test:protocol": "node --test scripts/protocol-contract.test.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -8,7 +8,7 @@ const DEFAULT_VARIANTS_PATH = fileURLToPath(
   new URL("../../data/variants.json", import.meta.url),
 );
 
-function compareVersions(left: string, right: string) {
+export function compareMinecraftVersions(left: string, right: string) {
   const leftParts = left.split(".").map((value) => Number.parseInt(value, 10));
   const rightParts = right
     .split(".")
@@ -41,7 +41,7 @@ export function loadModVariantCatalogSync(
 
 export function sortVariants(variants: ModVariant[]) {
   return [...variants].sort((left, right) => {
-    const versionDelta = compareVersions(
+    const versionDelta = compareMinecraftVersions(
       right.minecraftVersion,
       left.minecraftVersion,
     );
@@ -90,7 +90,7 @@ export function getSupportedMinecraftVersions(catalog: ModVariantCatalog) {
   return [
     ...new Set(catalog.variants.map((variant) => variant.minecraftVersion)),
   ]
-    .sort(compareVersions)
+    .sort(compareMinecraftVersions)
     .reverse();
 }
 

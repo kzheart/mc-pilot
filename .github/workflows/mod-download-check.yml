@@ -20,7 +20,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Check protocol packaging and handler families
+        run: npm run check:protocol && npm run test:protocol
       - run: npm run build
+      - name: Catalog, schema, and process ownership regressions
+        run: node --test cli/dist/download/ModVariantCatalog.test.js cli/dist/download/VersionMatrix.test.js cli/dist/protocol-schema.test.js cli/dist/instance/client-process-ownership.test.js
       - name: Download regression tests
         run: node --test cli/dist/download/client/ModRelease.test.js cli/dist/download/client/ClientDownloader.test.js
       - name: GUI input and proxy topology regressions

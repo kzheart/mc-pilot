@@ -18,6 +18,7 @@ import {
 import { MctError } from "../util/errors.js";
 import {
   getListeningPids,
+  isInProcessTree,
   isProcessRunning,
   killProcessTree,
 } from "../util/process.js";
@@ -163,7 +164,7 @@ export class ClientInstanceManager {
         );
       }
 
-      await this.releaseWsPort(wsPort);
+      this.requireOwnedPortListeners(wsPort, clientName);
 
       const launchCommand = [
         process.execPath,
@@ -730,23 +731,67 @@ export class ClientInstanceManager {
     return port;
   }
 
+  /** Refuse unknown listeners; a port number alone never authorizes termination. */
+  private requireOwnedPortListeners(
+    wsPort: number,
+    clientName: string,
+    entry?: ClientRuntimeEntry,
+    ownedPids = new Set<number>(),
+  ): number[] {
+    // A child can be reparented after its launcher exits. Remember ownership
+    // proved during this stop operation, but discard PIDs observed to exit.
+    for (const pid of ownedPids) {
+      if (!isProcessRunning(pid)) ownedPids.delete(pid);
+    }
+    const listeningPids = getListeningPids(wsPort);
+    const conflictingPids = listeningPids.filter(
+      (pid) =>
+        !entry || (!ownedPids.has(pid) && !isInProcessTree(pid, entry.pid)),
+    );
+    if (conflictingPids.length > 0) {
+      throw new MctError(
+        {
+          code: "PORT_CONFLICT",
+          message: `Client ${clientName}'s WebSocket port ${wsPort} is held by unrelated process(es) ${conflictingPids.join(", ")}. Stop that process yourself or choose a different --ws-port; --force only replaces the tracked client.`,
+          details: {
+            name: clientName,
+            wsPort,
+            ...(entry ? { pid: entry.pid } : {}),
+            listeningPids,
+            conflictingPids,
+          },
+        },
+        5,
+      );
+    }
+    for (const pid of listeningPids) ownedPids.add(pid);
+    return listeningPids;
+  }
+
   private async stopTrackedClient(
     state: GlobalClientState,
     clientName: string,
     entry: ClientRuntimeEntry,
   ) {
+    const ownedPids = new Set<number>();
+    // Check every listener before signalling anything, even the launcher.
+    this.requireOwnedPortListeners(entry.wsPort, clientName, entry, ownedPids);
     if (isProcessRunning(entry.pid)) {
       killProcessTree(entry.pid);
     }
 
-    for (const pid of getListeningPids(entry.wsPort)) {
-      if (pid !== entry.pid) {
+    for (const pid of this.requireOwnedPortListeners(
+      entry.wsPort,
+      clientName,
+      entry,
+      ownedPids,
+    )) {
+      if (pid !== entry.pid && isProcessRunning(pid)) {
         killProcessTree(pid);
       }
     }
 
-    await this.waitForTrackedClientExit(entry);
-    await this.releaseWsPort(entry.wsPort);
+    await this.waitForTrackedClientExit(entry, ownedPids);
 
     delete state.clients[clientName];
     if (state.defaultClient === clientName) {
@@ -754,67 +799,72 @@ export class ClientInstanceManager {
     }
   }
 
-  private async waitForTrackedClientExit(entry: ClientRuntimeEntry) {
+  private async waitForTrackedClientExit(
+    entry: ClientRuntimeEntry,
+    ownedPids: Set<number>,
+  ) {
     const deadline = Date.now() + CLIENT_STOP_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      const listeners = this.requireOwnedPortListeners(
+        entry.wsPort,
+        entry.name,
+        entry,
+        ownedPids,
+      );
+      if (!isProcessRunning(entry.pid) && listeners.length === 0) {
+        return;
+      }
+      await sleep(CLIENT_STOP_POLL_MS);
+    }
+
+    // A different process may bind while we wait. Recheck before escalation.
+    const listeners = this.requireOwnedPortListeners(
+      entry.wsPort,
+      entry.name,
+      entry,
+      ownedPids,
+    );
+    for (const pid of listeners) {
+      if (pid !== entry.pid && isProcessRunning(pid)) {
+        killProcessTree(pid, "SIGKILL");
+      }
+    }
+    if (isProcessRunning(entry.pid)) {
+      killProcessTree(entry.pid, "SIGKILL");
+    }
+    await this.waitForWsPortRelease(entry, ownedPids);
+  }
+
+  private async waitForWsPortRelease(
+    entry: ClientRuntimeEntry,
+    ownedPids: Set<number>,
+  ) {
+    const deadline = Date.now() + CLIENT_PORT_RELEASE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
       if (
-        !isProcessRunning(entry.pid) &&
-        getListeningPids(entry.wsPort).length === 0
+        this.requireOwnedPortListeners(
+          entry.wsPort,
+          entry.name,
+          entry,
+          ownedPids,
+        ).length === 0
       ) {
         return;
       }
       await sleep(CLIENT_STOP_POLL_MS);
     }
 
-    if (isProcessRunning(entry.pid)) {
-      killProcessTree(entry.pid, "SIGKILL");
-    }
-    for (const pid of getListeningPids(entry.wsPort)) {
-      killProcessTree(pid, "SIGKILL");
-    }
-    await this.waitForWsPortRelease(
+    const pids = this.requireOwnedPortListeners(
       entry.wsPort,
-      CLIENT_PORT_RELEASE_TIMEOUT_MS,
+      entry.name,
+      entry,
+      ownedPids,
     );
-  }
-
-  private async releaseWsPort(wsPort: number) {
-    const listeningPids = getListeningPids(wsPort);
-    for (const pid of listeningPids) {
-      killProcessTree(pid);
-    }
-    if (listeningPids.length === 0) {
-      return;
-    }
-
-    try {
-      await this.waitForWsPortRelease(wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
-      return;
-    } catch {}
-
-    for (const pid of getListeningPids(wsPort)) {
-      killProcessTree(pid, "SIGKILL");
-    }
-    await this.waitForWsPortRelease(wsPort, CLIENT_PORT_RELEASE_TIMEOUT_MS);
-  }
-
-  private async waitForWsPortRelease(wsPort: number, timeoutMs: number) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (getListeningPids(wsPort).length === 0) {
-        return;
-      }
-      await sleep(CLIENT_STOP_POLL_MS);
-    }
-
     throw new MctError(
       {
         code: "CLIENT_PORT_BUSY",
-        message: `Timed out waiting for client WebSocket port ${wsPort} to become free`,
-        details: {
-          wsPort,
-          pids: getListeningPids(wsPort),
-        },
+        message: `Timed out waiting for client WebSocket port ${entry.wsPort} to become free`,
+        details: { wsPort: entry.wsPort, pids },
       },
       3,
     );

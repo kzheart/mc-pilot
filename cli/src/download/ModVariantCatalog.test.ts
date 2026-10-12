@@ -4,6 +4,8 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import type { ModVariantCatalog } from "./types.js";
+
 import {
   getBuildableFabricVariants,
   getDefaultVariant,
@@ -65,9 +67,7 @@ test("cli and client-mod variant catalogs stay aligned with the Gradle mod versi
   const cliCatalog = await loadModVariantCatalog();
   const clientCatalog = JSON.parse(
     await readFile(path.join(REPO_ROOT, "client-mod", "variants.json"), "utf8"),
-  ) as {
-    variants: Array<{ id: string; modVersion?: string }>;
-  };
+  ) as ModVariantCatalog;
   const gradleProperties = await readFile(
     path.join(REPO_ROOT, "client-mod", "gradle.properties"),
     "utf8",
@@ -76,28 +76,33 @@ test("cli and client-mod variant catalogs stay aligned with the Gradle mod versi
 
   assert.ok(modVersion);
 
-  for (const variant of cliCatalog.variants) {
-    const matchingClientVariant = clientCatalog.variants.find(
-      (entry) => entry.id === variant.id,
-    );
-    if (!matchingClientVariant) {
-      continue;
-    }
-    assert.equal(
-      variant.modVersion,
-      matchingClientVariant.modVersion,
-      `variant ${variant.id} drifted between cli and client-mod catalogs`,
-    );
-  }
+  assert.deepEqual(
+    cliCatalog,
+    clientCatalog,
+    "the packaged CLI catalog must preserve every variant, field, and top-level setting",
+  );
+  assert.equal(
+    new Set(cliCatalog.variants.map((variant) => variant.id)).size,
+    cliCatalog.variants.length,
+    "variant IDs must be unique",
+  );
+  assert.equal(
+    new Set(
+      cliCatalog.variants.map(
+        (variant) => `${variant.minecraftVersion}-${variant.loader}`,
+      ),
+    ).size,
+    cliCatalog.variants.length,
+    "each version/loader pair must resolve to one variant",
+  );
 
-  const buildableFabricVariants = cliCatalog.variants.filter(
+  const buildableVariants = cliCatalog.variants.filter(
     (variant) =>
-      variant.loader === "fabric" &&
       "gradleModule" in variant &&
       Boolean((variant as { gradleModule?: string }).gradleModule),
   );
-  assert.ok(buildableFabricVariants.length > 0);
-  for (const variant of buildableFabricVariants) {
+  assert.ok(buildableVariants.length > 0);
+  for (const variant of buildableVariants) {
     assert.equal(
       variant.modVersion,
       modVersion,

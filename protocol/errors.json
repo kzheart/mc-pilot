@@ -49,7 +49,7 @@
     {
       "code": "PORT_CONFLICT",
       "exitCode": 5,
-      "description": "端口可连接但归属于无关进程，服务器未真正就绪"
+      "description": "端口由不属于目标客户端或服务端的进程占用，拒绝继续操作"
     },
     {
       "code": "GUI_NOT_OPEN",

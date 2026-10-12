@@ -134,7 +134,7 @@
     {
       "name": "status.all",
       "params": [],
-      "description": "获取聚合状态"
+      "description": "获取聚合状态、当前界面类型与断线原因诊断"
     },
     {
       "name": "sign.read",

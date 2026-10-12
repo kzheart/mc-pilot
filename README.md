@@ -70,6 +70,11 @@ mct down
 
 Clients default to Simplified Chinese (`zh_cn`) with muted audio (`--no-mute` to opt out).
 
+Client launch and stop refuse to terminate unrelated processes occupying the
+configured WebSocket port. They report `PORT_CONFLICT` (exit code 5); stop the
+conflicting process yourself or launch with a different `--ws-port`. `--force`
+only replaces the tracked client, and does not override this ownership check.
+
 <details>
 <summary><b>Project configuration</b> — mct.json, profiles, server directories</summary>
 
