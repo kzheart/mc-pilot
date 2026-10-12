@@ -98,6 +98,9 @@ jobs:
   publish-npm:
     needs: [build-mod, build-cli]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +113,6 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # Trusted publishing (OIDC): no NPM_TOKEN needed
       - name: Publish to npm
         run: npm publish --workspace cli --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
