@@ -3,7 +3,10 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")/../.." && pwd)
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-mapfile -t gpu_stubs < <(find "$root/client-mod/tests/recording-adapters/java/com/mojang" -name '*.java' -print)
+gpu_stubs=()
+while IFS= read -r gpu_stub; do
+  gpu_stubs+=("$gpu_stub")
+done < <(find "$root/client-mod/tests/recording-adapters/java/com/mojang" -name '*.java' -print)
 for api in v1 v2; do
 mkdir -p "$out/$api"
 javac -source 8 -target 8 -Xlint:-options -d "$out/$api" \

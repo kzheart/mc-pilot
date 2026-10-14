@@ -305,7 +305,7 @@ mct record stop --client <client>                   # wait for MP4 finalization
 mct record view shop-demo --client <client> --probe
 ```
 
-These source changes do not constitute a new npm/GitHub release: build the CLI and matching mod JAR using the [local setup instructions](docs/recording.md#use-this-unpublished-build-locally); a registry install alone may still run an older mod. Upstream CLI version `0.19.1` is retained.
+These changes are released in CLI `0.20.0` with matching Mod `0.10.0` artifacts. Follow the [release installation instructions](docs/recording.md#install-the-released-recording-build); upgrading the CLI does not replace the Mod JAR in an existing client.
 
 An opt-in Minecraft 1.20.1 game-audio prototype adds AAC stereo from the game's actual OpenAL mix. Set the game JVM argument `-Dmct.record.audio=true` **before game startup** and keep game audio unmuted; this does not capture a microphone or system audio. The latest audio and visual hand-feedback demonstration was built and tested on **Fabric 1.20.1 only**. Forge/NeoForge 1.20.1 inherit the source but have not received this audio validation. See [audio setup](docs/recording.md#opt-in-game-audio-prototype-1201) and [validation scope and measured results](docs/recording-validation.md); the earlier 27-variant silent-video validation predates the latest hand/audio changes.
 

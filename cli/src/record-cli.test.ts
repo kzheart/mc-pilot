@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,7 +12,9 @@ const execute = promisify(execFile);
 const cli = fileURLToPath(new URL("./index.js", import.meta.url));
 
 test("record CLI works without a project/world, reports old mods and never retries an ambiguous mutation", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "mct-record-cli-"));
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "mct-record-cli-")),
+  );
   const home = path.join(root, "home");
   const instanceDir = path.join(home, "clients", "bot");
   const recordingsDir = path.join(instanceDir, "minecraft", "recordings");

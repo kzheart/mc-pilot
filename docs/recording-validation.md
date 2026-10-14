@@ -1,13 +1,13 @@
 # Native recording and hand-feedback validation
 
-Validated 2026-10-14. This report distinguishes the earlier silent-recording baseline from the later hand-feedback fix and opt-in game-audio prototype. Source publication is not a new npm package or tagged binary release.
+Validated 2026-10-14. This report distinguishes the earlier silent-recording baseline from the later hand-feedback fix and opt-in game-audio prototype. These source changes are published in CLI `0.20.0` and Mod `0.10.0`; publication does not broaden the live-validation scope below.
 
 ## Provenance and scope
 
 - The recording baseline was based on upstream `0a9438f738b760ca4fd3de20e6cfaa8037602335` and completed at `7b0d84c122c5ba9cad4b7b28fb5a59fd8a763ae0`. It retained previously unpublished, validated command-queue, WebSocket, temporary-input and resource-pack fixes, then added native recording and loader-specific corrections
-- The delivered test bundle retained `0.19.0`. Before source publication, the changes were rebased onto upstream `9e3362f22a6e1f6ac8ee1945ee095d5253b1dc44`, preserving its `0.19.1` version and client-cleanup reminders. Catalog artifact versions remain unchanged. A registry install alone does not establish that these source changes or matching mod JARs are installed; use the [local-build instructions](recording.md#use-this-unpublished-build-locally)
+- The delivered test bundle retained `0.19.0`. Before source publication, the changes were rebased onto upstream `9e3362f22a6e1f6ac8ee1945ee095d5253b1dc44`, preserving its `0.19.1` version and client-cleanup reminders. The subsequent release bumps the CLI to `0.20.0` and catalog artifacts to Mod `0.10.0`, including the legacy Forge release tag. A CLI upgrade alone does not replace existing client JARs; use the [release installation instructions](recording.md#install-the-released-recording-build).
 - All 27 catalog Minecraft/loader variants received real-game **silent-video** recording checks against that earlier baseline. That result predates the final hand-feedback and audio changes and is not a 27-variant validation of the latest source
-- The later hand-feedback fix is wired across all 27 variants. The latest complete build and live audiovisual demonstration cover **Fabric 1.20.1 only**. Forge/NeoForge 1.20.1 inherit the audio source but have not received corresponding audio build/runtime validation. Other Minecraft versions do not claim game-audio support
+- The later hand-feedback fix is wired across all 27 variants. Before release, the reported complete build and live audiovisual demonstration covered **Fabric 1.20.1 only**. The release workflow builds all 27 variants; Forge/NeoForge 1.20.1 inherit the audio source but have not received corresponding live audio/runtime validation. Other Minecraft versions do not claim game-audio support.
 
 ## Hand-feedback regression coverage
 

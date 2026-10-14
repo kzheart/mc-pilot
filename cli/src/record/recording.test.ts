@@ -3,6 +3,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -132,7 +133,9 @@ test("recording responses surface failures instead of nesting them inside succes
 });
 
 test("artifact review confines access to finalized local files, including symlink containment", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "mct-record-path-"));
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "mct-record-path-")),
+  );
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = path.join(root, "minecraft", "recordings");
   await mkdir(dir, { recursive: true });

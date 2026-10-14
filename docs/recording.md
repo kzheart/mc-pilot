@@ -2,11 +2,18 @@
 
 `mct record` records Minecraft's own rendered framebuffer through the MC Pilot client mod. It works independently of desktop window capture permissions and does not use ScreenCaptureKit, OBS, screenshots over WebSocket, or an external OS recorder. FFmpeg is a local encoder process only. Default output is **silent H.264 MP4**, with no audio stream; an [opt-in 1.20.1 game-audio prototype](#opt-in-game-audio-prototype-1201) can add AAC audio.
 
-The recording hooks cover all client variants listed by `mct client search`: Fabric, Forge and NeoForge, including Forge 1.12.2 and Minecraft 26.x. A matching recording-capable mod must actually be installed and running; the CLI cannot add recording support to an older mod. The earlier 27-variant silent-video validation predates the latest hand-feedback and audio changes. The latest full build and live audio/visual demonstration cover Fabric 1.20.1 only; see [validation scope](recording-validation.md).
+The recording hooks cover all client variants listed by `mct client search`: Fabric, Forge and NeoForge, including Forge 1.12.2 and Minecraft 26.x. A matching recording-capable mod must actually be installed and running; the CLI cannot add recording support to an older mod. The release workflow builds all 27 variants, while the earlier 27-variant silent-video validation predates the latest hand-feedback and audio changes. The reported live audio/visual demonstration covers Fabric 1.20.1 only; see [validation scope](recording-validation.md).
 
-## Use this unpublished build locally
+## Install the released recording build
 
-Publishing these source changes does not create a new npm package or tagged GitHub release. The CLI retains upstream version `0.19.1`, and the mod catalog retains the existing artifact versions/tags. Installing a current registry CLI or running `client create` without a matching local build can select an older released/cached mod without recording support.
+Native recording is released in CLI **0.20.0**, with matching client Mod **0.10.0** artifacts in GitHub Release `v0.20.0`. Upgrade the CLI and create a new client to download the matching Mod:
+
+```bash
+npm install -g @kzheart_/mc-pilot@0.20.0
+mct client create recording-1.20.1 --version 1.20.1
+```
+
+Upgrading the CLI does not replace the Mod JAR in an existing client. Stop that client before replacing its MC Pilot JAR with the matching Minecraft/loader artifact from `v0.20.0`. The new Mod version uses a separate download-cache version, so new client downloads do not reuse older recording-incapable cached artifacts.
 
 A reproducible source install uses the supplied checkout and its lockfile:
 
@@ -18,7 +25,7 @@ node cli/dist/index.js record --help
 node cli/dist/index.js schema
 ```
 
-Use `node /absolute/path/to/mc-pilot-source/cli/dist/index.js` in place of `mct` below, or install the explicitly supplied local CLI tarball into your chosen prefix. Do not substitute a registry package and assume it contains this patch. A local package can be produced with `npm pack --workspace cli` after building; no publish step is needed. The packaged command, schemas and skill files are checked by the package tests.
+For source development, use `node /absolute/path/to/mc-pilot-source/cli/dist/index.js` in place of `mct` below, or install a local CLI tarball into your chosen prefix. A local package can be produced with `npm pack --workspace cli` after building; no publish step is needed. The packaged command, schemas and skill files are checked by the package tests.
 
 Install the supplied **matching loader and Minecraft version JAR** into the stopped client's actual `gameDir/mods`, replacing its old MC Pilot JAR and keeping exactly one MC Pilot mod in that directory. For example, the tested Fabric 1.21.11 artifact is `client-mod/version-1.21.11/build/libs/mct-client-mod-fabric-1.21.11.jar`. Do not install a Fabric JAR into Forge/NeoForge or use a neighboring client version unless the catalog explicitly maps it.
 
@@ -74,7 +81,7 @@ The prototype captures Minecraft's actual mixed OpenAL output as 48 kHz stereo P
 
 Managed clients default to muted game audio. Use `client create` or `client launch` with `--no-mute` when audible game content is intended, and check the game's volume settings. Valid all-zero game audio stays silent; the recorder does not manufacture sound.
 
-Only **Fabric 1.20.1** has received the latest full build and live game-audio/hand-animation validation. Forge and NeoForge 1.20.1 share these source files but have not received corresponding audio build/runtime validation. No audio support is claimed for other Minecraft versions or untested operating systems/audio devices. The Linux cloud test used OpenAL's null backend for ordinary playback, so it does not establish physical speaker playback or subjective listening quality.
+Only **Fabric 1.20.1** has received the reported live game-audio/hand-animation validation. Forge and NeoForge 1.20.1 share these source files and are built by the release workflow, but have not received corresponding live audio/runtime validation. No audio support is claimed for other Minecraft versions or untested operating systems/audio devices. The Linux cloud test used OpenAL's null backend for ordinary playback, so it does not establish physical speaker playback or subjective listening quality.
 
 Inspect `record status` before and during capture. `capabilities.audioCapture` reports whether audio was requested and whether the game provider is available. Requested but unavailable audio fails explicitly rather than silently producing video-only output. `audioCapture.enabled` means capture is subscribed; `audio` and `audioCapture.trackPresent` become true only after successful finalization. Check sample, nonzero, dropped, padded and trimmed frame counts, `audioCapture.error`, and `audioMuxExitCode` rather than treating an audio stream as proof of audible or synchronized content.
 
