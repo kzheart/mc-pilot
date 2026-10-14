@@ -30,13 +30,36 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
+          java-version: '25'
+      - run: echo "MCT_TEST_JAVA25_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
           java-version: '8'
+      - run: echo "MCT_TEST_JAVA8_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
       - name: Shared main-thread command queue regressions
-        run: sh client-mod/tests/run-client-task-tests.sh
+        run: |
+          sh client-mod/tests/run-client-task-tests.sh
+          sh client-mod/tests/run-connection-request-tests.sh
+          sh client-mod/tests/run-temporary-input-tests.sh
+          sh client-mod/tests/run-async-resource-tests.sh
       - name: Resource-pack contracts and connect hooks
         run: |
           sh client-mod/legacy/tests/run-resourcepack-tests.sh
           python3 client-mod/tests/check-resourcepack-connect-hooks.py
+          JAVA_HOME="$MCT_TEST_JAVA25_HOME" sh client-mod/tests/run-pack-metadata-tests.sh
+      - name: Exact native WebSocket wrapper regressions
+        shell: bash
+        run: |
+          libs="$RUNNER_TEMP/mct-websocket-test-libs"
+          mkdir -p "$libs"
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/java-websocket/Java-WebSocket/1.5.6/Java-WebSocket-1.5.6.jar -o "$libs/websocket.jar"
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar -o "$libs/gson.jar"
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.9/slf4j-api-2.0.9.jar -o "$libs/slf4j.jar"
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/com/google/guava/guava/21.0/guava-21.0.jar -o "$libs/guava.jar"
+          MCT_TEST_GUAVA_JAR="$libs/guava.jar" sh client-mod/tests/run-legacy-reconnect-tests.sh
+          JAVA_HOME="$MCT_TEST_JAVA25_HOME" MCT_TEST_GUAVA_JAR="$libs/guava.jar" sh client-mod/tests/run-legacy-reconnect-tests.sh
+          MCT_TEST_WEBSOCKET_JAR="$libs/websocket.jar" MCT_TEST_GSON_JAR="$libs/gson.jar" MCT_TEST_SLF4J_JAR="$libs/slf4j.jar" bash client-mod/tests/run-websocket-regression-tests.sh
       - name: Download regression tests
         run: node --test cli/dist/download/client/ModRelease.test.js cli/dist/download/client/ClientDownloader.test.js
       - name: GUI input and proxy topology regressions

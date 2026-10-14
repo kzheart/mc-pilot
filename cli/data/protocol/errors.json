@@ -105,6 +105,11 @@
       "code": "SERVER_STDIN_WRITE_FAILED",
       "exitCode": 5,
       "description": "向服务器 stdin FIFO 写入失败"
+    },
+    {
+      "code": "CLIENT_BUSY",
+      "exitCode": 3,
+      "description": "客户端命令执行队列已满，本次请求未接受也未执行"
     }
   ]
 }

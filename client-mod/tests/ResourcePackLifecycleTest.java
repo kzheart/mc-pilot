@@ -99,6 +99,16 @@ public final class ResourcePackLifecycleTest {
         legacy.unverified("http"); // Stale transport completion must not recreate an offer.
         eq("idle", legacy.snapshot().get("state"));
 
+        // The 1.18.2 --server path invokes ConnectScreen with a null ServerInfo.
+        eq("127.0.0.1:25565", ResourcePackPolicy.ensureServerInfo(null, "127.0.0.1", 25565, value -> value));
+        eq("localhost:43503", ResourcePackPolicy.ensureServerInfo(null, "localhost", 43503, value -> value));
+        eq("[::1]:25565", ResourcePackPolicy.ensureServerInfo(null, "::1", 25565, value -> value));
+        eq("[::1]:25565", ResourcePackPolicy.ensureServerInfo(null, "[::1]", 25565, value -> value));
+        Object suppliedEntry = new Object();
+        eq(suppliedEntry, ResourcePackPolicy.ensureServerInfo(suppliedEntry, "localhost", 25565, value -> {
+            throw new AssertionError("Existing saved entry must retain its preferences and identity");
+        }));
+
         System.out.println("Resource-pack lifecycle/policy checks passed: " + checks);
     }
 

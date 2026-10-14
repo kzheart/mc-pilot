@@ -1,9 +1,7 @@
 package com.mct.legacy;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.mct.core.protocol.WebSocketRequestService;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -15,99 +13,139 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
-/** Minimal RFC 6455 server; each request is dispatched through the ActionRouter. */
+/** RFC 6455 transport; shared bounded dispatch never blocks its frame readers. */
 public final class LegacyWebSocketServer extends Thread {
-
     private static final String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    private static final Gson GSON = new GsonBuilder().serializeNulls().create();
+    private static final Gson GSON = new Gson();
     private final int port;
-    private final ActionRouter router;
+    private final WebSocketRequestService<Socket> requests;
+    private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean closing = new AtomicBoolean();
+    private volatile ServerSocket listener;
 
     public LegacyWebSocketServer(int port, ActionRouter router) {
         super("mct-forge-1.12-websocket");
         this.port = port;
-        this.router = router;
+        this.requests = new WebSocketRequestService<>(10_000L,
+            (action, params) -> router.execute(action, GSON.toJsonTree(params).getAsJsonObject()),
+            failure -> failure instanceof LegacyActionException ? ((LegacyActionException) failure).code : "INTERNAL_ERROR",
+            () -> new WebSocketRequestService.Events(0, null));
         setDaemon(true);
     }
 
-    @Override
-    public void run() {
-        try (ServerSocket listener = new ServerSocket(port, 16, InetAddress.getByName("127.0.0.1"))) {
-            while (!isInterrupted()) {
-                final Socket socket = listener.accept();
-                Thread connection = new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        handleConnection(socket);
-                    }
-                }, "mct-forge-1.12-connection");
-                connection.setDaemon(true);
-                connection.start();
+    @Override public void run() {
+        try (ServerSocket server = new ServerSocket(port, 16, InetAddress.getByName("127.0.0.1"))) {
+            listener = server;
+            while (!closing.get()) {
+                final Socket socket = server.accept();
+                // Bound even pre-handshake readers; incomplete handshakes expire.
+                if (connections.size() >= 64 || closing.get()) { socket.close(); continue; }
+                connections.add(socket);
+                Thread reader = new Thread(() -> handleConnection(socket), "mct-forge-1.12-reader");
+                reader.setDaemon(true);
+                reader.start();
             }
         } catch (IOException exception) {
-            exception.printStackTrace();
-        }
+            if (!closing.get()) exception.printStackTrace();
+        } finally { shutdown(); }
+    }
+
+    public void shutdown() {
+        closing.set(true);
+        ServerSocket server = listener;
+        if (server != null) try { server.close(); } catch (IOException ignored) {}
+        for (Socket socket : connections) closeSocket(socket);
+        requests.close();
+    }
+
+    private void closeSocket(Socket socket) {
+        requests.closeConnection(socket);
+        try { socket.close(); } catch (IOException ignored) {}
     }
 
     private void handleConnection(Socket socket) {
+        Connection outputQueue = null;
         try (Socket connection = socket;
              BufferedInputStream input = new BufferedInputStream(connection.getInputStream());
              BufferedOutputStream output = new BufferedOutputStream(connection.getOutputStream())) {
+            connection.setSoTimeout(5_000);
             String websocketKey = readHandshake(input);
             writeHandshake(output, websocketKey);
+            connection.setSoTimeout(0);
+            if (!requests.open(connection)) return;
+            outputQueue = new Connection(connection, output);
+            final Connection writer = outputQueue;
             while (!connection.isClosed()) {
                 Frame frame = readFrame(input);
                 if (frame.opcode == 8) {
-                    writeFrame(output, 8, new byte[0]);
+                    requests.closeConnection(connection);
+                    writer.send(8, new byte[0]);
+                    writer.thread.join(250L);
+                    // Close the raw socket before buffered-stream cleanup: a slow
+                    // writer may otherwise hold the output monitor indefinitely.
+                    closeSocket(connection);
                     break;
                 }
-                if (frame.opcode == 9) {
-                    writeFrame(output, 10, frame.payload);
-                    continue;
-                }
-                if (frame.opcode != 1) {
-                    continue;
-                }
-                String request = new String(frame.payload, StandardCharsets.UTF_8);
-                String response = executeRequest(request);
-                writeFrame(output, 1, response.getBytes(StandardCharsets.UTF_8));
+                if (frame.opcode == 9) { writer.send(10, frame.payload); continue; }
+                if (frame.opcode != 1) continue;
+                requests.receive(connection, new String(frame.payload, StandardCharsets.UTF_8),
+                    response -> writer.send(1, response.getBytes(StandardCharsets.UTF_8)));
             }
         } catch (EOFException ignored) {
         } catch (Exception exception) {
-            exception.printStackTrace();
+            if (!closing.get() && !socket.isClosed()) exception.printStackTrace();
+        } finally {
+            closeSocket(socket);
+            if (outputQueue != null) outputQueue.thread.interrupt();
+            connections.remove(socket);
         }
     }
 
-    private String executeRequest(String raw) {
-        JsonObject request = new JsonParser().parse(raw).getAsJsonObject();
-        String id = Params.string(request, "id");
-        String action = Params.string(request, "action");
-        JsonObject params = request.has("params") && request.get("params").isJsonObject()
-            ? request.getAsJsonObject("params")
-            : new JsonObject();
-        Map<String, Object> response = new LinkedHashMap<String, Object>();
-        response.put("id", id);
-        try {
-            Map<String, Object> data = router.execute(action, params);
-            response.put("success", true);
-            response.put("data", data);
-            response.put("error", null);
-        } catch (LegacyActionException exception) {
-            response.put("success", false);
-            response.put("data", null);
-            response.put("error", exception.code);
-        } catch (Exception exception) {
-            exception.printStackTrace();
-            response.put("success", false);
-            response.put("data", null);
-            response.put("error", "INTERNAL_ERROR");
+    /** Bounded async writes keep a slow peer from occupying a command worker or watchdog. */
+    private final class Connection {
+        final Socket socket;
+        // One active plus sixteen accepted actions may complete before the writer
+        // runs. Leave bounded headroom for that burst, BUSY replies and control
+        // frames; the independent 4 MiB limit still bounds retained payloads.
+        final ArrayBlockingQueue<Frame> pending = new ArrayBlockingQueue<>(64);
+        final AtomicLong bufferedBytes = new AtomicLong();
+        final Thread thread;
+
+        Connection(Socket socket, BufferedOutputStream output) {
+            this.socket = socket;
+            thread = new Thread(() -> {
+                try {
+                    while (!socket.isClosed()) {
+                        Frame frame = pending.take();
+                        writeFrame(output, frame.opcode, frame.payload);
+                        bufferedBytes.addAndGet(-frame.payload.length);
+                        if (frame.opcode == 8) return;
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                } catch (IOException ignored) {
+                } finally { pending.clear(); closeSocket(socket); }
+            }, "mct-forge-1.12-writer");
+            thread.setDaemon(true);
+            thread.start();
         }
-        response.put("eventsSinceLastCall", 0);
-        response.put("lastEventType", null);
-        return GSON.toJson(response);
+
+        void send(int opcode, byte[] payload) {
+            if (socket.isClosed()) return;
+            long bytes = bufferedBytes.addAndGet(payload.length);
+            if (bytes > 4L * 1024 * 1024 || !pending.offer(new Frame(opcode, payload))) {
+                bufferedBytes.addAndGet(-payload.length);
+                // No safe room for another frame; terminate and leave submitted outcomes unknown.
+                closeSocket(socket);
+                thread.interrupt();
+            }
+        }
     }
 
     private String readHandshake(BufferedInputStream input) throws IOException {
@@ -174,7 +212,7 @@ public final class LegacyWebSocketServer extends Thread {
                 length = (length << 8) | readRequired(input);
             }
         }
-        if (length > 4L * 1024 * 1024) {
+        if (length < 0 || length > 4L * 1024 * 1024) {
             throw new IOException("WebSocket frame too large");
         }
         byte[] mask = masked ? readBytes(input, 4) : null;
@@ -199,7 +237,7 @@ public final class LegacyWebSocketServer extends Thread {
             } else {
                 output.write(127);
                 for (int shift = 56; shift >= 0; shift -= 8) {
-                    output.write((payload.length >>> shift) & 0xff);
+                    output.write((int) (((long) payload.length >>> shift) & 0xff));
                 }
             }
             output.write(payload);

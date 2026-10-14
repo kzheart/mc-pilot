@@ -50,6 +50,11 @@ public final class ResourcePackSupport {
         return rememberedServers.getOrDefault(key(fallback.address), fallback);
     }
 
+    public static ServerInfo prepareConnection(ServerInfo info, ServerAddress address,
+            java.util.function.Function<String, ServerInfo> factory) {
+        return prepareConnection(ResourcePackPolicy.ensureServerInfo(info, address.getAddress(), address.getPort(), factory));
+    }
+
     public static ServerInfo prepareConnection(ServerInfo info) {
         if (info == null) return null;
         // ConnectScreen's entry point is also used by initial quick-play connections.

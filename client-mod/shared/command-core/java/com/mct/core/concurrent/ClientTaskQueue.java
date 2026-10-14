@@ -96,6 +96,7 @@ public final class ClientTaskQueue {
         }
         long started = nanoTime.getAsLong();
         try {
+            TemporaryInputLeases.getInstance().drainClosed();
             for (int count = 0; count < maxTasksPerDrain; count++) {
                 if (count > 0 && nanoTime.getAsLong() - started >= maxDrainNanos) {
                     return;

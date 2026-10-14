@@ -2,6 +2,8 @@ package com.mct.core.handler;
 
 import static com.mct.core.util.ParamHelper.*;
 
+import com.mct.core.concurrent.TemporaryInputLeases;
+import com.mct.core.concurrent.TemporaryInputLeases.Scope;
 import com.mct.core.input.KeyboardInputBridge;
 import com.mct.core.input.MouseInputBridge;
 import com.mct.core.state.ClientStateTracker;
@@ -29,6 +31,9 @@ public final class InputHandler extends ActionHandler {
 
     private final Set<String> heldInputKeys = Collections.synchronizedSet(new LinkedHashSet<>());
     private final MouseInputHandler mouseInput;
+    private static final TemporaryInputLeases TEMPORARY_INPUT = TemporaryInputLeases.getInstance();
+    private final Set<Object> heldControls = new LinkedHashSet<>();
+    private final Map<String, Set<Object>> namedControls = new LinkedHashMap<>();
 
     public InputHandler(Minecraft client, ClientStateTracker stateTracker) {
         super(client, stateTracker);
@@ -57,38 +62,23 @@ public final class InputHandler extends ActionHandler {
     }
 
     public void pressMovementKey(KeyMapping key, long milliseconds) {
-        runOnClientThread(() -> {
-            key.setDown(true);
-            return true;
-        });
-        safeSleep(milliseconds);
-        runOnClientThread(() -> {
-            key.setDown(false);
-            return true;
-        });
+        Scope scope = temporaryInputScope();
+        try { acquireMovementKey(scope, key); safeSleep(milliseconds); }
+        finally { closeTemporaryInput(scope); }
         safeSleep(40L);
     }
 
     public void pressMovementKeys(boolean forward, boolean back, boolean left, boolean right, boolean jump, boolean sneak, long milliseconds) {
-        runOnClientThread(() -> {
-            client.options.keyUp.setDown(forward);
-            client.options.keyDown.setDown(back);
-            client.options.keyLeft.setDown(left);
-            client.options.keyRight.setDown(right);
-            client.options.keyJump.setDown(jump);
-            client.options.keyShift.setDown(sneak);
-            return true;
-        });
-        safeSleep(milliseconds);
-        runOnClientThread(() -> {
-            client.options.keyUp.setDown(false);
-            client.options.keyDown.setDown(false);
-            client.options.keyLeft.setDown(false);
-            client.options.keyRight.setDown(false);
-            client.options.keyJump.setDown(false);
-            client.options.keyShift.setDown(false);
-            return true;
-        });
+        Scope scope = temporaryInputScope();
+        try {
+            if (forward) acquireMovementKey(scope, client.options.keyUp);
+            if (back) acquireMovementKey(scope, client.options.keyDown);
+            if (left) acquireMovementKey(scope, client.options.keyLeft);
+            if (right) acquireMovementKey(scope, client.options.keyRight);
+            if (jump) acquireMovementKey(scope, client.options.keyJump);
+            if (sneak) acquireMovementKey(scope, client.options.keyShift);
+            safeSleep(milliseconds);
+        } finally { closeTemporaryInput(scope); }
     }
 
     // --- Private action methods ---
@@ -104,9 +94,9 @@ public final class InputHandler extends ActionHandler {
         long duration = Math.max(1L, getInt(params, "duration"));
         InputBinding binding = resolveInputBinding(keyName);
         Instant startedAt = Instant.now();
-        dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-        safeSleep(duration);
-        dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
+        Scope scope = temporaryInputScope();
+        try { acquireInputBinding(scope, binding); safeSleep(duration); }
+        finally { closeTemporaryInput(scope); }
         return com.mct.core.util.MctMaps.mapOf(
             "held", true,
             "key", binding.name,
@@ -131,15 +121,14 @@ public final class InputHandler extends ActionHandler {
             .map(String::valueOf)
             .map(this::resolveInputBinding)
             .collect(Collectors.toList());
-        for (InputBinding binding : keys) {
-            dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-            safeSleep(35L);
-        }
-        safeSleep(75L);
-        for (int index = keys.size() - 1; index >= 0; index--) {
-            dispatchInputBinding(keys.get(index), GLFW.GLFW_RELEASE);
-            safeSleep(20L);
-        }
+        Scope scope = temporaryInputScope();
+        try {
+            for (InputBinding binding : keys) {
+                acquireInputBinding(scope, binding);
+                safeSleep(35L);
+            }
+            safeSleep(75L);
+        } finally { closeTemporaryInput(scope); }
         return com.mct.core.util.MctMaps.mapOf(
             "pressed", true,
             "keys", keys.stream().map(b -> b.name).collect(Collectors.toList())
@@ -172,13 +161,13 @@ public final class InputHandler extends ActionHandler {
     }
 
     private void pressInputBinding(InputBinding binding, long holdMillis) {
-        dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-        safeSleep(holdMillis);
-        dispatchInputBinding(binding, GLFW.GLFW_RELEASE);
+        Scope scope = temporaryInputScope();
+        try { acquireInputBinding(scope, binding); safeSleep(holdMillis); }
+        finally { closeTemporaryInput(scope); }
         safeSleep(40L);
     }
 
-    private void dispatchInputBinding(InputBinding binding, int action) {
+    private void rawDispatchInputBinding(InputBinding binding, int action) {
         if (binding.keyBinding != null) {
             runOnClientThread(() -> {
                 KeyMapping keyBinding = binding.keyBinding;
@@ -189,13 +178,13 @@ public final class InputHandler extends ActionHandler {
                 KeyMapping.set(boundKey, action != GLFW.GLFW_RELEASE);
                 return true;
             });
-            updateHeldInputKey(binding.name, action != GLFW.GLFW_RELEASE);
+            updateHeldInputKey(binding, action != GLFW.GLFW_RELEASE);
             return;
         }
 
         if (binding.mouseButton != null) {
             dispatchMouseButton(binding.name, action);
-            updateHeldInputKey(binding.name, action != GLFW.GLFW_RELEASE);
+            updateHeldInputKey(binding, action != GLFW.GLFW_RELEASE);
             return;
         }
 
@@ -205,14 +194,27 @@ public final class InputHandler extends ActionHandler {
             ClientVersionModulesHolder.get().compatibility().dispatchKey(client, keyCode, scancode, action);
             return true;
         });
-        updateHeldInputKey(binding.name, action != GLFW.GLFW_RELEASE);
+        updateHeldInputKey(binding, action != GLFW.GLFW_RELEASE);
     }
 
-    private void updateHeldInputKey(String key, boolean pressed) {
+    private void updateHeldInputKey(InputBinding binding, boolean pressed) {
+        String key = binding.name;
+        Object control = physicalInputKey(binding);
+        recordControl(control, pressed);
         if (pressed) {
             heldInputKeys.add(key);
-        } else {
-            heldInputKeys.remove(key);
+            namedControls.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(control);
+        }
+    }
+
+    private void recordControl(Object control, boolean held) {
+        if (held) { heldControls.add(control); return; }
+        heldControls.remove(control);
+        java.util.Iterator<Map.Entry<String, Set<Object>>> names = namedControls.entrySet().iterator();
+        while (names.hasNext()) {
+            Map.Entry<String, Set<Object>> name = names.next();
+            name.getValue().remove(control);
+            if (name.getValue().isEmpty()) { heldInputKeys.remove(name.getKey()); names.remove(); }
         }
     }
 
@@ -223,22 +225,109 @@ public final class InputHandler extends ActionHandler {
     }
 
     <T> T withTemporaryModifiers(List<String> modifiers, java.util.function.Supplier<T> action) {
-        ArrayList<InputBinding> acquired = new ArrayList<>();
-        for (String modifier : modifiers) {
-            InputBinding binding = resolveInputBinding(modifier);
-            if (heldInputKeys.contains(binding.name)) {
-                continue;
-            }
-            dispatchInputBinding(binding, GLFW.GLFW_PRESS);
-            acquired.add(binding);
-        }
+        Scope scope = temporaryInputScope();
         try {
+            for (String modifier : modifiers) acquireInputBinding(scope, resolveInputBinding(modifier));
             return action.get();
-        } finally {
-            for (int index = acquired.size() - 1; index >= 0; index--) {
-                dispatchInputBinding(acquired.get(index), GLFW.GLFW_RELEASE);
-            }
+        } finally { closeTemporaryInput(scope); }
+    }
+
+
+    Scope temporaryInputScope() {
+        try { return TEMPORARY_INPUT.openScope(); }
+        catch (java.util.concurrent.RejectedExecutionException full) { throw new ActionException("CLIENT_BUSY"); }
+    }
+
+    void closeTemporaryInput(Scope scope) {
+        scope.close();
+        // On cancellation the tick-owned cleanup remains live without occupying a worker.
+        if (!Thread.currentThread().isInterrupted()) runOnClientThread(() -> { TEMPORARY_INPUT.drainClosed(); return true; });
+    }
+
+    private Object physicalInputKey(InputBinding binding) {
+        if (binding.mouseButton != null) return "mouse:" + binding.mouseButton;
+        return binding.keyBinding == null ? "key:" + binding.keyCode : physicalMovementKey(binding.keyBinding);
+    }
+
+    private Object physicalMovementKey(KeyMapping binding) {
+        InputConstants.Key bound = ((KeyBindingAccessor) binding).mct$getBoundKey();
+        String kind = bound.getType() == InputConstants.Type.MOUSE ? "mouse:" : bound.getType() == InputConstants.Type.SCANCODE ? "scan:" : "key:";
+        return kind + bound.getValue();
+    }
+
+    private boolean inputIsHeld(InputBinding binding) {
+        Object physical = physicalInputKey(binding);
+        if (heldControls.contains(physical)) return true;
+        for (KeyMapping mapping : client.options.keyMappings) {
+            if (physicalMovementKey(mapping).equals(physical) && mapping.isDown()) return true;
         }
+        String identity = physical.toString();
+        int code = Integer.parseInt(identity.substring(identity.indexOf(':') + 1));
+        if (identity.startsWith("mouse:")) return GLFW.glfwGetMouseButton(client.getWindow().handle(), code) == GLFW.GLFW_PRESS;
+        return identity.startsWith("key:") && code >= 0 && GLFW.glfwGetKey(client.getWindow().handle(), code) == GLFW.GLFW_PRESS;
+    }
+
+    private void acquireInputBinding(Scope scope, InputBinding binding) {
+        runOnClientThread(() -> {
+            try {
+                if (!TEMPORARY_INPUT.acquire(scope, physicalInputKey(binding), () -> inputIsHeld(binding),
+                        held -> rawDispatchInputBinding(binding, held ? GLFW.GLFW_PRESS : GLFW.GLFW_RELEASE)))
+                    throw new ActionException("INTERNAL_ERROR");
+                updateHeldInputKey(binding, true);
+            } catch (java.util.concurrent.RejectedExecutionException full) { throw new ActionException("CLIENT_BUSY"); }
+            return true;
+        });
+    }
+
+    void acquireMouseButton(Scope scope, String name) {
+        String button = normalizeMouseButton(name);
+        int code = "left".equals(button) ? GLFW.GLFW_MOUSE_BUTTON_LEFT : "right".equals(button) ? GLFW.GLFW_MOUSE_BUTTON_RIGHT : GLFW.GLFW_MOUSE_BUTTON_MIDDLE;
+        acquireInputBinding(scope, new InputBinding(button, null, code, null));
+    }
+
+    private void acquireMovementKey(Scope scope, KeyMapping key) {
+        runOnClientThread(() -> {
+            Object control = physicalMovementKey(key);
+            try {
+                if (!TEMPORARY_INPUT.acquire(scope, control, key::isDown, held -> writeMovementKey(key, held)))
+                    throw new ActionException("INTERNAL_ERROR");
+            } catch (java.util.concurrent.RejectedExecutionException full) { throw new ActionException("CLIENT_BUSY"); }
+            return true;
+        });
+    }
+
+    private void writeMovementKey(KeyMapping key, boolean held) {
+        InputConstants.Key bound = ((KeyBindingAccessor) key).mct$getBoundKey();
+        if (bound.getType() == InputConstants.Type.MOUSE) {
+            int button = bound.getValue();
+            if (button < 0 || button > 2) {
+                // Extra buttons still need the native release path, not only a key flag.
+                runOnClientThread(() -> {
+                    ((MouseInputBridge) client.mouseHandler).mct$onMouseButton(client.getWindow().handle(), button,
+                        held ? GLFW.GLFW_PRESS : GLFW.GLFW_RELEASE, 0);
+                    return true;
+                });
+            } else mouseInput.dispatchMouseButton(button == 0 ? "left" : button == 1 ? "right" : "middle",
+                held ? GLFW.GLFW_PRESS : GLFW.GLFW_RELEASE);
+        } else {
+            if (held) KeyMapping.click(bound);
+            KeyMapping.set(bound, held);
+        }
+        recordControl(physicalMovementKey(key), held);
+    }
+
+    public void setMovementKey(KeyMapping key, boolean held) {
+        Object control = physicalMovementKey(key);
+        TEMPORARY_INPUT.persistent(control, held, value -> writeMovementKey(key, value));
+    }
+
+    private void dispatchInputBinding(InputBinding binding, int action) {
+        runOnClientThread(() -> {
+            TEMPORARY_INPUT.persistent(physicalInputKey(binding), action != GLFW.GLFW_RELEASE,
+                held -> rawDispatchInputBinding(binding, held ? GLFW.GLFW_PRESS : GLFW.GLFW_RELEASE));
+            if (action != GLFW.GLFW_RELEASE) updateHeldInputKey(binding, true);
+            return true;
+        });
     }
 
     private InputBinding resolveInputBinding(String keyName) {

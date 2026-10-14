@@ -1,6 +1,7 @@
 package com.mct.legacy;
 
 import com.google.gson.JsonObject;
+import com.mct.core.concurrent.TemporaryInputLeases.Scope;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -21,7 +22,7 @@ import org.lwjgl.input.Mouse;
  */
 public final class InputActions extends LegacyActions {
 
-    private final Set<String> heldKeys = Collections.synchronizedSet(new LinkedHashSet<String>());
+    private final Set<String> heldKeys = TemporaryInputs.heldNames;
     // LWJGL2's Mouse.getX/getY only refresh on the next input poll, so track our own cursor.
     private volatile double virtualMouseX = -1.0D;
     private volatile double virtualMouseY = -1.0D;
@@ -161,14 +162,22 @@ public final class InputActions extends LegacyActions {
             throw new LegacyActionException("INVALID_STATE");
         }
 
+        Scope scope = TemporaryInputs.open();
+        final GuiScreen[] original = new GuiScreen[1];
+        try {
         onClient(() -> {
+            final GuiScreen screen = client.currentScreen;
+            if (screen == null) throw new LegacyActionException("INVALID_STATE");
+            original[0] = screen;
             moveHardwareCursor(fromX, fromY);
-            Reflect.invoke(
-                client.currentScreen, GuiScreen.class,
-                new Class<?>[] {int.class, int.class, int.class},
-                new Object[] {fromX, fromY, mouseButton},
-                "mouseClicked", "func_73864_a"
-            );
+            if (!TemporaryInputs.LEASES.acquire(scope, java.util.Arrays.asList(screen, mouseButton), () -> false, down -> {
+                // A disposed/replaced screen must not receive a late synthetic release.
+                if (client.currentScreen != screen) return;
+                Reflect.invoke(screen, GuiScreen.class,
+                    new Class<?>[] {int.class, int.class, int.class},
+                    new Object[] {down ? fromX : toX, down ? fromY : toY, mouseButton},
+                    down ? "mouseClicked" : "mouseReleased", down ? "func_73864_a" : "func_146286_b");
+            })) throw new LegacyActionException("INTERNAL_ERROR", "temporary input canceled");
             return true;
         });
         MainThread.sleep(50L);
@@ -178,9 +187,7 @@ public final class InputActions extends LegacyActions {
             int nextX = (int) Math.round(fromX + ((toX - fromX) * progress));
             int nextY = (int) Math.round(fromY + ((toY - fromY) * progress));
             onClient(() -> {
-                if (client.currentScreen == null) {
-                    return false;
-                }
+                if (client.currentScreen != original[0]) throw new LegacyActionException("INVALID_STATE");
                 moveHardwareCursor(nextX, nextY);
                 Reflect.invoke(
                     client.currentScreen, GuiScreen.class,
@@ -192,17 +199,7 @@ public final class InputActions extends LegacyActions {
             });
             MainThread.sleep(25L);
         }
-        onClient(() -> {
-            if (client.currentScreen != null) {
-                Reflect.invoke(
-                    client.currentScreen, GuiScreen.class,
-                    new Class<?>[] {int.class, int.class, int.class},
-                    new Object[] {toX, toY, mouseButton},
-                    "mouseReleased", "func_146286_b"
-                );
-            }
-            return true;
-        });
+        } finally { TemporaryInputs.close(scope); }
         return map(
             "dragged", true,
             "button", button,
@@ -268,9 +265,9 @@ public final class InputActions extends LegacyActions {
         String keyName = normalizeKeyName(Params.requireString(params, "key"));
         long duration = Math.max(1L, Params.intValue(params, "duration", 100));
         long startedAt = System.currentTimeMillis();
-        dispatchKey(keyName, true);
-        MainThread.sleep(duration);
-        dispatchKey(keyName, false);
+        Scope scope = TemporaryInputs.open();
+        try { acquireKey(scope, keyName); MainThread.sleep(duration); }
+        finally { TemporaryInputs.close(scope); }
         return map("held", true, "key", keyName, "actualDuration", System.currentTimeMillis() - startedAt);
     }
 
@@ -285,23 +282,42 @@ public final class InputActions extends LegacyActions {
         for (String key : Params.stringList(params, "keys")) {
             keys.add(normalizeKeyName(key));
         }
-        for (String key : keys) {
-            dispatchKey(key, true);
-            MainThread.sleep(35L);
-        }
-        MainThread.sleep(75L);
-        for (int index = keys.size() - 1; index >= 0; index--) {
-            dispatchKey(keys.get(index), false);
-            MainThread.sleep(20L);
-        }
+        Scope scope = TemporaryInputs.open();
+        try {
+            for (String key : keys) { acquireKey(scope, key); MainThread.sleep(35L); }
+            MainThread.sleep(75L);
+        } finally { TemporaryInputs.close(scope); }
         return map("pressed", true, "keys", keys);
     }
 
     private void pressAndRelease(String keyName, long holdMillis) {
-        dispatchKey(keyName, true);
-        MainThread.sleep(holdMillis);
-        dispatchKey(keyName, false);
+        Scope scope = TemporaryInputs.open();
+        try { acquireKey(scope, keyName); MainThread.sleep(holdMillis); }
+        finally { TemporaryInputs.close(scope); }
         MainThread.sleep(40L);
+    }
+
+    private void acquireKey(Scope scope, String name) {
+        onClient(() -> {
+            final GuiScreen screen = client.currentScreen;
+            final KeyBinding binding = gameplayBinding(name);
+            final int code = binding != null ? binding.getKeyCode() : lwjglKeyCode(name);
+            if (code <= 0) throw new LegacyActionException("INVALID_PARAMS");
+            try {
+                if (!TemporaryInputs.LEASES.acquire(scope, TemporaryInputs.key(code),
+                        () -> TemporaryInputs.held(code) || heldKeys.contains(name), down -> {
+                    if (screen == null) {
+                        if (down) KeyBinding.onTick(code);
+                        TemporaryInputs.setKeyState(code, down);
+                    } else if (down && client.currentScreen == screen) {
+                        typeChar(screen, charForKey(name), code);
+                    }
+                    TemporaryInputs.recordName(name, code, down);
+                })) throw new LegacyActionException("INTERNAL_ERROR", "temporary input canceled");
+                TemporaryInputs.recordName(name, code, true);
+            } catch (java.util.concurrent.RejectedExecutionException full) { throw new LegacyActionException("CLIENT_BUSY"); }
+            return true;
+        });
     }
 
     private void dispatchKey(String keyName, boolean down) {
@@ -311,6 +327,7 @@ public final class InputActions extends LegacyActions {
                 if (down) {
                     typeChar(screen, charForKey(keyName), lwjglKeyCode(keyName));
                 }
+                TemporaryInputs.recordName(keyName, lwjglKeyCode(keyName), down);
                 return true;
             }
             KeyBinding binding = gameplayBinding(keyName);
@@ -321,14 +338,10 @@ public final class InputActions extends LegacyActions {
             if (down) {
                 KeyBinding.onTick(keyCode);
             }
-            KeyBinding.setKeyBindState(keyCode, down);
+            TemporaryInputs.persistent(keyCode, down);
+            TemporaryInputs.recordName(keyName, keyCode, down);
             return true;
         });
-        if (down) {
-            heldKeys.add(keyName);
-        } else {
-            heldKeys.remove(keyName);
-        }
     }
 
     private void typeChar(GuiScreen screen, char value, int keyCode) {

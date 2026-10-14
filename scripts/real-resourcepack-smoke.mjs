@@ -41,6 +41,7 @@ const cases = [
   { id: 'http-failure', response: '404' },
   { id: 'invalid-pack', response: 'invalid' },
   { id: 'download-timeout', response: 'slow', marker: true },
+  { id: 'download-disconnect', response: 'slow', disconnectDuringDownload: true },
 ].filter(test => selected.length === 0 || selected.includes(test.id));
 assert(cases.length, 'No matching cases');
 await mkdir(output, { recursive: true });
@@ -48,6 +49,7 @@ const report = { startedAt: new Date().toISOString(), version, client, serverJar
 report.cliEntrySha256 = createHash('sha256').update(await readFile(cliPath)).digest('hex');
 const managerPath = path.join(path.dirname(cliPath), 'instance', 'ClientInstanceManager.js');
 report.cliClientManagerSha256 = createHash('sha256').update(await readFile(managerPath)).digest('hex');
+report.cliWebSocketClientSha256 = createHash('sha256').update(await readFile(path.join(path.dirname(cliPath), 'client', 'WebSocketClient.js'))).digest('hex');
 const meta = JSON.parse(await readFile(path.join(home, 'clients', client, 'instance.json'), 'utf8'));
 assert.equal(meta.mcVersion, version);
 const modPath = meta.env?.MCT_CLIENT_MOD_JAR;
@@ -133,6 +135,7 @@ for (const test of cases) {
     http = createServer(async (request, response) => {
       record.requests.push({ at: new Date().toISOString(), path: request.url });
       if (test.response === 'slow') await slow;
+      if (response.destroyed) return;
       response.writeHead(test.response === '404' ? 404 : 200, { 'Content-Type': 'application/zip', 'Content-Length': body.length }); response.end(body);
     });
     await new Promise(resolve => http.listen(0, '127.0.0.1', resolve));
@@ -149,7 +152,14 @@ for (const test of cases) {
     await writeFile(path.join(directory, 'server.properties'), `server-ip=127.0.0.1\nserver-port=${port}\nonline-mode=false\nlevel-type=${version === '1.12.2' ? 'FLAT' : 'minecraft:flat'}\ngenerate-structures=false\nview-distance=3\nsimulation-distance=3\nspawn-protection=0\nmax-players=2\ngamemode=${version === '1.12.2' ? '1' : 'creative'}\ndifficulty=${version === '1.12.2' ? '0' : 'peaceful'}\nresource-pack=http://127.0.0.1:${httpPort}/${uuid}.zip\nresource-pack-id=${uuid}\nresource-pack-sha1=${createHash('sha1').update(body).digest('hex')}\nrequire-resource-pack=${test.required === true}\n`);
     let serverLog = ''; server = spawn(options.java || 'java', ['-Xms512M', '-Xmx1200M', '-jar', serverJar, 'nogui'], { cwd: directory, env, stdio: ['pipe', 'pipe', 'pipe'] });
     for (const stream of [server.stdout, server.stderr]) stream.on('data', bytes => { serverLog += bytes; appendFile(path.join(directory, 'server.log'), bytes); });
-    const deadline = Date.now() + 150000; while (!serverLog.includes('Done (') && Date.now() < deadline && server.exitCode === null) await sleep(250);
+    const deadline = Date.now() + Number(options['server-startup-timeout'] || 150) * 1000; while (!serverLog.includes('Done (') && Date.now() < deadline && server.exitCode === null) await sleep(250);
+    if (!serverLog.includes('Done (') && server.exitCode === null) {
+      // The exact child was spawned above for this isolated fixture; capture its
+      // own Java threads before cleanup, without cross-namespace PID guesses.
+      record.serverStartupThreadDump = { pid: server.pid, at: new Date().toISOString() };
+      server.kill('SIGQUIT');
+      await sleep(1500);
+    }
     assert(serverLog.includes('Done ('), `Server startup failed: ${serverLog.slice(-6000)}`);
     successful(await cli(['client', 'launch', client, '--server', `127.0.0.1:${port}`, '--ws-port', String(wsPort), '--account', 'PackTester', ...(test.policy ? ['--resource-pack', test.policy] : [])]));
     successful(await cli(['client', 'wait-ready', client, '--no-world-check', '--timeout', '120']));
@@ -164,11 +174,34 @@ for (const test of cases) {
     if (test.response === 'slow') {
       const until = Date.now() + 60000; while (record.requests.length === 0 && Date.now() < until) await sleep(200); assert(record.requests.length > 0, 'Download never started');
       const timeout = await cli(['client', 'wait-ready', client, '--timeout', '2']); assert.equal(error(timeout), 'TIMEOUT', JSON.stringify(timeout));
-      assert.equal(timeout.json.error.details.reconnectAttempts, 0); record.timeout = timeout.json.error; releaseSlow();
+      assert.equal(timeout.json.error.details.reconnectAttempts, 0); record.timeout = timeout.json.error;
+      if (test.disconnectDuringDownload) {
+        server.stdin.write('kick PackTester isolated-download-disconnect-test\n');
+        const disconnectDeadline = Date.now() + 15000;
+        let terminal;
+        do { await sleep(250); terminal = await status(); } while (terminal?.pending && Date.now() < disconnectDeadline);
+        record.downloadDisconnectStatus = terminal;
+        assert.equal(terminal.pending, false);
+        assert.equal(terminal.state, 'failed');
+        assert.equal(terminal.loaded, false);
+      } else releaseSlow();
+    }
+    if (test.response === '404' && version === '1.12.2') {
+      // Deliberately strict negative probe: legacy HttpUtil can swallow HTTP
+      // failures. Keep the failure assertion below; never relabel this as passed.
+      record.capabilityLimitation = {
+        code: 'LEGACY_HTTP_FAILURE_UNOBSERVABLE',
+        expectedProbeOutcome: 'FAIL_TO_DETECT',
+        description: 'The native download future may finish normally after HTTP 404; unverified is not download success.',
+      };
     }
     const ready = await cli(['client', 'wait-ready', client, '--timeout', '75']);
     const invalidUnverified = test.response === 'invalid' && version === '1.12.2';
-    if (test.required && test.policy === 'reject') assert.equal(error(ready), 'RESOURCE_PACK_REQUIRED_REJECTED', JSON.stringify(ready));
+    if (test.disconnectDuringDownload) {
+      assert.equal(error(ready), 'RESOURCE_PACK_FAILED', JSON.stringify(ready));
+      assert.equal(ready.json.error.details.reconnectAttempts, 0);
+    }
+    else if (test.required && test.policy === 'reject') assert.equal(error(ready), 'RESOURCE_PACK_REQUIRED_REJECTED', JSON.stringify(ready));
     else if (invalidUnverified) {
       successful(ready);
       assert.equal(data(ready).resourcePackReadinessVerified, false);
@@ -195,16 +228,25 @@ for (const test of cases) {
       for (const line of [version === '1.12.2' ? 'gamemode 1 PackTester' : 'gamemode creative PackTester', 'gamerule doDaylightCycle false', 'time set 6000', 'tp PackTester 0.5 79 0.5 0 0']) server.stdin.write(line + '\n');
       // Older servers reject fills in unloaded chunks; teleport first and let chunks load.
       await sleep(2000);
-      for (const line of ['fill -4 78 -4 4 78 7 minecraft:stone', 'fill -4 79 5 4 85 5 minecraft:stone', 'tp PackTester 0.5 79 0.5 0 0', 'give PackTester minecraft:diamond']) server.stdin.write(line + '\n');
+      for (const line of ['fill -4 79 -4 4 255 4 minecraft:air', 'fill -4 78 -4 4 78 7 minecraft:stone', 'fill -4 79 5 4 85 5 minecraft:stone', 'tp PackTester 0.5 79 0.5 0 0', 'give PackTester minecraft:diamond']) server.stdin.write(line + '\n');
       // The server's teleport command also sets yaw/pitch. Allow its block and
       // lighting updates to render before capturing on software-only machines.
       await sleep(4000);
-      const screenshot = path.join(directory, 'visible-marker.png'); successful(await cli(['--client', client, 'screenshot', '--output', screenshot, '--timeout', '60']));
-      const decoded = PNG.sync.read(await readFile(screenshot)); let magenta = 0, green = 0;
-      for (let i = 0; i < decoded.data.length; i += 4) { const [r, g, b] = decoded.data.subarray(i, i + 3); if (r > 90 && b > 90 && g < Math.min(r, b) * .25) magenta++; if (g > 90 && r < g * .25 && b < g * .25) green++; }
-      record.visual = { screenshot, width: decoded.width, height: decoded.height, magentaPixels: magenta, greenPixels: green };
+      const initialVisualDeadline = Date.now() + 20000;
+      let magenta = 0, green = 0;
+      record.initialVisualAttempts = [];
+      do {
+        const screenshot = path.join(directory, 'visible-marker.png');
+        successful(await cli(['--client', client, 'screenshot', '--output', screenshot, '--timeout', '60']));
+        const decoded = PNG.sync.read(await readFile(screenshot)); magenta = 0; green = 0;
+        for (let i = 0; i < decoded.data.length; i += 4) { const [r, g, b] = decoded.data.subarray(i, i + 3); if (r > 90 && b > 90 && g < Math.min(r, b) * .25) magenta++; if (g > 90 && r < g * .25 && b < g * .25) green++; }
+        record.visual = { screenshot, width: decoded.width, height: decoded.height, magentaPixels: magenta, greenPixels: green };
+        record.initialVisualAttempts.push({ at: new Date().toISOString(), magentaPixels: magenta, greenPixels: green });
+        if (invalidUnverified || (magenta > 10000 && green > 10000)) break;
+        await sleep(1000);
+      } while (Date.now() < initialVisualDeadline);
       if (invalidUnverified) assert(magenta < 1000 || green < 1000, 'Malformed pack unexpectedly produced marker texture');
-      else assert(magenta > 1000 && green > 1000, `Texture marker absent: ${JSON.stringify(record.visual)}`);
+      else assert(magenta > 10000 && green > 10000, `Texture marker absent: ${JSON.stringify(record.visual)}`);
       if (test.id === 'default-optional') {
         successful(await cli(['--client', client, 'client', 'reconnect', '--address', `127.0.0.1:${port}`]));
         await sleep(1000);
@@ -217,6 +259,25 @@ for (const test of cases) {
         successful(await cli(['--client', client, 'resourcepack', 'accept']));
         record.promptReconnect = successful(await cli(['client', 'wait-ready', client, '--timeout', '75']));
         if (record.lifecycleVerified) assert.equal(record.promptReconnect.resourcePack.state, 'loaded');
+        // Readiness cannot prove application on older APIs. Re-check actual
+        // rendered assets after the final reconnect/accept, with a bounded wait.
+        const reconnectVisualDeadline = Date.now() + 20000;
+        do {
+          await sleep(1000);
+          const screenshot = path.join(directory, 'post-prompt-reconnect-visible.png');
+          successful(await cli(['--client', client, 'screenshot', '--output', screenshot, '--timeout', '60']));
+          const decoded = PNG.sync.read(await readFile(screenshot));
+          let magenta = 0, green = 0;
+          for (let i = 0; i < decoded.data.length; i += 4) {
+            const [r, g, b] = decoded.data.subarray(i, i + 3);
+            if (r > 90 && b > 90 && g < Math.min(r, b) * .25) magenta++;
+            if (g > 90 && r < g * .25 && b < g * .25) green++;
+          }
+          record.promptReconnectVisual = { screenshot, magentaPixels: magenta, greenPixels: green };
+          if (magenta > 10000 && green > 10000) break;
+        } while (Date.now() < reconnectVisualDeadline);
+        assert(record.promptReconnectVisual.magentaPixels > 10000 && record.promptReconnectVisual.greenPixels > 10000,
+          'Marker texture absent after prompt reconnect acceptance');
         if (options['repeat-reconnect'] === 'true') {
           const double = await new Promise((resolve, reject) => {
             const socket = new WebSocket(`ws://127.0.0.1:${wsPort}`);
@@ -258,7 +319,7 @@ for (const test of cases) {
             if (g > 90 && r < g * .25 && b < g * .25) green++;
           }
           record.repeatedReconnectVisual = { screenshot: repeatedShot, magentaPixels: magenta, greenPixels: green };
-          assert(magenta > 1000 && green > 1000, 'Texture marker absent after repeated reconnect');
+          assert(magenta > 10000 && green > 10000, 'Texture marker absent after repeated reconnect');
         }
       }
     } else if (test.policy === 'reject' || test.action === 'reject') { assert.equal(record.requests.length, 0, 'Refused pack was downloaded'); assert.equal(record.finalStatus.state, 'rejected'); }
@@ -301,7 +362,7 @@ for (const test of cases) {
           if (g > 90 && r < g * .25 && b < g * .25) green++;
         }
         record.postDiagnosticVisual = { screenshot, magentaPixels: magenta, greenPixels: green };
-        assert(magenta > 1000 && green > 1000, 'Marker texture absent after WebSocket stress');
+        assert(magenta > 10000 && green > 10000, 'Marker texture absent after WebSocket stress');
       }
     }
     record.passed = true;

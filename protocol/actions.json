@@ -3,13 +3,28 @@
   "requestFormat": {
     "id": "uuid-v4",
     "action": "string",
-    "params": "object"
+    "params": "object",
+    "timeoutMs": {
+      "type": "integer",
+      "optional": true,
+      "minimum": 1,
+      "maximum": 86400000,
+      "description": "Relative server budget in milliseconds, measured from receipt with a monotonic clock; includes queueing and execution waiting. Omitted by old clients: only queueing uses era defaults (legacy 10000ms, modern 30000ms); existing handler execution limits remain unchanged."
+    }
   },
   "responseFormat": {
     "id": "uuid-v4",
     "success": "boolean",
     "data": "object|null",
-    "error": "object|null"
+    "error": "string|null",
+    "details": {
+      "type": "object",
+      "optional": true,
+      "fields": {
+        "phase": "validation|admission|queue|execution",
+        "resultUnknown": "boolean"
+      }
+    }
   },
   "actions": [
     {
@@ -352,5 +367,10 @@
       "params": [],
       "description": "让客户端重生"
     }
-  ]
+  ],
+  "transport": {
+    "ordering": "Accepted actions execute FIFO per connection. Responses and admission errors correlate by id and can arrive out of order.",
+    "backpressure": "CLIENT_BUSY rejects an unaccepted request without executing it. At transport write saturation the connection closes; already submitted outcomes may be unknown.",
+    "cancellation": "Connection close cancels queued requests and interrupts worker waits. A game-thread action already started cannot be rolled back. timeoutMs is a server-relative budget, not an end-to-end cancellation acknowledgement."
+  }
 }

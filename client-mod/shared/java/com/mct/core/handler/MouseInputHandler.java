@@ -4,6 +4,7 @@ import static com.mct.core.util.ParamHelper.getInt;
 import static com.mct.core.util.ParamHelper.getString;
 import static com.mct.core.util.ParamHelper.getStringList;
 
+import com.mct.core.concurrent.TemporaryInputLeases.Scope;
 import com.mct.core.input.MouseInputBridge;
 import com.mct.core.state.ClientStateTracker;
 import com.mct.core.util.ActionException;
@@ -109,7 +110,9 @@ public final class MouseInputHandler extends ActionHandler {
         int toY = getInt(params, "toY");
         String button = normalizeMouseButton(getString(params, "button", "left"));
         moveMouseTo(fromX, fromY);
-        dispatchMouseButton(button, GLFW.GLFW_PRESS);
+        Scope scope = keyboardInput.temporaryInputScope();
+        try {
+        keyboardInput.acquireMouseButton(scope, button);
         safeSleep(50L);
         moveMouseTo(fromX, fromY);
         safeSleep(25L);
@@ -121,7 +124,7 @@ public final class MouseInputHandler extends ActionHandler {
             moveMouseTo(nextX, nextY);
             safeSleep(25L);
         }
-        dispatchMouseButton(button, GLFW.GLFW_RELEASE);
+        } finally { keyboardInput.closeTemporaryInput(scope); }
         return com.mct.core.util.MctMaps.mapOf(
             "dragged", true,
             "button", button,
@@ -147,9 +150,9 @@ public final class MouseInputHandler extends ActionHandler {
     }
 
     private void clickMouseButton(String button) {
-        dispatchMouseButton(button, GLFW.GLFW_PRESS);
-        safeSleep(60L);
-        dispatchMouseButton(button, GLFW.GLFW_RELEASE);
+        Scope scope = keyboardInput.temporaryInputScope();
+        try { keyboardInput.acquireMouseButton(scope, button); safeSleep(60L); }
+        finally { keyboardInput.closeTemporaryInput(scope); }
         safeSleep(40L);
     }
 

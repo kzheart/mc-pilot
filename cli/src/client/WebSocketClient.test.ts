@@ -286,7 +286,7 @@ test("WebSocketClient bounds a close handshake when the peer never acknowledges 
   );
 });
 
-for (const timeout of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+for (const timeout of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 86_401]) {
   test(`WebSocketClient rejects invalid timeout ${timeout} before opening a socket`, async () => {
     const client = new WebSocketClient("ws://127.0.0.1:1");
     await assert.rejects(client.send("status.all", {}, timeout), (error) => {
@@ -296,3 +296,19 @@ for (const timeout of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
     });
   });
 }
+
+test("WebSocketClient sends a relative millisecond budget, preserving older mod envelopes", async () => {
+  await withServer(
+    (socket) =>
+      socket.once("message", (raw) => {
+        const request = JSON.parse(raw.toString());
+        assert.equal(request.timeoutMs, 1250);
+        socket.send(
+          JSON.stringify({ id: request.id, success: true, data: {} }),
+        );
+      }),
+    async (client) => {
+      await client.send("status.all", {}, 1.25);
+    },
+  );
+});

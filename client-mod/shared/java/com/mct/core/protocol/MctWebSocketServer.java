@@ -4,84 +4,75 @@ import com.mct.core.handler.ActionDispatcher;
 import com.mct.core.state.EventRecorder;
 import com.mct.core.util.ActionException;
 import java.net.InetSocketAddress;
-import java.util.Map;
-import java.util.UUID;
+import java.nio.ByteBuffer;
 import net.minecraft.client.MinecraftClient;
 import org.java_websocket.WebSocket;
+import org.java_websocket.WebSocketImpl;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 public final class MctWebSocketServer extends WebSocketServer {
-
     private static MctWebSocketServer instance;
-
-    private final ActionDispatcher dispatcher;
+    private final WebSocketRequestService<WebSocket> requests;
 
     public MctWebSocketServer(int port, MinecraftClient client) {
         super(new InetSocketAddress("127.0.0.1", port));
-        this.dispatcher = new ActionDispatcher(client);
+        ActionDispatcher actions = new ActionDispatcher(client);
+        requests = new WebSocketRequestService<>(30_000L, actions::execute,
+            failure -> failure instanceof ActionException ? ((ActionException) failure).getCode() : "INTERNAL_ERROR",
+            () -> {
+                EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
+                return new WebSocketRequestService.Events(pointer.count, pointer.lastType);
+            });
     }
 
     public static void startServer() {
         int port = Integer.parseInt(System.getenv().getOrDefault("MCT_CLIENT_WS_PORT", "25560"));
-        MinecraftClient client = MinecraftClient.getInstance();
-        instance = new MctWebSocketServer(port, client);
+        instance = new MctWebSocketServer(port, MinecraftClient.getInstance());
         instance.start();
     }
 
-    public static MctWebSocketServer getInstance() {
-        return instance;
+    public static MctWebSocketServer getInstance() { return instance; }
+
+    @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
+        if (!requests.open(conn)) conn.close(1013, "MC-Pilot connection limit reached");
     }
 
-    @Override
-    public void onOpen(WebSocket conn, ClientHandshake handshake) {
+    @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+        requests.closeConnection(conn);
     }
 
-    @Override
-    public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+    @Override public void onMessage(WebSocket conn, String message) {
+        requests.receive(conn, message, response -> sendResponse(conn, response));
     }
 
-    @Override
-    public void onMessage(WebSocket conn, String message) {
-        Request request = JsonUtil.fromJson(message, Request.class);
-        Response response;
-
-        try {
-            Map<String, Object> data = dispatcher.execute(request.action(), request.params());
-            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
-            response = new Response(request.id(), true, data, null, pointer.count, pointer.lastType);
-        } catch (ActionException exception) {
-            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
-            response = new Response(
-                request.id() != null ? request.id() : UUID.randomUUID().toString(),
-                false,
-                null,
-                exception.getCode(),
-                pointer.count,
-                pointer.lastType
-            );
-        } catch (Exception exception) {
-            exception.printStackTrace();
-            EventRecorder.Pointer pointer = EventRecorder.getInstance().drainPointer();
-            response = new Response(
-                request.id() != null ? request.id() : UUID.randomUUID().toString(),
-                false,
-                null,
-                "INTERNAL_ERROR",
-                pointer.count,
-                pointer.lastType
-            );
+    private void sendResponse(WebSocket conn, String response) {
+        if (!conn.isOpen()) return;
+        // Java-WebSocket has an unbounded outgoing queue. Bound retained
+        // response bytes and frames before handing another response to it.
+        if (conn instanceof WebSocketImpl) {
+            WebSocketImpl socket = (WebSocketImpl) conn;
+            long buffered = response.length() * 3L;
+            for (ByteBuffer frame : socket.outQueue) buffered += frame.remaining();
+            if (socket.outQueue.size() >= 64 || buffered > 4L * 1024 * 1024) {
+                requests.closeConnection(conn);
+                conn.closeConnection(1013, "MC-Pilot response backpressure");
+                return;
+            }
         }
-
-        conn.send(JsonUtil.toJson(response));
+        try { conn.send(response); }
+        catch (RuntimeException closed) { requests.closeConnection(conn); }
     }
 
-    @Override
-    public void onError(WebSocket conn, Exception ex) {
-        ex.printStackTrace();
+    @Override public void stop(int timeout, String closeMessage) throws InterruptedException {
+        try { requests.close(); }
+        finally { super.stop(timeout, closeMessage); }
     }
 
-    @Override
-    public void onStart() {
+    @Override public void onError(WebSocket conn, Exception exception) {
+        if (conn == null && exception instanceof java.net.BindException) requests.close();
+        exception.printStackTrace();
     }
+
+    @Override public void onStart() {}
 }

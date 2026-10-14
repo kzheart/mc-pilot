@@ -61,6 +61,19 @@ sourceSets.main {
 
 tasks.named("compileJava") { dependsOn("generateVersionInfo") }
 
+val generatePackMetadata = tasks.register<GeneratePackMetadataTask>("generatePackMetadata") {
+    mcVersion.set(targetMcVersion)
+    outputFile.set(layout.buildDirectory.file("generated/resources/pack/pack.mcmeta"))
+}
+
+tasks.processResources {
+    // The task output carries its dependency; all loader modules get one metadata file.
+    from(generatePackMetadata)
+    filesMatching("pack.mcmeta") {
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+    }
+}
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(javaVersion.toInt()))

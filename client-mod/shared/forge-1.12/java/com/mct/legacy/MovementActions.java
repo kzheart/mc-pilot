@@ -1,6 +1,7 @@
 package com.mct.legacy;
 
 import com.google.gson.JsonObject;
+import com.mct.core.concurrent.TemporaryInputLeases.Scope;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -52,14 +53,14 @@ public final class MovementActions extends LegacyActions {
         if ("move.sneak".equals(action)) {
             return onClient(() -> {
                 boolean enabled = Params.booleanValue(params, "enabled", false);
-                KeyBinding.setKeyBindState(client.gameSettings.keyBindSneak.getKeyCode(), enabled);
+                TemporaryInputs.persistent(client.gameSettings.keyBindSneak.getKeyCode(), enabled);
                 return map("sneaking", enabled);
             });
         }
         if ("move.sprint".equals(action)) {
             return onClient(() -> {
                 boolean enabled = Params.booleanValue(params, "enabled", false);
-                KeyBinding.setKeyBindState(client.gameSettings.keyBindSprint.getKeyCode(), enabled);
+                TemporaryInputs.persistent(client.gameSettings.keyBindSprint.getKeyCode(), enabled);
                 requirePlayer().setSprinting(enabled);
                 return map("sprinting", enabled);
             });
@@ -102,28 +103,23 @@ public final class MovementActions extends LegacyActions {
     }
 
     public void pressKey(int keyCode, long milliseconds) {
-        onClient(() -> {
-            KeyBinding.setKeyBindState(keyCode, true);
-            return true;
-        });
-        MainThread.sleep(milliseconds);
-        onClient(() -> {
-            KeyBinding.setKeyBindState(keyCode, false);
-            return true;
-        });
+        Scope scope = TemporaryInputs.open();
+        try { TemporaryInputs.acquire(scope, keyCode); MainThread.sleep(milliseconds); }
+        finally { TemporaryInputs.close(scope); }
         MainThread.sleep(40L);
     }
 
     public void pressMovementKeys(boolean forward, boolean back, boolean left, boolean right, boolean jump, boolean sneak, long milliseconds) {
-        onClient(() -> {
-            setMovementKeys(forward, back, left, right, jump, sneak);
-            return true;
-        });
-        MainThread.sleep(milliseconds);
-        onClient(() -> {
-            setMovementKeys(false, false, false, false, false, false);
-            return true;
-        });
+        Scope scope = TemporaryInputs.open();
+        try {
+            if (forward) TemporaryInputs.acquire(scope, client.gameSettings.keyBindForward.getKeyCode());
+            if (back) TemporaryInputs.acquire(scope, client.gameSettings.keyBindBack.getKeyCode());
+            if (left) TemporaryInputs.acquire(scope, client.gameSettings.keyBindLeft.getKeyCode());
+            if (right) TemporaryInputs.acquire(scope, client.gameSettings.keyBindRight.getKeyCode());
+            if (jump) TemporaryInputs.acquire(scope, client.gameSettings.keyBindJump.getKeyCode());
+            if (sneak) TemporaryInputs.acquire(scope, client.gameSettings.keyBindSneak.getKeyCode());
+            MainThread.sleep(milliseconds);
+        } finally { TemporaryInputs.close(scope); }
     }
 
     private void setMovementKeys(boolean forward, boolean back, boolean left, boolean right, boolean jump, boolean sneak) {

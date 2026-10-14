@@ -47,12 +47,12 @@ public final class MovementHandler extends ActionHandler {
             });
             case "move.sneak" -> runOnClientThread(() -> {
                 boolean enabled = getBoolean(params, "enabled", false);
-                client.options.keyShift.setDown(enabled);
+                inputHandler.setMovementKey(client.options.keyShift, enabled);
                 return com.mct.core.util.MctMaps.mapOf("sneaking", enabled);
             });
             case "move.sprint" -> runOnClientThread(() -> {
                 boolean enabled = getBoolean(params, "enabled", false);
-                client.options.keySprint.setDown(enabled);
+                inputHandler.setMovementKey(client.options.keySprint, enabled);
                 LocalPlayer player = requirePlayer();
                 player.setSprinting(enabled);
                 return com.mct.core.util.MctMaps.mapOf("sprinting", enabled);

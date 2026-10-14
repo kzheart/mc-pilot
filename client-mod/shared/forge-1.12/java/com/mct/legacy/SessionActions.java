@@ -27,6 +27,9 @@ import net.minecraft.util.text.ITextComponent;
 public final class SessionActions extends LegacyActions {
 
     private final LegacyResourcePacks resourcePacks;
+    // Native-screen identity, not a global lock: leaving this screen ends reuse.
+    private GuiConnecting requestedConnectingScreen;
+    private String requestedConnectingPolicy;
 
     public SessionActions(LegacyResourcePacks resourcePacks) {
         this.resourcePacks = resourcePacks;
@@ -217,43 +220,80 @@ public final class SessionActions extends LegacyActions {
             String fallback = System.getenv("MCT_CLIENT_SERVER");
             address = fallback != null ? fallback.trim() : "";
         }
-        if (address.isEmpty()) {
-            throw new LegacyActionException("INVALID_PARAMS");
-        }
-        String host = address;
-        int port = 25565;
-        int separator = address.lastIndexOf(':');
-        if (separator > 0) {
-            host = address.substring(0, separator);
-            try {
-                port = Integer.parseInt(address.substring(separator + 1));
-            } catch (NumberFormatException exception) {
-                throw new LegacyActionException("INVALID_PARAMS");
-            }
-        }
-        String policy = Params.has(params, "resourcePackPolicy") ? Params.string(params, "resourcePackPolicy") : null;
-        String targetAddress = address;
-        onClient(() -> { resourcePacks.setOverride(targetAddress, policy); return true; });
-        // Calling loadWorld(null) from a scheduled task deadlocks the client thread;
-        // close the channel instead and let vanilla's own disconnect flow run.
-        boolean hadWorld = onClient(() -> {
+        final String target = canonicalAddress(address);
+        final String serverAddress = address;
+        String requestedPolicy = Params.has(params, "resourcePackPolicy") ? Params.string(params, "resourcePackPolicy") : null;
+        final String policy;
+        try { policy = com.mct.core.resourcepack.ResourcePackPolicy.parse(requestedPolicy); }
+        catch (IllegalArgumentException invalid) { throw new LegacyActionException("INVALID_PARAMS"); }
+
+        // The two phases may interleave with another socket. Check native state
+        // before disconnecting and again atomically with constructing its screen.
+        int disconnectState = onClient(() -> {
+            if (isConnectingTo(target, policy)) return -1;
             if (client.player != null && client.player.connection != null) {
                 client.player.connection.getNetworkManager()
                     .closeChannel(new net.minecraft.util.text.TextComponentString("mct reconnect"));
-                return true;
+                return 1;
             }
-            return false;
+            return 0;
         });
-        if (hadWorld) {
-            pollUntil(5.0D, () -> client.world == null, done -> done);
+        if (disconnectState < 0) return map("connecting", true, "address", target, "alreadyConnecting", true);
+        // Let native disconnect run outside its scheduled-task queue monitor.
+        if (disconnectState > 0) {
+            Boolean disconnected = pollUntil(5.0D,
+                () -> client.world == null || isConnectingTo(target, policy), done -> done);
+            if (!Boolean.TRUE.equals(disconnected)) {
+                throw new LegacyActionException("TIMEOUT", "Disconnect did not finish; new connection was not started");
+            }
         }
-        String serverAddress = address;
-        onClient(() -> {
+        boolean started = onClient(() -> {
+            if (isConnectingTo(target, policy)) return false;
+            // A skipped duplicate must not alter policy or pending pack state.
+            resourcePacks.setOverride(serverAddress, policy);
             ServerData serverData = resourcePacks.connectionInfo(serverAddress);
-            client.displayGuiScreen(new GuiConnecting(new GuiMainMenu(), client, serverData));
+            GuiConnecting screen = new GuiConnecting(new GuiMainMenu(), client, serverData);
+            requestedConnectingScreen = screen;
+            requestedConnectingPolicy = policy;
+            client.displayGuiScreen(screen);
             return true;
         });
-        return map("connecting", true, "address", host + ":" + port);
+        return map("connecting", true, "address", target, "alreadyConnecting", !started);
+    }
+
+    private boolean isConnectingTo(String target, String policy) {
+        if (!(client.currentScreen instanceof GuiConnecting)) return false;
+        ServerData current = client.getCurrentServerData();
+        if (current == null) throw new LegacyActionException("INVALID_STATE", "A connection to an unknown server is already in progress; wait for it to finish before connecting to " + target);
+        final String currentTarget;
+        try { currentTarget = canonicalAddress(current.serverIP); }
+        catch (LegacyActionException invalid) { throw new LegacyActionException("INVALID_STATE", "A connection to an unknown server is already in progress; wait for it to finish before connecting to " + target); }
+        if (!target.equals(currentTarget)) {
+            throw new LegacyActionException("INVALID_STATE", "A connection to " + currentTarget + " is already in progress; wait for it to finish before connecting to " + target);
+        }
+        if (policy != null && (client.currentScreen != requestedConnectingScreen || !policy.equals(requestedConnectingPolicy))) {
+            throw new LegacyActionException("INVALID_STATE", "A connection to this server is already in progress with another or unknown resource-pack policy");
+        }
+        return true;
+    }
+
+    private static String canonicalAddress(String address) {
+        try {
+            // Unlike vanilla ServerAddress.fromString, this parser does no DNS
+            // SRV lookup on the game thread. Guava is already shipped by 1.12.
+            if (address == null) throw new IllegalArgumentException("Missing address");
+            com.google.common.net.HostAndPort parsed = com.google.common.net.HostAndPort.fromString(address.trim()).withDefaultPort(25565);
+            String host = parsed.getHost();
+            if (host.isEmpty()) throw new IllegalArgumentException("Empty host");
+            if (com.google.common.net.InetAddresses.isInetAddress(host)) {
+                host = com.google.common.net.InetAddresses.toAddrString(com.google.common.net.InetAddresses.forString(host));
+            } else {
+                host = java.net.IDN.toASCII(host).toLowerCase(java.util.Locale.ROOT);
+            }
+            return com.google.common.net.HostAndPort.fromParts(host, parsed.getPort()).toString();
+        } catch (IllegalArgumentException invalid) {
+            throw new LegacyActionException("INVALID_PARAMS");
+        }
     }
 
 }

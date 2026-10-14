@@ -15,6 +15,7 @@ sourceSets {
         java.srcDir "../../shared/command-core/java"
         java.include "com/mct/legacy/**"
         java.include "com/mct/core/concurrent/**"
+        java.include "com/mct/core/protocol/**"
         java.include "com/mct/core/resourcepack/ResourcePackLifecycle.java"
         java.include "com/mct/core/resourcepack/ResourcePackPolicy.java"
         resources.srcDir "../../shared/forge-1.12/resources"

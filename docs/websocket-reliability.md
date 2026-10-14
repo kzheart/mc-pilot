@@ -1,108 +1,220 @@
 # WebSocket command reliability
 
-## Lost game-thread callbacks
+## Two independent transport failures
 
-Minecraft's own executor is not a durable queue for commands from another
-thread. In 26.1, `Minecraft.disconnect(Screen, boolean, boolean)` calls
-`BlockableEventLoop.dropAllTasks()` when connected. That method clears its
-pending runnable queue without completing the application futures waiting on
-those runnables. The reconnect adapter invokes this path through
-`ConnectScreen.startConnecting`.
+Minecraft's executor is not a durable queue for commands from another thread.
+In 26.1, `Minecraft.disconnect(Screen, boolean, boolean)` calls
+`BlockableEventLoop.dropAllTasks()` when connected. That method clears pending
+runnables without completing application futures waiting on them. Yarn 1.20.4
+has the equivalent `disconnect` → `cancelTasks` → `tasks.clear` path.
 
-Previously, each WebSocket decoder callback used `client.execute` to enqueue a
-wrapper, then waited on a separate `CompletableFuture`. Two connections could
-queue reconnect A and request B before the next frame. A cleared the native
-queue; B never ran or completed. The CLI reported its 10-second response timeout
-while the server still waited for its 30-second game-thread deadline.
+Previously, two WebSocket connections could enqueue reconnect A and request B
+before the next frame. A cleared the native queue; B never ran or completed.
+The CLI reached its 10-second response deadline while the server still waited
+for its 30-second game-thread deadline. A same-socket-only test masked the race
+because the old decoder callback serialized that socket's requests.
 
-Two requests on one socket are not an equivalent regression: Java-WebSocket
-serializes that socket's decoder callbacks, hiding the competing queue entries.
-Replies were already sent through the originating connection; this was not a
-cross-connection response routing bug.
+Separately, Java-WebSocket 1.5.6 invokes `onMessage` synchronously while holding a
+read buffer. A blocking command can retain the only buffer allocated for a fresh
+connection, leaving the selector blocked in `takeBuffer` and unable to observe
+other connections or even TCP EOF. A spare buffer can mask that problem; merely
+adding an `onClose` callback does not fix it. Actual Java-WebSocket/Node probes
+confirmed both the fresh and warmed-buffer cases.
 
-## Shared command mailbox
+Replies were already routed to their originating socket. These bugs were not a
+shared-response-socket mix-up.
 
-`shared/command-core/java/com/mct/core/concurrent/ClientTaskQueue.java` owns one
-Minecraft-independent, Java 8-compatible mailbox. Both mapped `ActionHandler`
-implementations and the legacy `MainThread` adapter call it. The existing Yarn
-and official tick mixins, plus a small Forge 1.12 tick subscriber, drain it on the
-client thread, including title screens and resource-pack prompts. Drain runs
-before the sampler's player/world checks.
+## Shared bounded dispatch
 
-The mailbox is independent of the disposable native task queue. It does not
-replay or retry requests. Each operation is a `FutureTask` and can start at most
-once. A server-side deadline or interruption cancels and removes a pending task, so
-resuming the client later cannot execute a command that expired on the server. The original wrapper did not
-have that property: canceling its separate future still left `task.run()` queued.
+`ConnectionRequestDispatcher` owns four daemon command workers, at most 64
+connection lanes and 16 pending requests per lane. Accepted actions execute FIFO
+within their connection. Each ready lane receives one turn before rejoining the
+bounded ready queue. Polling/wait actions on one connection leave other workers
+available. Saturation returns `CLIENT_BUSY` with the rejected request's ID; that
+request is never executed. Responses and immediate admission errors may arrive
+out of order and must be matched by ID.
 
-The queue holds at most 1,024 pending operations. One drain processes at most 64
-operations or 5 milliseconds, and nested drains do not recurse. These budgets
-limit accumulated work; an individual operation that has already started cannot
-be safely preempted or rolled back. Direct client-thread calls remain direct.
-Existing default deadlines are unchanged. Interrupted waits restore the thread's
-interrupt flag; main-thread deadline expiry reports `TIMEOUT` rather than a
-misleading internal error.
+A single periodic watchdog scans the bounded job set. There is no timer or
+unbounded executor queue created per request. The shared `WebSocketRequestService`
+handles JSON validation, budgets, error mapping and response framing. Yarn,
+official and legacy adapters provide only action execution, event pointers,
+frame writes and lifecycle hooks. Handshake validation precedes request admission.
 
-This change does not serialize whole requests. Polling and wait commands still
-release the main thread between individual observations. It also does not move
-unrelated native resource-pack callbacks onto a new scheduler.
+Modern `onMessage` returns after validation and enqueueing, releasing the library
+read buffer. Legacy frame readers likewise remain available while commands run;
+its writers use a 64-frame/4-MiB queue so one active plus 16 accepted replies and
+control frames fit without a scheduling-dependent false overload. A slow peer cannot occupy a command
+worker or watchdog. Reader/writer counts are bounded by the connection limit.
+Incomplete legacy handshakes expire. At an exhausted outgoing transport buffer,
+the connection is closed; already submitted outcomes may be unknown.
 
-## CLI transport lifecycle and diagnostics
+Connection close removes pending requests and interrupts the worker waiting for
+that connection. Worker ownership is synchronized before interrupting, and the
+interrupt flag is cleared before reuse. Close never waits for a response callback
+or holds a dispatcher lock while calling transport code, avoiding inversion with
+WebSocket close monitors. An already-claimed send must still check connection
+state. Server shutdown cancels its queues and closes its owned workers/connections.
+An action already running on the Minecraft thread cannot be safely preempted or
+rolled back.
+
+## Durable game-thread mailbox
+
+`ClientTaskQueue` is a separate Minecraft-independent, Java 8-compatible mailbox.
+Both mapped `ActionHandler` implementations and legacy `MainThread` call it. The
+existing Yarn/official tick mixins and a small Forge 1.12 tick subscriber drain it
+on the client thread, including title screens and resource-pack prompts. Drain
+runs before the sampler's player/world checks.
+
+Each operation is a `FutureTask` and starts at most once. A server-side deadline
+or worker interruption cancels and removes an unstarted task, preventing it from
+executing when the client resumes. This is cancellation, not retry or replay. The
+old separate `CompletableFuture` wrapper could still execute its side effect even
+if only that future was canceled.
+
+The mailbox holds at most 1,024 operations; a drain handles at most 64 operations
+or 5 milliseconds and guards against recursive draining. These limits bound
+accumulated work, not an individual operation already running. Direct
+client-thread calls remain direct. Polling commands release the client thread
+between observations. Unrelated native resource-pack callbacks retain their
+native scheduling.
+
+On Forge 1.12, the native scheduled-task queue also runs callbacks while holding
+its queue monitor. Calling `closeChannel().awaitUninterruptibly()` under that
+monitor can conflict with Netty enqueueing a packet under the same monitor.
+Draining the command mailbox from END tick runs outside that monitor. A bounded
+lock-order probe demonstrates the hazard; an earlier live timeout without a
+thread dump cannot by itself establish that historical stack.
+
+## Cancellation-safe temporary input and resources
+
+Interrupting an old press → wait → release sequence could skip release. Temporary
+keys, movement helpers, modifiers, clicks and drags now acquire a shared physical
+control lease before pressing, and close it in finally, including partial-acquire
+failures. There are at most 64 retained scopes and 128 controls per scope; capacity
+is reserved before effects and exhaustion returns `CLIENT_BUSY`.
+
+The main tick drains closed leases independently of canceled request futures and
+ordinary mailbox saturation. Cancellation only marks cleanup, so the command
+worker does not wait for a paused game. A normal completed action synchronously
+drains its cleanup before returning, preserving repeated key/click behavior.
+Overlapping temporary holders cannot release one another. Explicit key-down,
+sneak and sprint intent is retained separately from temporary ownership. Key,
+scancode and mouse identities use resolved bindings, including aliases and mouse
+remaps. All adapters share bookkeeping for a physical control. Native physical
+input changed by a human while an automated hold is active is not attributed to
+individual owners; these guarantees cover synthetic command ownership and the
+state observed at acquisition, not arbitrary simultaneous manual input changes.
+
+Cleanup failures retain bounded ownership records for a later tick and emit a
+warning rather than silently abandoning a held control. Server shutdown marks
+all scopes closed; a continuing client tick releases them. No code forces game
+callbacks after the game thread itself has stopped. Legacy GUI drag cleanup is
+tied to its original screen and tolerates that screen being replaced. Cleanup
+releases temporary input state, not already-sent game actions or inventory/world
+changes.
+
+A canceled screenshot waiter also owns an image that may be produced by an
+already-started render callback. `AsyncResource` closes an unclaimed late result
+exactly once, while normal successful consumers retain responsibility for their
+claimed image. It creates no threads, queues or retries.
+
+## Budgets and compatibility
+
+New CLI requests optionally include `timeoutMs`, an integer from 1 through
+86,400,000. This is a relative server budget measured with a monotonic clock from
+receipt, including parsing, queueing and execution waiting. It makes no assumption
+that client and server wall clocks match. Invalid, negative, fractional,
+non-finite and oversized budgets are rejected before command execution. Numeric
+tokens are limited to 64 characters and decimal scale to -8 through 64 before
+exact integer conversion, avoiding unbounded allocation for hostile exponents.
+
+Old clients omit this field. Their new dispatcher queue wait is bounded by the
+era's existing main-thread default (legacy 10 seconds, modern 30 seconds), while
+execution retains the original handler-specific limits. An old `wait.perform`
+or GUI wait therefore is not silently shortened to a new whole-request default.
+Old mods ignore the new optional field. Existing IDs, success/data/error fields
+and native action error strings remain compatible; failures may additionally
+include `details.phase` and `details.resultUnknown`.
+
+A server-relative budget is not an end-to-end cancellation acknowledgement. A
+client can time out while its request is in transit or after an action started.
+Disconnect cancellation takes effect when the server observes the close. The
+transport never retries automatically. Inspect resulting state before deciding
+whether to repeat a non-idempotent action.
+
+## CLI lifecycle and diagnostics
 
 The CLI owns handshake, response and shutdown listeners in one lifecycle. A
-closed connection immediately fails with the existing `CONNECTION_FAILED` code
-instead of hanging until a fabricated timeout. Responses are correlated by
-request ID. Unmatched IDs are ignored without resetting the deadline; invalid
-response envelopes fail explicitly. A stalled close handshake is bounded.
+closed connection fails with `CONNECTION_FAILED` immediately instead of waiting
+for a fabricated timeout. Only matching response IDs complete a request;
+unmatched IDs do not reset the deadline. Invalid envelopes fail explicitly, and
+an unacknowledged close handshake is bounded.
 
-Transport failures carry `details.phase` (`connect` or `response`), `requestId`,
-`action`, URL, elapsed time and the configured timeout. `requestSent` and
-`resultUnknown` distinguish a handshake failure from a submitted action whose
-response was lost. Close failures additionally
-include close code and reason. A timeout after unrelated response IDs records the
-count and last unmatched ID. Request parameters are not included in diagnostics.
-The request/response envelope and default timeouts are unchanged.
+Transport errors include phase (`connect` or `response`), request ID, action,
+URL, elapsed time, configured timeout, `requestSent` and `resultUnknown`. Close
+errors include close code and reason. Timeout after unmatched responses includes
+the count and last unmatched ID. Request parameters are not copied into errors.
 
-The CLI and server deadlines are separate. Modern main-thread calls retain a
-30-second server deadline; the CLI's ordinary response deadline is 10 seconds.
-A CLI timeout alone does **not** cancel a still-pending server operation. Such an
-operation can start after the CLI has stopped waiting and before the server
-budget expires. Legacy main-thread calls use their existing 10-second default;
-network delay and earlier connection loss can still make the observed outcome
-uncertain. This patch does not claim end-to-end cancellation on connection loss.
-A small integration probe with Java-WebSocket 1.5.6 also showed that `onClose` can
-be delayed while a decoder's `onMessage` retains the only available read buffer:
-the selector cannot acquire a buffer to observe EOF until that callback returns.
-Registering an `onClose` callback alone would not provide reliable cancellation.
+A received protocol response containing `error: "TIMEOUT"` differs from an outer
+transport error saying `Timed out waiting for response`. `gui.wait-update`, for
+example, captures its fingerprint when the wait starts. A click that already
+changed the page can become the baseline, so waiting for a further change can
+expire even though a subsequent snapshot shows the intended page. That is an
+observation-order issue, not proof of a missing WebSocket response.
 
-The transport never retries an action automatically. A response timeout or
-connection loss after submission leaves the outcome of an already-started action
-unknown; inspect state before deciding whether to repeat a non-idempotent action.
+## Legacy reconnect while a connection is in progress
 
-A protocol response containing `error: "TIMEOUT"` is different from an outer
-transport failure saying `Timed out waiting for response`. For example,
-`gui.wait-update` captures its fingerprint when that wait request starts. If a
-prior click has already changed the page, the new page becomes the baseline and
-waiting for another change can legitimately expire. This is a separate
-observation-order problem, not evidence that the WebSocket lost that command.
+Forge 1.12 reconnect has two main-thread phases, separated by native disconnect
+processing. Separate sockets can otherwise interleave these phases and create
+two `GuiConnecting` instances. Its constructor can synchronously clear a server
+resource pack and reload Forge models. Real-client thread dumps showed this
+reload running, not a transport deadlock; a sufficiently slow first reload can
+still exceed a request budget and leave its started result unknown.
+
+Both phases now inspect the native connecting screen. The same canonical target
+and compatible policy reuse it and return `alreadyConnecting: true`, without
+resetting resource-pack override or pending state. An explicit conflicting or
+unknown policy, a different target, or an unknown current target returns
+`INVALID_STATE`. Wait for that connection to finish or explicitly disconnect
+before changing targets. This does not cancel an already-started native connector.
+Host names, default ports and literal IPv6 addresses are normalized without DNS.
+A failed five-second disconnect poll returns `TIMEOUT` before a new connector or
+policy override is created. Once the native screen has changed after failure,
+an explicit retry is allowed; no persistent connecting flag blocks it.
 
 ## Regression checks
 
-- `sh client-mod/tests/run-client-task-tests.sh` runs deterministic Java 8-compatible
-  tests for the old lost-future scenario, mailbox survival across native queue
-  clearing, at-most-once execution, timeout/interruption cleanup, FIFO, nested
-  drains, capacity, and frame budgets. Set `JAVA_HOME` if Java is not on PATH
-- `node --test cli/dist/client/WebSocketClient.test.js`, after a normal CLI build,
-  covers normal/abrupt close, handshake timeout, response timeout, malformed
-  responses, unmatched IDs, independent simultaneous requests, and no retries
-- `scripts/websocket-reconnect-diagnostic.mjs` is for a test-owned real client.
-  It sends 16 parallel read-only status requests, repeated two-socket reconnects,
-  a same-socket control, and optionally a pair of real CLI processes. It records
-  request IDs and timestamps in `websocket-diagnostic.json`. Supply `--ws-url`,
-  `--server-address`, and `--output-dir`; `--cli-path` and `--client` enable the
-  CLI check. The harness may supply `--thread-dump-pid` only after verifying its
-  exact still-running test JVM; a timeout then requests one SIGQUIT dump
+- `sh client-mod/tests/run-client-task-tests.sh`: lost-native-queue red proof,
+  mailbox survival, timeout/interruption cleanup, FIFO, at-most-once execution,
+  nested drains, capacity and frame budgets
+- `sh client-mod/tests/run-connection-request-tests.sh`: bounded dispatch,
+  fairness, concurrent connections, admission saturation, receipt-based deadlines,
+  old-client queue-only budgets, close cancellation, interrupt ownership, external
+  monitor inversion and shutdown cleanup
+- `sh client-mod/tests/run-temporary-input-tests.sh`: cancellation, partial press,
+  paused-tick cleanup, overlapping aliases, persistent intent, limits and shutdown
+- `sh client-mod/tests/run-legacy-reconnect-tests.sh`: exact production method
+  extraction, two-worker duplicate red/green, target/policy conflicts, no reset
+  on skips, address normalization and failed disconnect polling
+- `sh client-mod/tests/run-async-resource-tests.sh`: late resource ownership,
+  cancellation/completion races, exactly-once close and normal ownership transfer
+- `node --test cli/dist/client/WebSocketClient.test.js`, after a CLI build:
+  normal/abrupt close, handshake/response timeouts, IDs, malformed responses,
+  protocol-vs-transport errors, relative budgets and no retries
+- `bash client-mod/tests/run-websocket-regression-tests.sh`: actual Yarn,
+  official and legacy server wrappers on Java 8 and 25, real sockets, fresh-buffer
+  isolation, deadlines, close cancellation, large frames and shutdown cleanup
+- `scripts/websocket-dispatch-diagnostic.mjs`: test-owned real-client long waits,
+  second-socket responsiveness, admission backpressure, correlated deadlines and
+  graceful/abrupt-close worker reclamation, temporary input cancellation,
+  overlapping/persistent holds, partial combos and canceled inventory-screen drags
+- `scripts/websocket-input-effects-diagnostic.mjs`: test-owned real-client
+  movement starts then stops after close, repeated inventory key toggles and
+  cursor-stack pickup/return, without using key resets to conceal cleanup failures
+- `scripts/websocket-reconnect-diagnostic.mjs`: test-owned real-client status
+  concurrency, separate-socket reconnect races, same-socket control and real CLI
+  concurrency with correlated timestamps. It is not for production clients
 
-Pure queue and transport tests establish the mechanism and lifecycle guarantees.
-Loader startup, tick-hook application and resource-pack UI transitions still need
-real-client coverage against rebuilt jars; old jars do not validate this fix.
+Set `JAVA_HOME` if Java is absent from PATH. Exact-wrapper WebSocket integration
+and rebuilt real-client loader tests complement the pure Java tests. Old native
+jars do not validate changes to dispatch or tick hooks.

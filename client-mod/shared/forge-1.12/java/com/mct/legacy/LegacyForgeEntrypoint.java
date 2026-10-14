@@ -57,6 +57,7 @@ public final class LegacyForgeEntrypoint {
         int port = Integer.parseInt(environment("MCT_CLIENT_WS_PORT", "25560"));
         server = new LegacyWebSocketServer(port, router);
         server.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(server::shutdown, "mct-forge-1.12-shutdown"));
     }
 
     private static String environment(String name, String fallback) {

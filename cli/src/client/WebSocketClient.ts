@@ -8,6 +8,7 @@ export interface WsRequest {
   id: string;
   action: string;
   params?: Record<string, unknown>;
+  timeoutMs?: number;
 }
 
 export class WebSocketClient {
@@ -29,8 +30,14 @@ export class WebSocketClient {
   // One owner for the whole socket lifecycle: no gap between the handshake and
   // response listeners, and every terminal event clears the same timeout.
   private exchange(timeoutSeconds: number, request?: WsRequest) {
-    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
-      throw invalidParams("WebSocket timeout must be a positive finite number");
+    if (
+      !Number.isFinite(timeoutSeconds) ||
+      timeoutSeconds <= 0 ||
+      timeoutSeconds > 86_400
+    ) {
+      throw invalidParams(
+        "WebSocket timeout must be positive and no greater than 86400 seconds",
+      );
     }
 
     return new Promise<unknown>((resolve, reject) => {
@@ -112,14 +119,20 @@ export class WebSocketClient {
         phase = "response";
         armTimeout();
         try {
-          socket.send(JSON.stringify(request), (error) => {
-            if (error)
-              fail(
-                "CONNECTION_FAILED",
-                `Unable to send request to ${this.url}`,
-                { reason: error.message },
-              );
-          });
+          socket.send(
+            JSON.stringify({
+              ...request,
+              timeoutMs: Math.ceil(timeoutSeconds * 1000),
+            }),
+            (error) => {
+              if (error)
+                fail(
+                  "CONNECTION_FAILED",
+                  `Unable to send request to ${this.url}`,
+                  { reason: error.message },
+                );
+            },
+          );
           requestSent = true;
         } catch (error) {
           fail("CONNECTION_FAILED", `Unable to send request to ${this.url}`, {

@@ -17,3 +17,16 @@ test("CLI schema retains every canonical action, query, parameter and error entr
     assert.deepEqual(schema.protocol[key], source[key]);
   }
 });
+
+test("CLI schema preserves canonical transport budget and cancellation contract", async () => {
+  const schema = buildSchemaDocument(buildProgram());
+  const source = JSON.parse(
+    await readFile(
+      new URL("../../protocol/actions.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  for (const key of ["requestFormat", "responseFormat", "transport"] as const) {
+    assert.deepEqual(schema.protocol[key], source[key]);
+  }
+});

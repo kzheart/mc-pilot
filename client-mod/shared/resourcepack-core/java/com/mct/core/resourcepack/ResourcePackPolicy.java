@@ -1,6 +1,7 @@
 package com.mct.core.resourcepack;
 
 import java.util.Locale;
+import java.util.function.Function;
 
 /** The explicit policy takes precedence; a saved refusal is respected by default. */
 public final class ResourcePackPolicy {
@@ -13,6 +14,13 @@ public final class ResourcePackPolicy {
             throw new IllegalArgumentException("resourcePackPolicy must be accept, prompt, or reject");
         }
         return policy;
+    }
+
+    /** Older --server launches supply no saved entry. Preserve real entries; synthesize only missing ones. */
+    public static <T> T ensureServerInfo(T supplied, String host, int port, Function<String, T> factory) {
+        if (supplied != null) return supplied;
+        String address = host.indexOf(':') >= 0 && !host.startsWith("[") ? "[" + host + "]" : host;
+        return factory.apply(address + ":" + port);
     }
 
     public static String resolve(String override, String environment, boolean savedDisabled) {

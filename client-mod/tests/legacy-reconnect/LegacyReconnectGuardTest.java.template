@@ -1,0 +1,428 @@
+import com.mct.legacy.LegacyActionException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/** The production reconnect methods and their state fields are extracted verbatim at test time. */
+public final class LegacyReconnectGuardTest implements AutoCloseable {
+    private static final String FIRST = "127.0.0.1:25565";
+    private static final String SECOND = "127.0.0.1:25566";
+    private static int passed;
+    private final ExecutorService game = Executors.newSingleThreadExecutor(r -> new Thread(r, "fake-minecraft-main"));
+    private final FakeClient client = new FakeClient();
+    private final FakeResourcePacks resourcePacks = new FakeResourcePacks();
+    private final AtomicInteger polls = new AtomicInteger();
+    private volatile CyclicBarrier pollBarrier;
+    private final List<Double> pollTimeouts = java.util.Collections.synchronizedList(new ArrayList<Double>());
+
+    /* EXACT_PRODUCTION_METHODS */
+
+    private interface Check<T> { boolean done(T value); }
+    private <T> T onClient(Callable<T> task) {
+        try { return game.submit(task).get(2, TimeUnit.SECONDS); }
+        catch (java.util.concurrent.ExecutionException failure) {
+            Throwable cause = failure.getCause();
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new AssertionError("Fake game callback failed", cause);
+        }
+        catch (Exception failure) { throw new AssertionError("Bounded fake game callback failed", failure); }
+    }
+    private <T> T pollUntil(double timeoutSeconds, Callable<T> task, Check<T> done) {
+        polls.incrementAndGet();
+        pollTimeouts.add(timeoutSeconds);
+        T value = onClient(task);
+        // Return the latest value, including false to model expiration of the
+        // unchanged production polling budget without sleeping five real seconds.
+        CyclicBarrier barrier = pollBarrier;
+        if (barrier != null) {
+            try { barrier.await(2, TimeUnit.SECONDS); }
+            catch (Exception failure) { throw new AssertionError("Both reconnect workers must reach final phase", failure); }
+        }
+        return value;
+    }
+    private static Map<String, Object> map(Object... fields) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int index = 0; index < fields.length; index += 2) result.put((String) fields[index], fields[index + 1]);
+        return result;
+    }
+    private static JsonObject params(String address) {
+        JsonObject result = new JsonObject(); result.values.put("address", address); return result;
+    }
+    private void inWorld() {
+        onClient(() -> { client.world = new Object(); client.player = new FakePlayer(client); return true; });
+    }
+    private void alreadyConnecting(String target) {
+        onClient(() -> {
+            client.displayGuiScreen(new GuiConnecting(new GuiMainMenu(), client, new ServerData(target)));
+            client.constructors = 0; client.targets.clear(); client.screenDisplays = 0;
+            return true;
+        });
+    }
+    @Override public void close() throws Exception {
+        game.shutdownNow();
+        check(game.awaitTermination(2, TimeUnit.SECONDS), "fake game executor must exit");
+    }
+
+    public static void main(String[] args) throws Exception {
+        sameTargetWorkersConstructOnce();
+        existingSameTargetSkipsDisconnectAndPoll();
+        differentConnectingTargetRejectsWithoutMutation();
+        nonconnectingSameServerStartsNewAttempt();
+        unrelatedServerDataIsNotEnough();
+        unknownConnectingTargetRejectsWithoutMutation();
+        equivalentAddressesSkipWithoutPolicyMutation();
+        invalidPolicyAndAddressDoNotMutateClient();
+        invalidConnectingTargetRejectsWithoutMutation();
+        expiredDisconnectPollNeverStartsConnector();
+        conflictingOrUnknownPolicyDoesNotMutateConnection();
+        anotherNativeConnectionSatisfiesDisconnectPoll();
+        racingConflictingPoliciesDoNotRestartOrResetWinner();
+        System.out.println("PASS LegacyReconnectGuardTest: " + passed + " cases");
+    }
+
+    private static void sameTargetWorkersConstructOnce() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld();
+            fixture.pollBarrier = new CyclicBarrier(2);
+            ExecutorService workers = Executors.newFixedThreadPool(2);
+            try {
+                Future<Map<String, Object>> first = workers.submit(() -> fixture.reconnectClient(params(FIRST)));
+                Future<Map<String, Object>> second = workers.submit(() -> fixture.reconnectClient(params(FIRST)));
+                Map<String, Object> a = first.get(3, TimeUnit.SECONDS), b = second.get(3, TimeUnit.SECONDS);
+                equal(fixture.client.constructors, 1, "same-target race must construct one connector");
+                equal(fixture.resourcePacks.overrides, 1, "losing callback must not reset resource-pack policy");
+                equal(fixture.resourcePacks.connectionInfos, 1, "losing callback must not recreate pack connection state");
+                equal(fixture.client.targets, Arrays.asList(FIRST), "one native connection target");
+                equal(fixture.client.closeCalls, 2, "both workers passed the initial guard before the barrier");
+                equal(fixture.polls.get(), 2, "both workers reached the final callback concurrently");
+                equal(fixture.pollTimeouts, Arrays.asList(5.0D, 5.0D), "existing disconnect budget remains unchanged");
+                check(Boolean.TRUE.equals(a.get("connecting")) && Boolean.TRUE.equals(b.get("connecting")), "both requests report connecting");
+                int skipped = (Boolean.TRUE.equals(a.get("alreadyConnecting")) ? 1 : 0) + (Boolean.TRUE.equals(b.get("alreadyConnecting")) ? 1 : 0);
+                equal(skipped, 1, "losing final callback reports alreadyConnecting");
+                equal(a.get("address"), FIRST, "first response target preserved");
+                equal(b.get("address"), FIRST, "second response target preserved");
+            } finally {
+                workers.shutdownNow(); check(workers.awaitTermination(2, TimeUnit.SECONDS), "workers exit");
+            }
+        }
+        passed++;
+    }
+
+    private static void existingSameTargetSkipsDisconnectAndPoll() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.alreadyConnecting(FIRST);
+            fixture.resourcePacks.policy = "reject";
+            Map<String, Object> response = fixture.reconnectClient(params(FIRST));
+            check(Boolean.TRUE.equals(response.get("alreadyConnecting")), "entry guard reports existing connection");
+            check(Boolean.TRUE.equals(response.get("connecting")), "entry guard still reports connecting");
+            equal(fixture.client.closeCalls, 0, "existing same target must not close native channel");
+            equal(fixture.polls.get(), 0, "existing same target must not enter disconnect polling");
+            equal(fixture.resourcePacks.connectionInfos, 0, "existing target must not allocate new connection info");
+            equal(fixture.client.constructors, 0, "entry guard must avoid constructor/model reload");
+            equal(fixture.resourcePacks.overrides, 0, "entry guard must not reset resource-pack override");
+            equal(fixture.resourcePacks.policy, "reject", "skipped request preserves original policy");
+            check(fixture.resourcePacks.pending, "skipped request preserves pending resource-pack state");
+        }
+        passed++;
+    }
+
+    private static void differentConnectingTargetRejectsWithoutMutation() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.alreadyConnecting(FIRST);
+            fixture.resourcePacks.policy = "reject";
+            Object screen = fixture.client.currentScreen;
+            ServerData serverData = fixture.client.serverData;
+            boolean rejected = false;
+            try { fixture.reconnectClient(params(SECOND)); }
+            catch (LegacyActionException expected) {
+                rejected = "INVALID_STATE".equals(expected.code);
+                check(expected.getMessage().contains(FIRST) && expected.getMessage().contains(SECOND), "different-target error identifies current and requested servers");
+            }
+            check(rejected, "different in-progress target must reject explicitly");
+            assertNativeAttemptUnchanged(fixture, screen, serverData, "different target");
+        }
+        passed++;
+    }
+
+    private static void nonconnectingSameServerStartsNewAttempt() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld();
+            fixture.onClient(() -> { fixture.client.serverData = new ServerData(FIRST); fixture.client.currentScreen = new FakeDisconnectedScreen(); return true; });
+            Map<String, Object> response = fixture.reconnectClient(params(FIRST));
+            check(!Boolean.TRUE.equals(response.get("alreadyConnecting")), "matching server data on a failed screen cannot suppress retry");
+            equal(fixture.client.constructors, 1, "nonconnecting state starts a fresh connector");
+            equal(fixture.client.closeCalls, 1, "normal reconnect still closes existing channel");
+        }
+        passed++;
+    }
+
+    private static void unrelatedServerDataIsNotEnough() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.onClient(() -> { fixture.client.serverData = new ServerData(SECOND); fixture.client.currentScreen = new GuiMainMenu(); return true; });
+            Map<String, Object> response = fixture.reconnectClient(params(FIRST));
+            equal(fixture.client.constructors, 1, "unrelated remembered server does not block menu reconnect");
+            equal(fixture.client.closeCalls, 0, "menu reconnect does not invent an active channel");
+            equal(fixture.polls.get(), 0, "menu reconnect does not wait for absent world");
+            equal(response.get("address"), FIRST, "menu target preserved");
+        }
+        passed++;
+    }
+
+    private static void unknownConnectingTargetRejectsWithoutMutation() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.alreadyConnecting(FIRST);
+            fixture.onClient(() -> { fixture.client.serverData = null; return true; });
+            fixture.resourcePacks.policy = "reject";
+            Object screen = fixture.client.currentScreen;
+            invalidState(() -> fixture.reconnectClient(params(SECOND)), "unknown in-progress target must reject");
+            assertNativeAttemptUnchanged(fixture, screen, null, "unknown target");
+        }
+        passed++;
+    }
+
+    private static void equivalentAddressesSkipWithoutPolicyMutation() throws Exception {
+        String[][] aliases = {
+            {"EXAMPLE.COM", "example.com:25565", "example.com:25565"},
+            {"example.com:25565", " ExAmPlE.CoM ", "example.com:25565"},
+            {"127.0.0.1", "127.0.0.1:25565", "127.0.0.1:25565"},
+            {"bücher.example", "xn--bcher-kva.example:25565", "xn--bcher-kva.example:25565"},
+            {"[2001:0DB8:0:0:0:0:0:1]", "[2001:db8::1]:25565", "[2001:db8::1]:25565"},
+            {"2001:db8::1", "[2001:db8:0:0::1]:25565", "[2001:db8::1]:25565"}
+        };
+        for (String[] alias : aliases) {
+            try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+                fixture.inWorld(); fixture.alreadyConnecting(alias[0]);
+                fixture.resourcePacks.policy = "reject";
+                Map<String, Object> response = fixture.reconnectClient(params(alias[1]));
+                check(Boolean.TRUE.equals(response.get("alreadyConnecting")), "equivalent target must be deduplicated: " + Arrays.toString(alias));
+                equal(response.get("address"), alias[2], "response exposes canonical target");
+                equal(fixture.client.constructors, 0, "equivalent target skips native connector");
+                equal(fixture.client.closeCalls, 0, "equivalent target skips channel close");
+                equal(fixture.polls.get(), 0, "equivalent target skips poll");
+                equal(fixture.resourcePacks.overrides, 0, "equivalent target skips policy reset");
+                equal(fixture.resourcePacks.policy, "reject", "equivalent target keeps existing refusal");
+            }
+        }
+        passed++;
+    }
+
+    private static void invalidPolicyAndAddressDoNotMutateClient() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.alreadyConnecting(FIRST);
+            JsonObject badPolicy = params(FIRST); badPolicy.values.put("resourcePackPolicy", "unknown");
+            for (JsonObject request : Arrays.asList(badPolicy, params("example.com:invalid"), params("example.com:65536"))) {
+                boolean rejected = false;
+                try { fixture.reconnectClient(request); }
+                catch (LegacyActionException expected) { rejected = "INVALID_PARAMS".equals(expected.code); }
+                check(rejected, "invalid input must reject before disconnect");
+            }
+            equal(fixture.client.closeCalls, 0, "invalid input cannot close existing connection");
+            equal(fixture.client.constructors, 0, "invalid input cannot start connector");
+            equal(fixture.resourcePacks.overrides, 0, "invalid input cannot reset pack policy");
+            equal(fixture.polls.get(), 0, "invalid input cannot poll");
+        }
+        passed++;
+    }
+
+    private static void invalidConnectingTargetRejectsWithoutMutation() throws Exception {
+        for (String invalid : Arrays.asList("example.com:invalid", "", null)) {
+            try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+                fixture.inWorld(); fixture.alreadyConnecting(invalid);
+                fixture.resourcePacks.policy = "reject";
+                Object screen = fixture.client.currentScreen;
+                ServerData serverData = fixture.client.serverData;
+                invalidState(() -> fixture.reconnectClient(params(FIRST)), "invalid in-progress target must reject");
+                assertNativeAttemptUnchanged(fixture, screen, serverData, "invalid target");
+            }
+        }
+        passed++;
+    }
+
+    private static void assertNativeAttemptUnchanged(LegacyReconnectGuardTest fixture,
+                                                    Object screen, ServerData serverData, String label) {
+        equal(fixture.client.constructors, 0, label + " cannot start a second connector");
+        equal(fixture.client.closeCalls, 0, label + " cannot close current channel");
+        equal(fixture.polls.get(), 0, label + " cannot poll after rejection");
+        equal(fixture.resourcePacks.overrides, 0, label + " cannot reset pack policy");
+        equal(fixture.resourcePacks.connectionInfos, 0, label + " cannot rebuild pack connection state");
+        equal(fixture.resourcePacks.policy, "reject", label + " preserves current pack policy");
+        check(fixture.resourcePacks.pending, label + " preserves pending pack state");
+        check(fixture.client.currentScreen == screen && fixture.client.serverData == serverData,
+            label + " preserves native screen and target identity");
+    }
+
+    private static void expiredDisconnectPollNeverStartsConnector() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.client.disconnectCompletes = false;
+            fixture.resourcePacks.policy = "reject";
+            JsonObject request = params(FIRST); request.values.put("resourcePackPolicy", "accept");
+            boolean timedOut = false;
+            try { fixture.reconnectClient(request); }
+            catch (LegacyActionException expected) { timedOut = "TIMEOUT".equals(expected.code); }
+            check(timedOut, "false poll result must return TIMEOUT before starting another connector");
+            equal(fixture.client.constructors, 0, "expired disconnect cannot construct GuiConnecting");
+            equal(fixture.resourcePacks.overrides, 0, "expired disconnect cannot change policy");
+            equal(fixture.resourcePacks.connectionInfos, 0, "expired disconnect cannot reset connection pack state");
+            equal(fixture.resourcePacks.policy, "reject", "expired disconnect preserves saved policy");
+            check(fixture.resourcePacks.pending, "expired disconnect preserves pending pack state");
+            equal(fixture.pollTimeouts, Arrays.asList(5.0D), "false-poll protection does not increase timeout");
+        }
+        passed++;
+    }
+
+    private static void conflictingOrUnknownPolicyDoesNotMutateConnection() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            JsonObject initial = params(FIRST); initial.values.put("resourcePackPolicy", " ReJeCt ");
+            fixture.reconnectClient(initial);
+            equal(fixture.resourcePacks.policy, "reject", "actual policy parser canonicalizes input");
+            fixture.onClient(() -> {
+                fixture.client.constructors = 0; fixture.client.closeCalls = 0;
+                fixture.resourcePacks.overrides = 0; fixture.resourcePacks.connectionInfos = 0;
+                fixture.resourcePacks.pending = true; return true;
+            });
+            JsonObject conflicting = params(FIRST); conflicting.values.put("resourcePackPolicy", "accept");
+            invalidState(() -> fixture.reconnectClient(conflicting), "explicit conflicting policy must reject");
+            Map<String, Object> same = fixture.reconnectClient(initial);
+            check(Boolean.TRUE.equals(same.get("alreadyConnecting")), "same handler-created screen and policy can be reused");
+            Map<String, Object> omitted = fixture.reconnectClient(params(FIRST));
+            check(Boolean.TRUE.equals(omitted.get("alreadyConnecting")), "omitted policy preserves current attempt");
+            equal(fixture.resourcePacks.overrides, 0, "neither conflict nor reuse resets override");
+            equal(fixture.client.closeCalls, 0, "neither conflict nor reuse closes channel");
+            equal(fixture.client.constructors, 0, "neither conflict nor reuse starts duplicate connector");
+            check(fixture.resourcePacks.pending, "conflict and reuse preserve pending state");
+            fixture.alreadyConnecting(FIRST); // A different, externally created native screen.
+            invalidState(() -> fixture.reconnectClient(initial), "unknown external screen policy must reject explicit override");
+            equal(fixture.resourcePacks.overrides, 0, "unknown external policy cannot be silently overwritten");
+            equal(fixture.client.constructors, 0, "unknown external policy does not restart native connector");
+        }
+        passed++;
+    }
+
+    private static void anotherNativeConnectionSatisfiesDisconnectPoll() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.client.disconnectCompletes = false;
+            fixture.client.onClose = () -> fixture.client.displayGuiScreen(
+                new GuiConnecting(new GuiMainMenu(), fixture.client, new ServerData(FIRST)));
+            Map<String, Object> response = fixture.reconnectClient(params(FIRST));
+            check(Boolean.TRUE.equals(response.get("alreadyConnecting")), "already-started same native target satisfies disconnect poll");
+            check(fixture.client.world != null, "test exercises the connecting alternative to world-null");
+            equal(fixture.client.constructors, 1, "only the intervening native attempt exists");
+            equal(fixture.resourcePacks.overrides, 0, "intervening native connection is not overwritten");
+            equal(fixture.resourcePacks.connectionInfos, 0, "intervening native connection pack state survives");
+        }
+        passed++;
+    }
+
+    private static void racingConflictingPoliciesDoNotRestartOrResetWinner() throws Exception {
+        try (LegacyReconnectGuardTest fixture = new LegacyReconnectGuardTest()) {
+            fixture.inWorld(); fixture.pollBarrier = new CyclicBarrier(2);
+            JsonObject accept = params(FIRST), reject = params(FIRST);
+            accept.values.put("resourcePackPolicy", "accept");
+            reject.values.put("resourcePackPolicy", "reject");
+            ExecutorService workers = Executors.newFixedThreadPool(2);
+            try {
+                List<Future<Map<String, Object>>> requests = Arrays.asList(
+                    workers.submit(() -> fixture.reconnectClient(accept)),
+                    workers.submit(() -> fixture.reconnectClient(reject)));
+                int successes = 0, conflicts = 0;
+                String winningPolicy = null;
+                for (int index = 0; index < requests.size(); index++) {
+                    try {
+                        Map<String, Object> response = requests.get(index).get(3, TimeUnit.SECONDS);
+                        check(!Boolean.TRUE.equals(response.get("alreadyConnecting")), "conflicting policy cannot silently reuse another request");
+                        successes++; winningPolicy = index == 0 ? "accept" : "reject";
+                    } catch (java.util.concurrent.ExecutionException expected) {
+                        Throwable cause = expected.getCause();
+                        check(cause instanceof LegacyActionException && "INVALID_STATE".equals(((LegacyActionException) cause).code), "losing conflicting request must return INVALID_STATE");
+                        conflicts++;
+                    }
+                }
+                equal(successes, 1, "one policy wins final native-state check");
+                equal(conflicts, 1, "one conflicting policy fails explicitly");
+                equal(fixture.client.constructors, 1, "policy race must not restart constructor");
+                equal(fixture.resourcePacks.overrides, 1, "losing policy must not reset winner's override");
+                equal(fixture.resourcePacks.connectionInfos, 1, "losing policy must not rebuild connection pack state");
+                equal(fixture.resourcePacks.policy, winningPolicy, "first native attempt keeps its requested policy");
+            } finally {
+                workers.shutdownNow(); check(workers.awaitTermination(2, TimeUnit.SECONDS), "policy workers exit");
+            }
+        }
+        passed++;
+    }
+
+    private static void invalidState(Runnable request, String message) {
+        boolean rejected = false;
+        try { request.run(); }
+        catch (LegacyActionException expected) { rejected = "INVALID_STATE".equals(expected.code); }
+        check(rejected, message);
+    }
+
+    private static final class JsonObject { final Map<String, String> values = new LinkedHashMap<>(); }
+    private static final class Params {
+        static boolean has(JsonObject params, String name) { return params.values.containsKey(name); }
+        static String string(JsonObject params, String name) { return params.values.get(name); }
+    }
+    private static final class FakeResourcePacks {
+        int overrides, connectionInfos;
+        String policy;
+        boolean pending = true;
+        void setOverride(String address, String policy) { gameThread(); overrides++; this.policy = policy; pending = false; }
+        ServerData connectionInfo(String address) { gameThread(); connectionInfos++; return new ServerData(address); }
+    }
+    private static final class ServerData {
+        final String serverIP;
+        ServerData(String address) { serverIP = address; }
+    }
+    private static final class GuiMainMenu {}
+    private static final class FakeDisconnectedScreen {}
+    private static final class GuiConnecting {
+        GuiConnecting(GuiMainMenu parent, FakeClient client, ServerData target) {
+            gameThread(); client.constructors++; client.targets.add(target.serverIP); client.serverData = target;
+        }
+    }
+    private static final class FakeClient {
+        Object currentScreen, world;
+        FakePlayer player;
+        ServerData serverData;
+        int constructors, closeCalls, screenDisplays;
+        boolean disconnectCompletes = true;
+        Runnable onClose;
+        final List<String> targets = new ArrayList<>();
+        ServerData getCurrentServerData() { gameThread(); return serverData; }
+        void displayGuiScreen(Object screen) { gameThread(); currentScreen = screen; screenDisplays++; }
+    }
+    private static final class FakePlayer {
+        final FakeConnection connection;
+        FakePlayer(FakeClient client) { connection = new FakeConnection(client); }
+    }
+    private static final class FakeConnection {
+        final FakeNetwork network;
+        FakeConnection(FakeClient client) { network = new FakeNetwork(client); }
+        FakeNetwork getNetworkManager() { return network; }
+    }
+    private static final class FakeNetwork {
+        final FakeClient client;
+        FakeNetwork(FakeClient client) { this.client = client; }
+        void closeChannel(net.minecraft.util.text.TextComponentString reason) {
+            gameThread(); client.closeCalls++;
+            if (client.disconnectCompletes) client.world = null;
+            if (client.onClose != null) client.onClose.run();
+            // Keep player until both requests reach polling, making the race deterministic.
+        }
+    }
+    private static void gameThread() { check(Thread.currentThread().getName().equals("fake-minecraft-main"), "game operation must run on game thread"); }
+    private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+    private static void equal(Object actual, Object expected, String message) {
+        if (!java.util.Objects.equals(actual, expected)) throw new AssertionError(message + ": expected " + expected + ", got " + actual);
+    }
+}

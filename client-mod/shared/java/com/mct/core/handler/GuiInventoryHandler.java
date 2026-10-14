@@ -303,14 +303,15 @@ public final class GuiInventoryHandler extends ActionHandler {
     }
 
     private Map<String, Object> captureScreenshot(String output, @Nullable String region, boolean guiOnly) {
-        try {
+        try (com.mct.core.concurrent.AsyncResource<NativeImage> owner = new com.mct.core.concurrent.AsyncResource<>()) {
             Path outputPath = Path.of(output).toAbsolutePath();
             if (outputPath.getParent() != null) {
                 Files.createDirectories(outputPath.getParent());
             }
 
-            CompletableFuture<NativeImage> imageFuture = runOnClientThread(() -> ClientVersionModulesHolder.get().screenshot().capture(client));
-            NativeImage image = imageFuture.get(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture<NativeImage> imageFuture = runOnClientThread(() ->
+                owner.track(ClientVersionModulesHolder.get().screenshot().capture(client)));
+            NativeImage image = owner.claim(imageFuture.get(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS));
             try {
                 NativeImage toWrite = image;
                 if (region != null && !region.trim().isEmpty()) {
@@ -333,6 +334,9 @@ public final class GuiInventoryHandler extends ActionHandler {
             throw new ActionException("TIMEOUT");
         } catch (IOException exception) {
             throw new ActionException("IO_ERROR");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new ActionException("INTERNAL_ERROR");
         } catch (Exception exception) {
             throw new ActionException("INTERNAL_ERROR");
         }

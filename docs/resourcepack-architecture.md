@@ -5,7 +5,7 @@
 - `client-mod/shared/resourcepack-core/java`：唯一的业务核心，兼容 Java 8，不引用 Minecraft、loader 或 GUI 类型。`ResourcePackPolicy` 负责显式策略、实例策略、已有拒绝偏好的优先级；`ResourcePackLifecycle` 负责资源包状态、聚合、失败与自动重连阻断规则。各构建通过现有 source set 引用同一份源码，不复制实现。
 - Yarn 的 `shared/java/.../resourcepack` 与官方命名的 `shared/java-official/.../resourcepack`：Minecraft 接口适配。负责读写服务器设置、识别当前连接、取得原版确认回调，把原版事件转交核心。映射不同的 Minecraft 类型不能直接互相编译，业务规则仍引用共同核心。
 - `shared/mixin-resourcepack-*` 和少量版本级 `ConnectScreenMixin`：接入原版连接、确认、下载和资源重载事件。Mixin 方法描述符发生变化时才单独适配；不使用标题文字、按钮顺序或通用反射猜测版本。
-- `shared/forge-1.12/.../LegacyResourcePacks`：1.12 的实际 API 桥接。该协议没有现代 UUID 多包与 `required` 字段，也没有现代下载管理器状态事件。它调用原版 `ResourcePackRepository` 下载/加载，使用连接和单次 offer 标识隔离过期回调。1.12 的远程下载 future 不代表资源重载成功，因此原版兼容的网络完成回包仅映射为本地 `unverified`，不会报告 `loaded=true`。URL 校验与本地路径限制单独封装，不能替换为自制下载器。
+- `shared/forge-1.12/.../LegacyResourcePacks`：1.12 的实际 API 桥接。该协议没有现代 UUID 多包与 `required` 字段，也没有现代下载管理器状态事件。它调用原版 `ResourcePackRepository` 下载/加载，使用连接和单次 offer 标识隔离过期回调。1.12 的远程下载 future 既不可靠表示 HTTP 下载成功，也不代表资源重载成功，因此原版兼容的网络完成回包仅映射为本地 `unverified`，不会报告 `loaded=true`。URL 校验与本地路径限制单独封装，不能替换为自制下载器。
 - CLI：负责统一协议输入、超时和 `wait-ready` 的用户可见结果；不会通过反复点击或盲目重连掩盖下载失败。超时是客户端等待预算，不修改原版资源包网络超时。
 
 ## 适配器契约
@@ -18,7 +18,9 @@
 6. 无法可靠观察加载完成的适配器必须返回 `lifecycleSupported: false`，不能伪造就绪
 7. 现代 UI 操作调用已捕获的原版资源包确认回调；1.12 使用当前 offer 专属的确认回调并调用原版下载/加载接口。两者都不通过屏幕文本推断
 
-旧 Yarn 版本不能仅靠已有下载管理器计数证明加载完成，因此保留不支持生命周期验证的显式能力标记。1.12 同样返回 `lifecycleSupported: false`：HTTP 完成后的 `unverified` 仅表示已结束可观察的等待，`wait-ready` 必须返回 `resourcePackReadinessVerified: false`，仍需可见纹理验证实际应用。legacy 构建没有可复用的 Mixin/字节码注入入口，不为伪造精确状态新建整套注入机制。1.12 的 saved server 更新也遵循原版：只更新已有列表项，不自动把临时直连地址保存到多人游戏列表。
+旧 Yarn 版本不能仅靠已有下载管理器计数证明加载完成，因此保留不支持生命周期验证的显式能力标记。1.12 同样返回 `lifecycleSupported: false`：原生下载 future 结束后的 `unverified` 仅表示已结束可观察的等待，`wait-ready` 必须返回 `resourcePackReadinessVerified: false`，仍需可见纹理验证实际应用。legacy 构建没有可复用的 Mixin/字节码注入入口，不为伪造精确状态新建整套注入机制。实际 HTTP 404 已证实原版 HttpUtil 捕获 Throwable 后正常返回，损坏包同样不能据此确认失败；这类结果仍可能是 `unverified`，不能当成成功。下载等待期间连接断开则可明确终止 pending 并报告 failed。1.12 的 saved server 更新也遵循原版：只更新已有列表项，不自动把临时直连地址保存到多人游戏列表。
+
+`scripts/real-resourcepack-smoke.mjs` 的 legacy `http-failure` 用例是严格负向探针：保留失败断言并记录 `LEGACY_HTTP_FAILURE_UNOBSERVABLE` / `FAIL_TO_DETECT`，用于暴露原版无法可靠识别 HTTP 404 的能力限制。它不会把 `unverified` 重新归类为成功，也不代表默认全用例在 legacy 上全部通过。
 
 ## 扩展与验证
 

@@ -9,6 +9,14 @@ interface ProtocolEnvelope<T> {
   [key: string]: T | number;
 }
 
+interface ActionProtocol {
+  schemaVersion: number;
+  actions: ProtocolEntry[];
+  requestFormat?: Record<string, unknown>;
+  responseFormat?: Record<string, unknown>;
+  transport?: Record<string, unknown>;
+}
+
 interface ProtocolEntry {
   name?: string;
   code?: string;
@@ -98,9 +106,7 @@ function collectLeafCommands(
 }
 
 export function buildSchemaDocument(program: Command) {
-  const actions = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>(
-    "data/protocol/actions.json",
-  );
+  const actions = loadJsonFile<ActionProtocol>("data/protocol/actions.json");
   const queries = loadJsonFile<ProtocolEnvelope<ProtocolEntry[]>>(
     "data/protocol/queries.json",
   );
@@ -119,6 +125,9 @@ export function buildSchemaDocument(program: Command) {
       leafCommands: collectLeafCommands(commands),
     },
     protocol: {
+      requestFormat: actions.requestFormat,
+      responseFormat: actions.responseFormat,
+      transport: actions.transport,
       actions: actions.actions ?? [],
       queries: queries.queries ?? [],
       errors: errors.errors ?? [],
