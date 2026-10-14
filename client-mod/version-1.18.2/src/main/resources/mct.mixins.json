@@ -20,7 +20,10 @@
     "PlayerListHudMixin",
     "ConfirmScreenAccessor",
     "ConnectScreenMixin",
-    "ResourcePackNetworkHandlerMixin"
+    "ResourcePackNetworkHandlerMixin",
+    "FramebufferRecordingMixin",
+    "RecordingShutdownMixin",
+    "RecordingFpsAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

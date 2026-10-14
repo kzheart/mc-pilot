@@ -2,6 +2,18 @@
   "schemaVersion": 1,
   "queries": [
     {
+      "name": "recording.status",
+      "params": [],
+      "description": "Read native recorder state, FFmpeg capability, native dimensions, actual captured fps and CFR target; no world required",
+      "requiresWorld": false
+    },
+    {
+      "name": "recording.list",
+      "params": [],
+      "description": "List finalized MP4 files in the mod-owned gameDir/recordings directory, excluding partial recordings",
+      "requiresWorld": false
+    },
+    {
       "name": "chat.history",
       "params": ["last"],
       "description": "获取聊天历史"

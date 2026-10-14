@@ -8,6 +8,11 @@ public final class ActionException extends RuntimeException {
         this.code = code;
     }
 
+    public ActionException(String code, String message) {
+        super(message);
+        this.code = code;
+    }
+
     public String getCode() {
         return code;
     }

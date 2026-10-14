@@ -141,9 +141,45 @@ function normalizeLocaleJavaArgs(javaArgs, language) {
   ];
 }
 
+function clientResolution() {
+  const rawWidth = process.env.MCT_CLIENT_WIDTH;
+  const rawHeight = process.env.MCT_CLIENT_HEIGHT;
+  if (rawWidth === undefined && rawHeight === undefined) return undefined;
+  const width = Number(rawWidth);
+  const height = Number(rawHeight);
+  if (!Number.isInteger(width) || width < 2 || width > 7680 || !Number.isInteger(height) || height < 2 || height > 4320) {
+    throw new Error("MCT_CLIENT_WIDTH and MCT_CLIENT_HEIGHT must both be integer window dimensions within 2..7680 by 2..4320");
+  }
+  return { width, height };
+}
+
+function windowGameArgs(gameArgs) {
+  const resolution = clientResolution();
+  if (!resolution) return gameArgs;
+  const result = [];
+  for (let index = 0; index < gameArgs.length; index++) {
+    if (gameArgs[index] === "--width" || gameArgs[index] === "--height") { index++; continue; }
+    if (/^--(?:width|height)=/.test(gameArgs[index])) continue;
+    result.push(gameArgs[index]);
+  }
+  return [...result, "--width", String(resolution.width), "--height", String(resolution.height)];
+}
+
+function recordingJavaArgs(javaArgs) {
+  const executable = process.env.MCT_RECORD_FFMPEG;
+  if (!executable) return javaArgs;
+  if (!executable.trim() || executable.includes("\0")) {
+    throw new Error("MCT_RECORD_FFMPEG must be a command name or executable path");
+  }
+  return [
+    ...javaArgs.filter((entry) => !entry.startsWith("-Dmct.record.ffmpeg=")),
+    `-Dmct.record.ffmpeg=${executable}`
+  ];
+}
+
 function xmclExtraJvmArgs(language, maxMemory) {
   const defaultArgs = maxMemory ? DEFAULT_EXTRA_JVM_ARGS.filter((entry) => entry !== "-Xmx2G") : DEFAULT_EXTRA_JVM_ARGS;
-  return normalizeLocaleJavaArgs([...defaultArgs], language);
+  return recordingJavaArgs(normalizeLocaleJavaArgs([...defaultArgs], language));
 }
 
 async function ensureFile(filePath, downloadUrl) {
@@ -454,6 +490,7 @@ async function launchXmclManagedClient(options) {
 
   return launchMinecraft({
     gamePath: gameDir,
+    ...(clientResolution() ? { resolution: clientResolution() } : {}),
     resourcePath: runtimeRoot,
     javaPath: options.java || process.env.MCT_CLIENT_JAVA || "java",
     minMemory: 512,
@@ -530,7 +567,7 @@ async function main() {
     `[mct-launch] lwjglCorePresent=${launch.classpathEntries.some((entry) => entry.endsWith(`${path.sep}org${path.sep}lwjgl${path.sep}lwjgl${path.sep}3.3.2${path.sep}lwjgl-3.3.2.jar`))}`
   );
   console.log(`[mct-launch] gameArgs=${launch.gameArgs.join(" ")}`);
-  const javaArgv = [...launch.javaArgs, "-cp", launch.classpath, launch.mainClass, ...launch.gameArgs];
+  const javaArgv = [...recordingJavaArgs(launch.javaArgs), "-cp", launch.classpath, launch.mainClass, ...windowGameArgs(launch.gameArgs)];
   // Node refuses to spawn .cmd/.bat directly (CVE-2024-27980); route java
   // wrappers written as batch files through cmd.exe with each arg quoted.
   const isBatchJava = process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.javaBin);

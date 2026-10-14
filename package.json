@@ -17,7 +17,10 @@
     "test:real:group": "node scripts/real-mod-full-test.mjs",
     "test:real:list": "node scripts/real-mod-full-test.mjs --list-groups",
     "sync:protocol": "node scripts/sync-protocol.mjs",
-    "test:protocol": "node --test scripts/protocol-contract.test.mjs"
+    "test:protocol": "node --test scripts/protocol-contract.test.mjs",
+    "test:recording:core": "sh client-mod/tests/recording/run-tests.sh",
+    "test:recording:adapters": "bash client-mod/tests/run-recording-adapter-tests.sh",
+    "test:recording:legacy": "bash client-mod/tests/run-recording-transformer-tests.sh"
   },
   "engines": {
     "node": ">=20"

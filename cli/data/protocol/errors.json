@@ -2,6 +2,61 @@
   "schemaVersion": 1,
   "errors": [
     {
+      "code": "RECORDING_LIST_FAILED",
+      "exitCode": 3,
+      "description": "Unable to read the game-owned recordings directory; inspect permissions and game logs"
+    },
+    {
+      "code": "RECORDING_UNSUPPORTED",
+      "exitCode": 3,
+      "description": "Running mod lacks native recording; install a matching recording-capable client mod and restart; updating CLI alone does not update the running mod"
+    },
+    {
+      "code": "RECORDING_ALREADY_ACTIVE",
+      "exitCode": 3,
+      "description": "A recorder is already starting, recording or stopping; inspect status or stop it first"
+    },
+    {
+      "code": "RECORDING_NOT_STARTED",
+      "exitCode": 3,
+      "description": "There is no recording to stop"
+    },
+    {
+      "code": "RECORDING_SOURCE_UNAVAILABLE",
+      "exitCode": 3,
+      "description": "Native framebuffer capture is unavailable for this render backend"
+    },
+    {
+      "code": "RECORDING_FRAMEBUFFER_MISMATCH",
+      "exitCode": 3,
+      "description": "Requested dimensions do not equal the native framebuffer; resize the game or request the reported source dimensions"
+    },
+    {
+      "code": "RECORDING_FILE_EXISTS",
+      "exitCode": 3,
+      "description": "Name already exists; choose a new recording name; existing recordings are never overwritten"
+    },
+    {
+      "code": "RECORDING_FFMPEG_UNAVAILABLE",
+      "exitCode": 3,
+      "description": "Game cannot launch a suitable FFmpeg; install it explicitly and configure mct.record.ffmpeg or game PATH, then restart"
+    },
+    {
+      "code": "RECORDING_START_FAILED",
+      "exitCode": 3,
+      "description": "Encoder could not start; inspect error details and local game logs"
+    },
+    {
+      "code": "RECORDING_FAILED",
+      "exitCode": 3,
+      "description": "Recording or finalization failed; partial output is not a finalized artifact"
+    },
+    {
+      "code": "RECORDING_NOT_FOUND",
+      "exitCode": 3,
+      "description": "No finalized recording with this name exists for the selected client"
+    },
+    {
       "code": "RESOURCE_PACK_PROMPT",
       "exitCode": 3,
       "description": "资源包等待明确接受或拒绝"

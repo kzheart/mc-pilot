@@ -51,10 +51,11 @@ test("extracts switch cases and both equals spellings across lines", () => {
     if ("status.all".equals(action)) {}
     if (action . equals ( "chat.last" )) {}
     if ("chat.history" . equals ( action )) {}
+    if ("recording.start".equals(command)) {}
   `);
   assert.deepEqual([...actions].sort(), [
     "chat.history", "chat.last", "chat.send", "client.respawn",
-    "input.key-down", "input.key-up", "status.all",
+    "input.key-down", "input.key-up", "recording.start", "status.all",
   ]);
 });
 
@@ -177,4 +178,44 @@ test("repository package copies and all three handler families are aligned", asy
   assert.equal(report.success, true, JSON.stringify(report, null, 2));
   assert.deepEqual(report.handlers.map((family) => family.family), ["yarn", "official", "legacy"]);
   for (const family of report.handlers) assert.ok(family.counts.java > 0);
+});
+
+
+test("shared recorder contract requires each family's real delegation", async (t) => {
+  const { root, families } = await fixture(t);
+  const actionsPath = path.join(root, "protocol/actions.json");
+  const actions = JSON.parse(await readFile(actionsPath, "utf8"));
+  actions.actions.push({ name: "recording.start", params: [] });
+  await writeFile(actionsPath, JSON.stringify(actions));
+  const core = path.join(root, "client-mod/shared/recording-core/java/com/mct/core/recording");
+  await mkdir(core, { recursive: true });
+  await writeFile(path.join(core, "RecordingController.java"), 'if ("recording.start".equals(command)) {}');
+  await syncPackagedProtocol(root);
+  let report = await checkProtocolSync(root, families);
+  assert.ok(report.handlers.every((family) => family.missingInJava.includes("recording.start")));
+  await writeFile(path.join(root, families[0].directory, "Recording.java"), 'return RecordingController.getInstance().handle(action, params);');
+  report = await checkProtocolSync(root, families);
+  assert.equal(report.handlers[0].success, true);
+  assert.ok(report.handlers.slice(1).every((family) => family.missingInJava.includes("recording.start")));
+});
+
+test("recording protocol permits only bounded capture controls and preserves truthful metrics", async () => {
+  const document = JSON.parse(await readFile(path.join(ROOT, "protocol/actions.json"), "utf8"));
+  const start = document.actions.find((entry) => entry.name === "recording.start");
+  assert.deepEqual(start.params, ["name", "width", "height", "fps", "maxDurationSeconds"]);
+  assert.equal(start.parameters.width.default, 1920);
+  assert.equal(start.parameters.height.default, 1080);
+  assert.equal(start.parameters.fps.default, 30);
+  assert.equal(start.parameters.fps.maximum, 120);
+  assert.equal(start.parameters.width.multipleOf, 2);
+  assert.equal(start.requiresWorld, false);
+  for (const name of ["recording.stop", "recording.status", "recording.list"]) {
+    assert.deepEqual(document.actions.find((entry) => entry.name === name).params, []);
+  }
+  assert.equal(document.recording.audio, false);
+  assert.equal(document.recording.upscaled, false);
+  assert.ok(document.recording.statusFields.capturedFps);
+  assert.ok(document.recording.statusFields.duplicate);
+  assert.match(document.recording.statusFields.fps, /not measured capture/);
+  assert.match(document.recording.lifecycle.socketDisconnect, /outlives/);
 });

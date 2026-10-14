@@ -26,7 +26,12 @@ test("CLI schema preserves canonical transport budget and cancellation contract"
       "utf8",
     ),
   );
-  for (const key of ["requestFormat", "responseFormat", "transport"] as const) {
+  for (const key of [
+    "requestFormat",
+    "responseFormat",
+    "transport",
+    "recording",
+  ] as const) {
     assert.deepEqual(schema.protocol[key], source[key]);
   }
 });

@@ -12,6 +12,9 @@ export interface ClientInstanceMeta {
   resourcePackPolicy?: ResourcePackPolicy;
   launchArgs?: string[];
   env?: Record<string, string>;
+  recordFfmpeg?: string;
+  width?: number;
+  height?: number;
   javaCommand?: string;
   javaVersion?: number;
   createdAt: string;

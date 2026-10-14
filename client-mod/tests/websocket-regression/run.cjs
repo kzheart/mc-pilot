@@ -111,6 +111,15 @@ async function main() {
   assert.deepEqual(first.responses.map(value => value.id), [blocked, ...fifo]);
   pass('fresh-first socket isolation, FIFO and request IDs');
 
+  const recordingError = await other.request('test.recordingError');
+  checkError(recordingError, 'RECORDING_FRAMEBUFFER_MISMATCH', 'execution', true);
+  assert.match(recordingError.details.message, /1920x1080.*1280x720/);
+  assert.ok(recordingError.details.message.length <= 1024);
+  const normalError = await other.request('test.normalError');
+  checkError(normalError, 'NOT_IN_WORLD', 'execution', true);
+  assert.deepEqual(normalError.details, { phase: 'execution', resultUnknown: true });
+  pass('recording-only bounded error details preserve ordinary errors');
+
   const busyBlock = first.send('test.block', { token: 'busy-block' });
   await line('ACTION busy-block');
   const flood = Array.from({ length: 24 }, (_, i) => first.send('test.echo', { token: `flood-${i}` }));

@@ -24,3 +24,8 @@ Mixin application, or whether an implemented action supports every option in
 each Minecraft version. Those require focused contract and real-client tests.
 Do not replace explicit handlers with computed action names without updating the
 guard and its tests.
+
+
+## Native recording contract
+
+`recording.start`, `recording.stop`, `recording.status`, and `recording.list` are control-only actions, available without joining a world. The `recording` object in `actions.json` defines capability fields, defaults, bounds and finalization semantics and is retained by `mct schema`. Capture is game-owned native framebuffer capture; no video data or arbitrary executable/output-path controls cross WebSocket. See [recording](../docs/recording.md) for setup and artifact review.

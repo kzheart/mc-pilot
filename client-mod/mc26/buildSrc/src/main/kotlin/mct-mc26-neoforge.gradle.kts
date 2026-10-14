@@ -39,6 +39,12 @@ sourceSets.main {
     java.srcDir(genDir)
     java.srcDir(rootProject.file("../shared/resourcepack-core/java"))
     java.srcDir(rootProject.file("../shared/command-core/java"))
+    java.srcDir(rootProject.file("../shared/recording-core/java"))
+    java.srcDir(rootProject.file("../shared/recording-gpu/java"))
+    val recordingApi = if (targetMcVersion == "26.2") "v2" else "v1"
+    java.srcDir(rootProject.file("../shared/recording-gpu-$recordingApi/java"))
+    java.srcDir(rootProject.file("../shared/recording-official-gpu-$recordingApi/java"))
+    java.srcDir(rootProject.file("../shared/recording-official-gpu/java"))
 }
 
 tasks.named("compileJava") { dependsOn("generateVersionInfo") }

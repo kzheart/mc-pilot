@@ -24,7 +24,10 @@
     "ResourcePackNetworkHandlerMixin",
     "ResourcePackStatusMixin",
     "ResourcePackLoaderMixin",
-    "ServerListAccessor"
+    "ServerListAccessor",
+    "FramebufferRecordingMixin",
+    "RecordingShutdownMixin",
+    "RecordingFpsAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

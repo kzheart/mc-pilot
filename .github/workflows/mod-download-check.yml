@@ -10,6 +10,38 @@ permissions:
   contents: read
 
 jobs:
+  recording:
+    name: Native recording / Java ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['8', '17', '21', '25']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Provide the trusted distro FFmpeg encoder
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+      - name: Shared recorder lifecycle, ownership, CFR and actual MP4 decoding
+        run: sh client-mod/tests/recording/run-tests.sh
+      - name: Bounded GPU/PBO adapter lifecycle regressions
+        run: bash client-mod/tests/run-recording-adapter-tests.sh
+      - name: Exact legacy framebuffer transformer regressions
+        shell: bash
+        run: |
+          asm="$RUNNER_TEMP/asm-debug-all-5.2.jar"
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/ow2/asm/asm-debug-all/5.2/asm-debug-all-5.2.jar -o "$asm"
+          echo "254b82bec9da4f8efbc8b1f93ab2b87f7465227a82b36cf3d05d9e77a0e8dd2e  $asm" | sha256sum -c -
+          MCT_TEST_ASM_JAR="$asm" bash client-mod/tests/run-recording-transformer-tests.sh
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -27,6 +59,8 @@ jobs:
         run: node --test cli/dist/download/ModVariantCatalog.test.js cli/dist/download/VersionMatrix.test.js cli/dist/protocol-schema.test.js cli/dist/instance/client-process-ownership.test.js
       - name: WebSocket transport regressions
         run: node --test cli/dist/client/WebSocketClient.test.js
+      - name: Recording CLI and launch configuration regressions
+        run: node --test cli/dist/record-cli.test.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

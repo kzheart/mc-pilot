@@ -292,6 +292,23 @@ mct gui click 1 --button left         # place in lapis slot
 mct enchant --option 0                # 0=top, 1=middle, 2=bottom
 ```
 
+### Native recording
+
+Record Minecraft's own framebuffer through the mod, with silent H.264 MP4 output. The default is native **1920×1080 at a requested 30 fps**; the framebuffer must actually match, with no upscaling or desktop capture.
+
+```bash
+mct record doctor                                  # existing FFmpeg + libx264, no automatic download
+mct record status --client <client>                 # running mod's encoder/backend capability
+mct record start shop-demo --client <client>
+# Run the test; recording continues after the CLI exits
+mct record stop --client <client>                   # wait for MP4 finalization
+mct record view shop-demo --client <client> --probe
+```
+
+This recording build is currently local/unpublished: install the supplied CLI and matching mod JAR using the [local setup instructions](docs/recording.md#use-this-unpublished-build-locally); a registry install alone may still run an older mod.
+
+Use `mct client launch <client> --width 1920 --height 1080` to request that window size explicitly; HiDPI framebuffer dimensions can differ. Configure an existing encoder with `--record-ffmpeg /path/to/ffmpeg`. Files live in the selected client's `gameDir/recordings`, and existing names are never overwritten. Check `finalized`, `capturedFps`, dropped/duplicate counts, and the returned `outputPath`; a 30 fps container alone does not prove 30 distinct captured frames per second. See [recording setup, limits and review](docs/recording.md).
+
 ### Screenshot tuning
 
 ```bash

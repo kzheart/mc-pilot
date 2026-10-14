@@ -122,7 +122,14 @@ public final class WebSocketRequestService<K> implements AutoCloseable {
                 }
                 String phase = failure.getCode() == ConnectionRequestDispatcher.FailureCode.BUSY
                     ? "admission" : failure.isStarted() ? "execution" : "queue";
-                send.accept(response(requestId, false, null, code, details(phase, failure.isResultUnknown())));
+                Map<String, Object> detail = details(phase, failure.isResultUnknown());
+                // Keep existing errors unchanged; recording failures include bounded, actionable context.
+                Throwable cause = failure.getCause();
+                if (code.startsWith("RECORDING_") && cause != null && cause.getMessage() != null) {
+                    String message = cause.getMessage();
+                    detail.put("message", message.length() > 1024 ? message.substring(0, 1024) : message);
+                }
+                send.accept(response(requestId, false, null, code, detail));
             });
     }
 

@@ -43,6 +43,7 @@ public final class LegacyForgeEntrypoint {
 
         MovementActions movement = new MovementActions();
         ActionRouter router = new ActionRouter();
+        router.register(new RecordingActions(), "recording.");
         router.register(new ChatActions(chatRecorder), "chat.");
         router.register(new StatusActions(), "status.", "screen.", "position.get", "rotation.get", "wait.perform");
         router.register(new InputActions(), "input.");

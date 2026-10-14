@@ -31,6 +31,7 @@ public final class WebSocketRegressionHarness {
     private static final List<String> EFFECTS = Collections.synchronizedList(new ArrayList<String>());
     private static final AtomicInteger EFFECT_INTERRUPTS = new AtomicInteger();
     private static volatile boolean paused;
+    private static boolean legacyMode;
 
     private static CountDownLatch gate(String token) {
         CountDownLatch fresh = new CountDownLatch(1);
@@ -45,6 +46,15 @@ public final class WebSocketRegressionHarness {
     }
 
     public static Map<String, Object> execute(String action, Map<String, Object> params) throws Exception {
+        if (action.equals("test.recordingError")) {
+            String message = "Requested 1920x1080 but the native framebuffer is 1280x720";
+            if (legacyMode) throw new com.mct.legacy.LegacyActionException("RECORDING_FRAMEBUFFER_MISMATCH", message);
+            throw new com.mct.core.util.ActionException("RECORDING_FRAMEBUFFER_MISMATCH", message);
+        }
+        if (action.equals("test.normalError")) {
+            if (legacyMode) throw new com.mct.legacy.LegacyActionException("NOT_IN_WORLD", "must stay private");
+            throw new com.mct.core.util.ActionException("NOT_IN_WORLD", "must stay private");
+        }
         String token = params.containsKey("token") ? String.valueOf(params.get("token")) : action;
         ACTIONS.add(token);
         System.out.println("ACTION " + token);
@@ -95,6 +105,7 @@ public final class WebSocketRegressionHarness {
         try (ServerSocket reservation = new ServerSocket(0)) { port = reservation.getLocalPort(); }
         final Object server;
         final boolean legacy = args[0].equals("legacy");
+        legacyMode = legacy;
         if (legacy) {
             ActionRouter router = new ActionRouter();
             router.register((action, params) -> {

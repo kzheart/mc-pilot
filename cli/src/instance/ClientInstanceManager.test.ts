@@ -11,7 +11,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { ClientInstanceManager } from "./ClientInstanceManager.js";
+import {
+  ClientInstanceManager,
+  validateClientResolution,
+  validateRecordingExecutable,
+} from "./ClientInstanceManager.js";
 import { GlobalStateStore } from "../util/global-state.js";
 import { resolveClientInstanceDir } from "../util/paths.js";
 
@@ -161,7 +165,14 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
       undefined,
     );
 
+    const initialArguments = await readFile(javaArgsPath, "utf8");
+    assert.ok(!initialArguments.includes("--width"));
+    assert.ok(!initialArguments.includes("-Dmct.record.ffmpeg="));
+
     await manager.launch(clientName, {
+      width: 1920,
+      height: 1080,
+      recordFfmpeg: path.join(tempDir, "ffmpeg with spaces"),
       mute: false,
       resourcePackPolicy: "reject",
       force: true,
@@ -178,13 +189,45 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
         (await readFile(javaEnvPath, "utf8")).trim() === "policy:reject",
     );
 
-    await manager.updateMeta(clientName, { resourcePackPolicy: "prompt" });
+    await waitFor(async () => {
+      const args = (await readFile(javaArgsPath, "utf8")).replace(
+        /\r\n/g,
+        "\n",
+      );
+      return (
+        args.includes("--width\n1920\n--height\n1080") &&
+        args.includes(
+          `-Dmct.record.ffmpeg=${path.join(tempDir, "ffmpeg with spaces")}\n`,
+        )
+      );
+    });
+    assert.equal(
+      (await manager.loadMeta(clientName)).width,
+      undefined,
+      "launch overrides are not persisted",
+    );
+    await manager.updateMeta(clientName, {
+      resourcePackPolicy: "prompt",
+      width: 1280,
+      height: 720,
+      recordFfmpeg: "ffmpeg-saved",
+    });
     await manager.launch(clientName, { force: true });
     await waitFor(
       async () =>
         (await readFile(javaEnvPath, "utf8")).trim() === "policy:prompt",
     );
 
+    await waitFor(async () => {
+      const args = (await readFile(javaArgsPath, "utf8")).replace(
+        /\r\n/g,
+        "\n",
+      );
+      return (
+        args.includes("--width\n1280\n--height\n720") &&
+        args.includes("-Dmct.record.ffmpeg=ffmpeg-saved")
+      );
+    });
     await manager.launch(clientName, {
       resourcePackPolicy: "accept",
       force: true,
@@ -210,4 +253,31 @@ test("ClientInstanceManager launch defaults to Simplified Chinese and muted audi
     }
     await rmWithRetry(tempDir);
   }
+});
+
+test("client window resolution is explicit, paired and bounded", () => {
+  assert.doesNotThrow(() => validateClientResolution());
+  assert.doesNotThrow(() => validateClientResolution(1920, 1080));
+  for (const [width, height] of [
+    [1920, undefined],
+    [undefined, 1080],
+    [0, 1080],
+    [1920, NaN],
+    [7681, 1080],
+    [1920, 4321],
+    [1920.5, 1080],
+  ]) {
+    assert.throws(() => validateClientResolution(width, height), {
+      code: "INVALID_PARAMS",
+    });
+  }
+});
+
+test("recording executable config is structurally validated without executing it", () => {
+  for (const value of [undefined, "ffmpeg", "/trusted/ffmpeg with spaces"])
+    assert.doesNotThrow(() => validateRecordingExecutable(value));
+  for (const value of ["", "  ", "ffmpeg\0ignored", "ffmpeg\nargument"])
+    assert.throws(() => validateRecordingExecutable(value), {
+      code: "INVALID_PARAMS",
+    });
 });

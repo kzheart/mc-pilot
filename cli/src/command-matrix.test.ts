@@ -66,6 +66,8 @@ const NON_REQUEST_LEAF_COMMANDS = [
   "gui click-title",
   "init",
   "schema",
+  "record doctor",
+  "record view",
   "server exec",
   "server start",
   "server status",
@@ -82,6 +84,37 @@ const NON_REQUEST_LEAF_COMMANDS = [
 ];
 
 const REQUEST_CASES: RequestCase[] = [
+  {
+    leaf: "record start",
+    argv: ["record", "start", "session"],
+    action: "recording.start",
+    params: {
+      name: "session",
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      maxDurationSeconds: 1800,
+    },
+  },
+  {
+    leaf: "record stop",
+    argv: ["record", "stop"],
+    action: "recording.stop",
+    params: {},
+  },
+  {
+    leaf: "record status",
+    argv: ["record", "status"],
+    action: "recording.status",
+    params: {},
+  },
+  {
+    leaf: "record list",
+    argv: ["record", "list"],
+    action: "recording.list",
+    params: {},
+  },
+
   {
     leaf: "anvil",
     argv: ["anvil", "--input-slot", "2", "--rename", "Renamed"],
@@ -1008,5 +1041,83 @@ test("resource-pack flags preserve absence and validate all supported client com
       }),
       /Allowed choices/,
     );
+  }
+});
+
+test("native recording launch options belong only to client create and launch", async () => {
+  for (const name of ["create", "launch"]) {
+    const client = buildProgram().commands.find(
+      (command) => command.name() === "client",
+    )!;
+    const command = client.commands.find((command) => command.name() === name)!;
+    for (const option of ["width", "height", "recordFfmpeg"]) {
+      assert.ok(
+        command.options.some((entry) => entry.attributeName() === option),
+      );
+    }
+  }
+  for (const [flag, value] of [
+    ["--width", "1920"],
+    ["--height", "1080"],
+    ["--record-ffmpeg", "/path/to/ffmpeg"],
+  ]) {
+    const client = buildProgram().commands.find(
+      (command) => command.name() === "client",
+    )!;
+    const reconnect = client.commands.find(
+      (command) => command.name() === "reconnect",
+    )!;
+    let called = false;
+    reconnect
+      .exitOverride()
+      .configureOutput({ writeErr: () => {} })
+      .action(() => {
+        called = true;
+      });
+    await assert.rejects(
+      reconnect.parseAsync([flag, value], { from: "user" }),
+      /unknown option/,
+    );
+    assert.equal(called, false);
+  }
+});
+
+test("client create rejects invalid recording launch config before downloading or checking Java", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "mct-invalid-client-config-"),
+  );
+  try {
+    for (const options of [
+      ["--width", "1920"],
+      ["--height", "0", "--width", "1920"],
+      ["--width", "NaN", "--height", "1080"],
+      ["--record-ffmpeg", "   "],
+    ]) {
+      await assert.rejects(
+        execFileAsync(
+          process.execPath,
+          [
+            path.join(process.cwd(), "dist/index.js"),
+            "client",
+            "create",
+            "invalid",
+            "--java",
+            path.join(root, "missing-java"),
+            ...options,
+          ],
+          {
+            cwd: root,
+            env: { ...process.env, MCT_HOME: path.join(root, "home") },
+          },
+        ),
+        (error: unknown) => {
+          const response = JSON.parse((error as { stderr: string }).stderr);
+          assert.equal(response.error.code, "INVALID_PARAMS");
+          return true;
+        },
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

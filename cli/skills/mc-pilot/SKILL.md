@@ -320,6 +320,31 @@ mct image bbox <image.png>
 mct image locate-template <screenshot.png> <template.png> --expected <x,y,w,h>
 ```
 
+### Native video evidence
+
+For a requested recording or a test whose timing/motion needs video, use the mod recorder:
+
+```bash
+mct record doctor
+mct record status --client <client>
+mct record start <unique-name> --client <client>
+# Perform the test using normal commands and condition waits
+mct record status --client <client>
+mct record stop --client <client>
+mct record view <unique-name> --client <client> --probe
+```
+
+- Default output is silent native 1920×1080 at a requested 30 fps. No desktop capture or upscaling. Native framebuffer dimensions must match; on mismatch inspect `sourceWidth`/`sourceHeight`, explicitly resize the game or choose `--width`/`--height` matching reality. HiDPI dimensions can differ from the logical window size.
+- `mct client create/launch --width 1920 --height 1080` explicitly requests window dimensions. Do not change the user's window settings silently. `--record-ffmpeg /absolute/path/to/ffmpeg` configures the game-local encoder; the doctor never installs/downloads binaries. If missing, have the user install FFmpeg with libx264 through a trusted source and restart the client. The doctor's local PATH check is not the running mod's capability check.
+- Start acknowledges an encoder before any frames are guaranteed. Verify `captured` increases and no `error` appears; do not assume a persistent `starting` state will be visible.
+- The mod, not the CLI connection, owns recording. One-shot commands disconnect normally and the recording continues. Never blindly retry start on transport timeout; query status first.
+- Use safe unique names without paths/extensions. The mod writes in its own `gameDir/recordings` and never overwrites. Recordings are not project `.mct` files. Keep the returned finalized `outputPath`.
+- Before client/server cleanup, stop recording and verify `state=stopped` and `finalized=true`. Include this in failure cleanup too; partial files are not finished evidence.
+- Report all three rates separately: `rendererFps` is the game render-rate estimate, `capturedFps` is fresh framebuffer samples divided by elapsed recording seconds, and `fps` is the requested CFR MP4 output rate. Also report native dimensions and dropped/duplicate counts. Never infer distinct capture FPS from ffprobe's container frame rate. There is no audio.
+- Review the finished MP4 visually. If ffprobe exists, use `record view --probe` or `ffprobe -v error -show_streams -show_format -of json <outputPath>` to verify H.264, dimensions, duration and no audio. An inaccessible game-host path requires review on that host.
+- For an unpublished/local build, use the supplied CLI and exact matching built JAR in the stopped client's `gameDir/mods`; update `env.MCT_CLIENT_MOD_JAR` source if the launcher would restore an older copy. A registry install or fresh create without the local artifact may select an older released mod.
+- An old mod's `RECORDING_UNSUPPORTED` requires a matching recording-capable mod and restart; updating the CLI alone does not suffice. Use `mct schema` for bounds and current protocol; default duration limit is 1800 seconds, hard maximum 7200, with bounded frame memory and output size.
+
 ## Cleanup
 
 Unless the user explicitly asks to keep the environment alive:

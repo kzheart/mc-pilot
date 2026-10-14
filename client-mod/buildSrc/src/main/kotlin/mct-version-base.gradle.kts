@@ -57,6 +57,16 @@ sourceSets.main {
     java.srcDir(genDir)
     java.srcDir(rootProject.file("shared/resourcepack-core/java"))
     java.srcDir(rootProject.file("shared/command-core/java"))
+    java.srcDir(rootProject.file("shared/recording-core/java"))
+    java.srcDir(rootProject.file("shared/recording-render/java"))
+    java.srcDir(rootProject.file("shared/recording-yarn/java"))
+    if (targetMcVersion == "1.21.11") {
+        java.srcDir(rootProject.file("shared/recording-gpu/java"))
+        java.srcDir(rootProject.file("shared/recording-gpu-v1/java"))
+        java.srcDir(rootProject.file("shared/recording-yarn-gpu/java"))
+    } else {
+        java.srcDir(rootProject.file("shared/recording-yarn-gl/java"))
+    }
 }
 
 tasks.named("compileJava") { dependsOn("generateVersionInfo") }

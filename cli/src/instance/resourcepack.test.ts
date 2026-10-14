@@ -244,7 +244,12 @@ test("idle, optional rejection and legacy states never fabricate pack-loaded suc
     { state: "rejected", pending: false, loaded: false, required: false },
     { acceptanceStatus: "accepted", packCount: 1 },
     { state: "idle", pending: false, loaded: false, lifecycleSupported: false },
-    { state: "unverified", pending: false, loaded: false, lifecycleSupported: false },
+    {
+      state: "unverified",
+      pending: false,
+      loaded: false,
+      lifecycleSupported: false,
+    },
   ]) {
     await t.test(JSON.stringify(pack), async () => {
       await withClient(

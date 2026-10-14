@@ -1,6 +1,7 @@
 package com.mct.core.handler;
 
 import com.mct.core.state.ClientStateTracker;
+import com.mct.core.recording.RecordingController;
 import com.mct.core.util.ActionException;
 import java.util.Map;
 import net.minecraft.client.MinecraftClient;
@@ -33,6 +34,12 @@ public final class ActionDispatcher {
     }
 
     public Map<String, Object> execute(String action, Map<String, Object> params) {
+        if (action.startsWith("recording.")) {
+            try { return RecordingController.getInstance().handle(action, params); }
+            catch (RecordingController.RecordingException failure) {
+                throw new ActionException(failure.getCode(), failure.getMessage());
+            }
+        }
         if (action.startsWith("chat.")) {
             return chat.handle(action, params);
         }

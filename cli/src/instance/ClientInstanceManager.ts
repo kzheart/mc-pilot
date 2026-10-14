@@ -74,6 +74,9 @@ export interface CreateClientOptions {
   headless?: boolean;
   mute?: boolean;
   resourcePackPolicy?: ResourcePackPolicy;
+  recordFfmpeg?: string;
+  width?: number;
+  height?: number;
   launchArgs?: string[];
   env?: Record<string, string>;
   javaCommand?: string;
@@ -87,6 +90,9 @@ export interface LaunchClientOptions {
   headless?: boolean;
   mute?: boolean;
   resourcePackPolicy?: ResourcePackPolicy;
+  recordFfmpeg?: string;
+  width?: number;
+  height?: number;
   force?: boolean;
 }
 
@@ -118,6 +124,8 @@ export class ClientInstanceManager {
   constructor(private readonly globalState: GlobalStateStore) {}
 
   async create(options: CreateClientOptions): Promise<ClientInstanceMeta> {
+    validateClientResolution(options.width, options.height);
+    validateRecordingExecutable(options.recordFfmpeg);
     return this.globalState.withClientLock(async () => {
       const instanceDir = resolveClientInstanceDir(options.name);
       await mkdir(instanceDir, { recursive: true });
@@ -133,6 +141,9 @@ export class ClientInstanceManager {
         headless: options.headless,
         mute: options.mute ?? DEFAULT_CLIENT_MUTE,
         resourcePackPolicy: options.resourcePackPolicy,
+        recordFfmpeg: options.recordFfmpeg,
+        width: options.width,
+        height: options.height,
         launchArgs: options.launchArgs,
         env: options.env,
         javaCommand: options.javaCommand,
@@ -153,6 +164,8 @@ export class ClientInstanceManager {
     clientName: string,
     options: LaunchClientOptions = {},
   ): Promise<ClientRuntimeEntry> {
+    validateClientResolution(options.width, options.height);
+    validateRecordingExecutable(options.recordFfmpeg);
     return this.globalState.withClientLock(async () => {
       const state = await this.globalState.readClientState();
       const existing = state.clients[clientName];
@@ -218,6 +231,15 @@ export class ClientInstanceManager {
           MCT_CLIENT_HEADLESS: String(
             options.headless ?? meta.headless ?? false,
           ),
+          ...((options.width ?? meta.width) === undefined
+            ? {}
+            : {
+                MCT_CLIENT_WIDTH: String(options.width ?? meta.width),
+                MCT_CLIENT_HEIGHT: String(options.height ?? meta.height),
+              }),
+          ...((options.recordFfmpeg ?? meta.recordFfmpeg)
+            ? { MCT_RECORD_FFMPEG: options.recordFfmpeg ?? meta.recordFfmpeg }
+            : {}),
           ...(meta.javaCommand ? { MCT_CLIENT_JAVA: meta.javaCommand } : {}),
           ...(mute === undefined ? {} : { MCT_CLIENT_MUTE: String(mute) }),
           ...(resourcePackPolicy === undefined
@@ -1029,4 +1051,39 @@ export class ClientInstanceManager {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function validateClientResolution(width?: number, height?: number) {
+  if (width === undefined && height === undefined) return;
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width! < 2 ||
+    width! > 7680 ||
+    height! < 2 ||
+    height! > 4320
+  ) {
+    throw new MctError(
+      {
+        code: "INVALID_PARAMS",
+        message:
+          "Specify both --width (2–7680) and --height (2–4320) as integer window dimensions. Recording dimensions must match the actual framebuffer, which can differ on HiDPI displays.",
+      },
+      4,
+    );
+  }
+}
+
+export function validateRecordingExecutable(executable?: string) {
+  if (executable === undefined) return;
+  if (!executable.trim() || /[\u0000-\u001f\u007f]/.test(executable)) {
+    throw new MctError(
+      {
+        code: "INVALID_PARAMS",
+        message:
+          "--record-ffmpeg must be a non-empty executable name or path without control characters. Use an absolute path when the executable is not on the game's PATH.",
+      },
+      4,
+    );
+  }
 }

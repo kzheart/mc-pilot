@@ -2,7 +2,11 @@ import { Command, Option } from "commander";
 
 import { buildClientSearchResults } from "../download/SearchCommand.js";
 import type { ClientLoader } from "../download/VersionMatrix.js";
-import { ClientInstanceManager } from "../instance/ClientInstanceManager.js";
+import {
+  ClientInstanceManager,
+  validateClientResolution,
+  validateRecordingExecutable,
+} from "../instance/ClientInstanceManager.js";
 import {
   resolveServerTarget,
   ServerManager,
@@ -103,7 +107,21 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this client (default)")
     .option("--no-mute", "Keep in-game audio enabled for this client")
+    .option(
+      "--width <pixels>",
+      "Explicit game window width; use with --height (HiDPI framebuffer may differ)",
+      Number,
+    )
+    .option(
+      "--height <pixels>",
+      "Explicit game window height; use with --width",
+      Number,
+    )
     .addOption(resourcePackOption())
+    .option(
+      "--record-ffmpeg <executable>",
+      "Existing FFmpeg executable for native recording (default: game PATH)",
+    )
     .option("--java <command>", "Java command to use")
     .action(
       wrapCommand(
@@ -123,10 +141,15 @@ export function createClientCommand() {
               headless?: boolean;
               mute?: boolean;
               resourcePack?: ResourcePackPolicy;
+              recordFfmpeg?: string;
+              width?: number;
+              height?: number;
               java?: string;
             };
           },
         ) => {
+          validateClientResolution(options.width, options.height);
+          validateRecordingExecutable(options.recordFfmpeg);
           const clientName = args[0]!;
           const loader = options.loader ?? "fabric";
           const version = options.version ?? "1.21.4";
@@ -152,6 +175,9 @@ export function createClientCommand() {
             headless: options.headless,
             mute: options.mute,
             resourcePackPolicy: options.resourcePack,
+            recordFfmpeg: options.recordFfmpeg,
+            width: options.width,
+            height: options.height,
             launchArgs: downloaded.launchArgs,
             env: {
               MCT_CLIENT_MOD_VARIANT: downloaded.variantId,
@@ -187,7 +213,21 @@ export function createClientCommand() {
     .option("--headless", "Launch in headless mode")
     .option("--mute", "Mute all in-game audio for this launch (default)")
     .option("--no-mute", "Keep in-game audio enabled for this launch")
+    .option(
+      "--width <pixels>",
+      "Explicit game window width; use with --height (HiDPI framebuffer may differ)",
+      Number,
+    )
+    .option(
+      "--height <pixels>",
+      "Explicit game window height; use with --width",
+      Number,
+    )
     .addOption(resourcePackOption())
+    .option(
+      "--record-ffmpeg <executable>",
+      "Existing FFmpeg executable for native recording (default: game PATH)",
+    )
     .option(
       "--no-server",
       "Launch without connecting to the active profile server",
@@ -212,6 +252,9 @@ export function createClientCommand() {
               headless?: boolean;
               mute?: boolean;
               resourcePack?: ResourcePackPolicy;
+              recordFfmpeg?: string;
+              width?: number;
+              height?: number;
               force?: boolean;
             };
           },

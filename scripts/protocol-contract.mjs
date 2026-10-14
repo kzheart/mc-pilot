@@ -17,18 +17,23 @@ export const HANDLER_FAMILIES = [
     name: "yarn",
     directory: "client-mod/shared/java/com/mct/core/handler",
     unsupportedActions: { ...PLANNED_ACTIONS },
+    sharedRecording: true,
   },
   {
     name: "official",
     directory: "client-mod/shared/java-official/com/mct/core/handler",
     unsupportedActions: { ...PLANNED_ACTIONS },
+    sharedRecording: true,
   },
   {
     name: "legacy",
     directory: "client-mod/shared/forge-1.12/java/com/mct/legacy",
     unsupportedActions: { ...PLANNED_ACTIONS },
+    sharedRecording: true,
   },
 ];
+
+const RECORDING_DIRECTORY = "client-mod/shared/recording-core/java/com/mct/core/recording";
 
 const ACTION_NAME = "[a-z]+\\.[a-z0-9]+(?:[.-][a-z0-9]+)*";
 
@@ -46,8 +51,8 @@ export function extractHandlerActions(source) {
     }
   }
   for (const pattern of [
-    new RegExp(`\\baction\\s*\\.\\s*equals\\s*\\(\\s*"(${ACTION_NAME})"\\s*\\)`, "g"),
-    new RegExp(`"(${ACTION_NAME})"\\s*\\.\\s*equals\\s*\\(\\s*action\\s*\\)`, "g"),
+    new RegExp(`\\b(?:action|command)\\s*\\.\\s*equals\\s*\\(\\s*"(${ACTION_NAME})"\\s*\\)`, "g"),
+    new RegExp(`"(${ACTION_NAME})"\\s*\\.\\s*equals\\s*\\(\\s*(?:action|command)\\s*\\)`, "g"),
   ]) {
     for (const match of uncommented.matchAll(pattern)) actions.add(match[1]);
   }
@@ -141,9 +146,17 @@ export async function checkProtocolSync(root, families = HANDLER_FAMILIES) {
     const files = (await readdir(directory)).filter((file) => file.endsWith(".java")).sort();
     if (files.length === 0) throw new Error(`No Java handlers found in ${family.directory}`);
     const javaActions = new Set();
-    for (const file of files) {
-      for (const action of extractHandlerActions(await readFile(path.join(directory, file), "utf8"))) {
-        javaActions.add(action);
+    const source = (await Promise.all(files.map((file) => readFile(path.join(directory, file), "utf8")))).join("\n");
+    for (const action of extractHandlerActions(source)) javaActions.add(action);
+    // Count shared recording dispatch only for a family that actually delegates
+    // to it. This keeps removal of a version-family adapter detectable.
+    if (family.sharedRecording && /\bRecordingController\s*\.\s*getInstance\s*\(\s*\)\s*\.\s*handle\s*\(/.test(source)) {
+      const recordingFiles = (await readdir(path.join(root, RECORDING_DIRECTORY)))
+        .filter((file) => file.endsWith(".java"));
+      for (const file of recordingFiles) {
+        for (const action of extractHandlerActions(await readFile(path.join(root, RECORDING_DIRECTORY, file), "utf8"))) {
+          javaActions.add(action);
+        }
       }
     }
     return {

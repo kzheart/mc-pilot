@@ -26,11 +26,7 @@ export async function sendClientRequest(
   const client = await manager.getClient(clientName);
   const ws = new WebSocketClient(`ws://127.0.0.1:${client.wsPort}`);
 
-  return ws.send(
-    action,
-    params,
-    timeoutSeconds ?? context.timeout("default"),
-  );
+  return ws.send(action, params, timeoutSeconds ?? context.timeout("default"));
 }
 
 export function resolvePreferredClientName(

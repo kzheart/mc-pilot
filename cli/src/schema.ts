@@ -15,6 +15,7 @@ interface ActionProtocol {
   requestFormat?: Record<string, unknown>;
   responseFormat?: Record<string, unknown>;
   transport?: Record<string, unknown>;
+  recording?: Record<string, unknown>;
 }
 
 interface ProtocolEntry {
@@ -128,6 +129,7 @@ export function buildSchemaDocument(program: Command) {
       requestFormat: actions.requestFormat,
       responseFormat: actions.responseFormat,
       transport: actions.transport,
+      recording: actions.recording,
       actions: actions.actions ?? [],
       queries: queries.queries ?? [],
       errors: errors.errors ?? [],
