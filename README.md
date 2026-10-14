@@ -172,6 +172,8 @@ mct info     # current project, active profile, state root
 
 ## Reclaiming Disk Space
 
+`mct client launch` and `mct up` include a `cleanupReminder` with commands to stop the clients when testing is finished. `mct client list` also shows this reminder when clients are still running, and `mct up` includes it in error details if client startup or readiness fails. These reminders appear in both JSON and `--human` output; clients are not automatically closed. Stopping a client releases its running resources but leaves its files and download cache on disk.
+
 Servers, worlds and screenshots live inside each project (`run/`, `.mct/`), so deleting a project or a `run/<name>` directory frees them. What remains under `~/.mct` is shared: client instances and the download cache. `mct cache clean` reports what can go and only deletes with `--yes`:
 
 ```bash

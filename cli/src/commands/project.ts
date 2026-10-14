@@ -10,8 +10,9 @@ import {
   type ServerTarget,
 } from "../instance/ServerManager.js";
 import type { CommandContext } from "../util/context.js";
-import { MctError, noProject } from "../util/errors.js";
+import { MctError, noProject, normalizeError } from "../util/errors.js";
 import { wrapCommand } from "../util/command.js";
+import { clientCleanupReminder } from "../util/client-cleanup-reminder.js";
 import { resolveProjectRunDir } from "../util/paths.js";
 import {
   createDefaultProjectFile,
@@ -282,30 +283,69 @@ export function createUpCommand() {
           const serverAddress = `127.0.0.1:${await serverManager.readPort(entry)}`;
           const clientManager = new ClientInstanceManager(context.globalState);
           const clients: unknown[] = [];
-          for (const clientName of profile.clients) {
-            clients.push(
-              (await clientManager.isAlreadyRunning(clientName))
-                ? await clientManager.reconnect(clientName, serverAddress)
-                : await clientManager.launch(clientName, {
-                    server: serverAddress,
-                  }),
-            );
-          }
-          results.clients = clients;
-
-          if (options.skipClientReady) {
-            results.clientReadySkipped = true;
-          } else {
-            const readyClients: unknown[] = [];
+          const usedClients: string[] = [];
+          const reminderProfile = {
+            rootDir: context.projectRootDir!,
+            name: context.activeProfileName!,
+          };
+          try {
             for (const clientName of profile.clients) {
-              readyClients.push(
-                await clientManager.waitReady(
-                  clientName,
-                  context.timeout("clientReady"),
-                ),
+              usedClients.push(clientName);
+              clients.push(
+                (await clientManager.isAlreadyRunning(clientName))
+                  ? await clientManager.reconnect(clientName, serverAddress)
+                  : await clientManager.launch(clientName, {
+                      server: serverAddress,
+                    }),
               );
             }
-            results.clientReady = readyClients;
+            results.clients = clients;
+
+            if (options.skipClientReady) {
+              results.clientReadySkipped = true;
+            } else {
+              const readyClients: unknown[] = [];
+              for (const clientName of profile.clients) {
+                readyClients.push(
+                  await clientManager.waitReady(
+                    clientName,
+                    context.timeout("clientReady"),
+                  ),
+                );
+              }
+              results.clientReady = readyClients;
+            }
+          } catch (error) {
+            const normalized = normalizeError(error);
+            const cleanupReminder = clientCleanupReminder(
+              usedClients,
+              reminderProfile,
+            );
+            if (!cleanupReminder) throw normalized;
+            throw new MctError(
+              {
+                code: normalized.code,
+                message: normalized.message,
+                details: {
+                  ...(normalized.details &&
+                  typeof normalized.details === "object"
+                    ? normalized.details
+                    : normalized.details === undefined
+                      ? {}
+                      : { originalDetails: normalized.details }),
+                  cleanupReminder,
+                },
+              },
+              normalized.exitCode,
+            );
+          }
+
+          const cleanupReminder = clientCleanupReminder(
+            usedClients,
+            reminderProfile,
+          );
+          if (cleanupReminder) {
+            results.cleanupReminder = cleanupReminder;
           }
 
           results.ready = true;

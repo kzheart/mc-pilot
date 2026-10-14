@@ -14,6 +14,7 @@ import { resolveClientInstanceDir } from "../util/paths.js";
 import type { LoaderType, ResourcePackPolicy } from "../util/instance-types.js";
 import type { CommandContext } from "../util/context.js";
 import { resolveBackendNames } from "../util/project.js";
+import { clientCleanupReminder } from "../util/client-cleanup-reminder.js";
 
 function resourcePackOption() {
   // Do not set a Commander default: absence must preserve an explicit saved
@@ -221,11 +222,15 @@ export function createClientCommand() {
             options.server === false
               ? undefined
               : await resolveProfileServerAddress(context, options.server);
-          return manager.launch(clientName, {
+          const launched = await manager.launch(clientName, {
             ...options,
             server: serverAddress,
             resourcePackPolicy: options.resourcePack,
           });
+          return {
+            ...launched,
+            cleanupReminder: clientCleanupReminder([clientName]),
+          };
         },
       ),
     );
@@ -247,7 +252,16 @@ export function createClientCommand() {
     .action(
       wrapCommand(async (context) => {
         const manager = new ClientInstanceManager(context.globalState);
-        return manager.list();
+        const result = await manager.list();
+        const cleanupReminder = clientCleanupReminder(
+          result.clients
+            .filter((client) => client.running)
+            .map((client) => client.name),
+        );
+        return {
+          ...result,
+          ...(cleanupReminder ? { cleanupReminder } : {}),
+        };
       }),
     );
 
