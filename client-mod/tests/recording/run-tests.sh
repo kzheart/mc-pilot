@@ -10,6 +10,9 @@ java=${JAVA_HOME:+"$JAVA_HOME/bin/"}java
 if "$javac" -version 2>&1 | grep -q 'javac 1\.8'; then release='-source 8 -target 8'; else release='--release 8'; fi
 # Intentional word splitting: release is a fixed local compiler-flag list.
 "$javac" $release -Xlint:all -Xlint:-options -d "$out/classes" \
-  "$root"/shared/recording-core/java/com/mct/core/recording/*.java "$here/RecordingCoreTest.java"
+  "$root"/shared/recording-core/java/com/mct/core/recording/*.java "$here/RecordingCoreTest.java" "$here/AudioCaptureTest.java"
 "$java" -ea -cp "$out/classes" com.mct.core.recording.RecordingCoreTest "$out/media"
 python3 "$here/verify-media.py" "$out/media"
+
+"$java" -ea -cp "$out/classes" com.mct.core.recording.AudioCaptureTest "$out/media"
+python3 "$here/verify-audio-media.py" "$out/media"

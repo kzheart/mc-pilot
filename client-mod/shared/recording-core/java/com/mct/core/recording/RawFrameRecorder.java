@@ -57,10 +57,12 @@ public final class RawFrameRecorder {
         public final int width, height, fps, queueDepth, maxQueueDepth, queueCapacity, poolSize;
         public final long captured, encoded, duplicate, dropped;
         public final Path outputPath, partialPath;
-        public final double elapsedSeconds, firstFrameWaitSeconds, capturedFps;
+        public final double elapsedSeconds, firstFrameWaitSeconds, capturedFps, videoHoldbackMillis;
         public final String error, stderrTail, stopReason;
-        public final Integer exitCode;
+        public final Integer exitCode, audioMuxExitCode;
         public final boolean finalized;
+        public final boolean audio;
+        public final Map<String, Object> audioCapture;
         private Snapshot(RawFrameRecorder r) {
             state = r.state.get(); width = r.width; height = r.height; fps = r.fps;
             queueDepth = r.queueDepth.get(); maxQueueDepth = r.maxQueueDepth.get();
@@ -73,8 +75,11 @@ public final class RawFrameRecorder {
             long first = r.firstFrameNanos.get();
             firstFrameWaitSeconds = first == 0 ? -1 : Math.max(0, first - r.startNanos) / 1e9;
             capturedFps = elapsedSeconds > 0 ? captured / elapsedSeconds : 0;
-            error = r.error.get(); stderrTail = r.logTail(); exitCode = r.exitCode;
+            videoHoldbackMillis = r.videoHoldbackNanos() / 1e6;
+            error = r.error.get(); stderrTail = r.logTail(); exitCode = r.exitCode; audioMuxExitCode = r.muxExitCode;
             stopReason = r.stopReason.get(); finalized = state == State.STOPPED;
+            audio = r.audioCapture != null && finalized;
+            audioCapture = r.audioCapture == null ? silentAudio() : r.audioCapture.snapshot(finalized);
         }
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<String, Object>();
@@ -88,6 +93,8 @@ public final class RawFrameRecorder {
             m.put("elapsedSeconds", elapsedSeconds); m.put("firstFrameWaitSeconds", firstFrameWaitSeconds);
             m.put("capturedFps", capturedFps); m.put("error", error); m.put("stderrTail", stderrTail);
             m.put("exitCode", exitCode); m.put("stopReason", stopReason);
+            m.put("audio", audio); m.put("audioCapture", audioCapture); m.put("audioMuxExitCode", audioMuxExitCode);
+            m.put("videoHoldbackMillis", videoHoldbackMillis);
             return m;
         }
     }
@@ -136,6 +143,12 @@ public final class RawFrameRecorder {
     private final StringBuilder diagnostics = new StringBuilder();
     private final Process process;
     private final long startNanos;
+    private final Path executable;
+    private volatile PcmCapture audioCapture;
+    private volatile Process muxProcess;
+    private volatile Path muxPath;
+    private volatile Integer muxExitCode;
+    private volatile boolean videoInputClosed;
     private Thread encoderThread, stderrThread, watchdogThread, shutdownHook;
     private final AtomicReference<Runnable> completionListener = new AtomicReference<Runnable>();
     private volatile boolean publishedOutput;
@@ -198,7 +211,8 @@ public final class RawFrameRecorder {
         outputPath = output.toAbsolutePath().normalize();
         if (!outputPath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".mp4"))
             throw new IllegalArgumentException("Output must end in .mp4");
-        Path executable = ffmpegExecutable();
+        executable = ffmpegExecutable();
+        AudioCapture.Provider audioProvider = AudioCapture.isRequested() ? AudioCapture.requireProvider() : null;
         Files.createDirectories(outputPath.getParent());
         if (Files.exists(outputPath)) throw new FileAlreadyExistsException(outputPath.toString());
         if (Files.getFileStore(outputPath.getParent()).getUsableSpace() < limits.minFreeBytes)
@@ -231,6 +245,8 @@ public final class RawFrameRecorder {
         }
         partialPath = temporary; process = started; startNanos = System.nanoTime();
         try {
+            if (audioProvider != null)
+                audioCapture = new PcmCapture(this, audioProvider, outputPath.getParent(), limits.durationNanos, workerFactory);
             stderrThread = workerFactory.create("mct-recording-ffmpeg-log", new Runnable() {
                 @Override public void run() { drainLog(process.getInputStream()); }
             });
@@ -251,11 +267,13 @@ public final class RawFrameRecorder {
                 try { Files.deleteIfExists(reservationPath); Files.deleteIfExists(partialPath); } catch (IOException ignored) { }
                 throw new IOException("JVM is already shutting down", shuttingDown);
             } catch (SecurityException restricted) { /* Explicit lifecycle cancellation still works. */ }
+            if (audioCapture != null) audioCapture.start();
             stderrThread.start(); encoderThread.start(); watchdogThread.start();
         } catch (Throwable startFailure) {
             // Native-thread exhaustion must not orphan the just-started child process.
             fail("Unable to start recording workers: " + startFailure.getClass().getSimpleName());
             killProcess(); if (encoderThread != null) LockSupport.unpark(encoderThread);
+            if (audioCapture != null) { audioCapture.abort(); audioCapture.delete(); }
             try { if (shutdownHook != null) Runtime.getRuntime().removeShutdownHook(shutdownHook); }
             catch (IllegalStateException ignored) { } catch (SecurityException ignored) { }
             try { Files.deleteIfExists(reservationPath); } catch (IOException ignored) { }
@@ -268,6 +286,18 @@ public final class RawFrameRecorder {
         Thread thread = new Thread(runnable, name); thread.setDaemon(true); return thread;
     }
     public boolean isAcceptingFrames() { return state.get() == State.RECORDING; }
+    /** Stop rejects new captures but briefly drains already-borrowed audio-session GPU frames. */
+    public boolean isAcceptingPendingFrames() {
+        State current = state.get();
+        if (current == State.RECORDING) return true;
+        long end = stopNanos.get();
+        return current == State.STOPPING && audioCapture != null && !videoInputClosed && end != 0 &&
+                System.nanoTime() - end < videoHoldbackNanos();
+    }
+    private long videoHoldbackNanos() {
+        // Three intervals fit the four-frame queue plus last/pending buffers. PTS does not move.
+        return audioCapture == null ? 0 : Math.min(TimeUnit.MILLISECONDS.toNanos(100), 3000000000L / fps);
+    }
     public long getSessionId() { return sessionId; }
     public int getFrameBytes() { return frameBytes; }
     public int getWidth() { return width; }
@@ -299,7 +329,8 @@ public final class RawFrameRecorder {
     public boolean submitFrame(byte[] bytes, long captureNanos) {
         Buffer buffer = requireBuffer(bytes);
         if (!buffer.owner.compareAndSet(BORROWED, QUEUED)) throw new IllegalArgumentException("Frame is not borrowed");
-        if (!isAcceptingFrames()) { recycle(buffer, QUEUED); return false; }
+        long end = stopNanos.get();
+        if (!isAcceptingPendingFrames() || (end != 0 && captureNanos > end)) { recycle(buffer, QUEUED); return false; }
         captured.incrementAndGet();
         long captureTime = Math.max(startNanos, Math.min(System.nanoTime(), captureNanos));
         long slot = FrameTimeline.slot(captureTime - startNanos, fps);
@@ -320,7 +351,7 @@ public final class RawFrameRecorder {
         do { max = maxQueueDepth.get(); if (depth + 1 <= max) break; }
         while (!maxQueueDepth.compareAndSet(max, depth + 1));
         // An offer may race the encoder's final drain. The producer reclaims its own late offer.
-        if (!isAcceptingFrames() && frames.remove(frame)) {
+        if (!isAcceptingPendingFrames() && frames.remove(frame)) {
             queueDepth.decrementAndGet(); dropped.incrementAndGet(); recycle(buffer, QUEUED); return false;
         }
         LockSupport.unpark(encoderThread);
@@ -342,6 +373,8 @@ public final class RawFrameRecorder {
         // successful completion must be allowed to transition STOPPING -> STOPPED.
         state.compareAndSet(State.RECORDING, State.STOPPING);
         stopReason.compareAndSet(null, reason); stopNanos.compareAndSet(0, when);
+        PcmCapture audio = audioCapture;
+        if (audio != null) audio.freeze(audioFrames(FrameTimeline.count(stopNanos.get() - startNanos, fps)));
         LockSupport.unpark(encoderThread); LockSupport.unpark(watchdogThread);
     }
     public Snapshot stop(long timeoutMillis) {
@@ -376,12 +409,15 @@ public final class RawFrameRecorder {
                 if (last == null) {
                     last = takeFrame();
                     if (last == null) {
-                        if (end != 0) throw new IOException("No frame was captured before recording stopped");
+                        if (end != 0 && !isAcceptingPendingFrames()) throw new IOException("No frame was captured before recording stopped");
                         LockSupport.parkNanos(this, TimeUnit.MILLISECONDS.toNanos(10)); continue;
                     }
                 }
-                long wait = FrameTimeline.deadline(startNanos, index, fps) - System.nanoTime();
-                if (end == 0 && wait > 0) {
+                long holdback = videoHoldbackNanos();
+                long deadline = FrameTimeline.deadline(startNanos, index, fps) + holdback;
+                if (end != 0 && holdback != 0) deadline = Math.min(deadline, end + holdback);
+                long wait = deadline - System.nanoTime();
+                if ((end == 0 || holdback != 0) && wait > 0) {
                     LockSupport.parkNanos(this, Math.min(wait, TimeUnit.MILLISECONDS.toNanos(50))); continue;
                 }
                 Frame next;
@@ -397,6 +433,7 @@ public final class RawFrameRecorder {
                 if (last.used) duplicate.incrementAndGet();
                 last.used = true; encoded.incrementAndGet(); index++;
             }
+            videoInputClosed = true;
             stdin.close();
             if (!process.waitFor(limits.finalizationMillis, TimeUnit.MILLISECONDS))
                 throw new IOException("FFmpeg did not exit after its input closed");
@@ -405,7 +442,14 @@ public final class RawFrameRecorder {
             if (encoded.get() == 0 || !Files.isRegularFile(partialPath) || Files.size(partialPath) == 0)
                 throw new IOException("FFmpeg did not produce a nonempty recording");
             if (state.get() == State.FAILED) throw new IOException("Recording aborted before publication");
-            publishWithoutOverwrite();
+            Path publication = partialPath;
+            if (audioCapture != null) {
+                long samples = audioFrames(encoded.get());
+                audioCapture.finish(samples, remainingFinalizationMillis());
+                publication = muxAudio(samples);
+            }
+            if (state.get() == State.FAILED) throw new IOException("Recording aborted before publication");
+            publishWithoutOverwrite(publication);
             if (!state.compareAndSet(State.STOPPING, State.STOPPED)) {
                 throw new IOException("Recording canceled during publication");
             }
@@ -414,6 +458,10 @@ public final class RawFrameRecorder {
             killProcess();
         } finally {
             writeStartedNanos.set(0);
+            if (audioCapture != null) { audioCapture.abort(); audioCapture.delete(); }
+            if (state.get() == State.STOPPED && muxPath != null) {
+                try { Files.deleteIfExists(partialPath); Files.deleteIfExists(muxPath); } catch (IOException ignored) { }
+            }
             if (last != null) recycle(last.buffer, ENCODER);
             Frame queued;
             while ((queued = frames.poll()) != null) {
@@ -432,26 +480,67 @@ public final class RawFrameRecorder {
         }
     }
 
-    private void publishWithoutOverwrite() throws IOException {
+    private static Map<String, Object> silentAudio() {
+        Map<String, Object> audio = new LinkedHashMap<String, Object>();
+        audio.put("requested", false); audio.put("enabled", false); audio.put("trackPresent", false); return audio;
+    }
+    private long audioFrames(long videoFrames) {
+        return (videoFrames * AudioCapture.SAMPLE_RATE + fps / 2) / fps;
+    }
+    private long remainingFinalizationMillis() throws IOException {
+        long remaining = TimeUnit.MILLISECONDS.toNanos(limits.finalizationMillis) - (System.nanoTime() - stopNanos.get());
+        if (remaining <= 0 || state.get() == State.FAILED) throw new IOException("Recording finalization deadline exceeded");
+        return Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining));
+    }
+    private Path muxAudio(long samples) throws IOException, InterruptedException {
+        remainingFinalizationMillis();
+        muxPath = Files.createTempFile(outputPath.getParent(), "." + outputPath.getFileName() + ".", ".audio.partial.mp4");
+        Process mux = new ProcessBuilder(executable.toString(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                "-i", partialPath.toString(), "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", audioCapture.path.toString(),
+                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                "-af", "atrim=end_sample=" + samples, "-movflags", "+faststart", muxPath.toString())
+                .redirectErrorStream(true).start();
+        muxProcess = mux;
+        Thread log = daemon("mct-recording-audio-mux-log", new Runnable() {
+            @Override public void run() { drainLog(mux.getInputStream()); }
+        });
+        try {
+            log.start();
+            if (state.get() == State.FAILED) throw new IOException("Recording aborted before audio mux");
+            if (!mux.waitFor(remainingFinalizationMillis(), TimeUnit.MILLISECONDS))
+                throw new IOException("Audio mux did not finalize before the recording deadline");
+            muxExitCode = mux.exitValue();
+            if (muxExitCode.intValue() != 0) throw new IOException("Audio mux FFmpeg exited with code " + muxExitCode);
+            if (!Files.isRegularFile(muxPath) || Files.size(muxPath) == 0)
+                throw new IOException("Audio mux did not produce a nonempty recording");
+            if (Files.size(muxPath) >= limits.maxOutputBytes)
+                throw new IOException("Audio mux reached the output size guard; refusing potentially truncated output");
+            return muxPath;
+        } finally {
+            if (mux.isAlive()) mux.destroyForcibly();
+            log.join(200);
+        }
+    }
+    private void publishWithoutOverwrite(Path publication) throws IOException {
         // Hard-link publication is atomic, preserves the existing file on all collisions,
         // and needs no second movie-sized allocation or disk copy on normal filesystems.
         try {
-            Files.createLink(outputPath, partialPath);
+            Files.createLink(outputPath, publication);
             publishedOutput = true;
         } catch (FileAlreadyExistsException exists) { throw exists;
-        } catch (UnsupportedOperationException unsupported) { copyWithoutOverwrite();
+        } catch (UnsupportedOperationException unsupported) { copyWithoutOverwrite(publication);
         } catch (IOException linkUnavailable) {
             if (Files.exists(outputPath)) throw new FileAlreadyExistsException(outputPath.toString());
-            copyWithoutOverwrite();
+            copyWithoutOverwrite(publication);
         }
         // Cleanup failure must not invalidate an otherwise completed, published movie.
-        try { Files.deleteIfExists(partialPath); } catch (IOException ignored) { }
+        try { Files.deleteIfExists(publication); } catch (IOException ignored) { }
     }
-    private void copyWithoutOverwrite() throws IOException {
+    private void copyWithoutOverwrite(Path publication) throws IOException {
         // CREATE_NEW is the fallback's no-overwrite boundary, including racing writers.
         try (OutputStream target = Files.newOutputStream(outputPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             publishedOutput = true;
-            try (InputStream source = Files.newInputStream(partialPath)) {
+            try (InputStream source = Files.newInputStream(publication)) {
                 byte[] bytes = new byte[65536]; int n;
                 while ((n = source.read(bytes)) != -1) {
                     if (state.get() == State.FAILED) throw new IOException("Recording canceled during publication");
@@ -487,13 +576,19 @@ public final class RawFrameRecorder {
             if (state.get() == State.STOPPING && stopping != 0 &&
                     now - stopping >= TimeUnit.MILLISECONDS.toNanos(limits.finalizationMillis))
                 fail("FFmpeg finalization deadline exceeded");
-            if (state.get() == State.RECORDING && now >= nextDiskCheck) {
+            if ((state.get() == State.RECORDING || state.get() == State.STOPPING) && now >= nextDiskCheck) {
                 nextDiskCheck = now + TimeUnit.SECONDS.toNanos(1);
                 try {
-                    if (Files.getFileStore(outputPath.getParent()).getUsableSpace() < limits.minFreeBytes)
-                        requestStop("minimum_free_disk_space");
-                    else if (Files.size(partialPath) >= limits.maxOutputBytes)
+                    if (Files.getFileStore(outputPath.getParent()).getUsableSpace() < limits.minFreeBytes) {
+                        if (state.get() == State.STOPPING && audioCapture != null) fail("Insufficient disk space while finalizing game audio");
+                        else requestStop("minimum_free_disk_space");
+                    } else if (state.get() == State.RECORDING && Files.size(partialPath) >= limits.maxOutputBytes)
                         requestStop("maximum_output_size");
+                    Path mux = muxPath;
+                    if (mux != null) {
+                        try { if (Files.size(mux) >= limits.maxOutputBytes) fail("Audio mux exceeded the output size guard"); }
+                        catch (java.nio.file.NoSuchFileException published) { /* Publication removed its temporary. */ }
+                    }
                 } catch (IOException unavailable) { fail("Recording storage became unavailable: " + unavailable.getMessage()); }
             }
             if (state.get() == State.FAILED) { killProcess(); LockSupport.unpark(encoderThread); }
@@ -526,6 +621,8 @@ public final class RawFrameRecorder {
         stopNanos.compareAndSet(0, System.nanoTime());
     }
     private void killProcess() {
+        PcmCapture audio = audioCapture; if (audio != null) audio.abort();
+        Process mux = muxProcess; if (mux != null && mux.isAlive()) mux.destroyForcibly();
         if (!process.isAlive()) return;
         // destroy() can block on a pipe held by a hung child; kill directly on failure.
         process.destroyForcibly();

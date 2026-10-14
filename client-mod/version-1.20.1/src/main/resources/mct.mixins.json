@@ -23,7 +23,9 @@
     "ResourcePackNetworkHandlerMixin",
     "FramebufferRecordingMixin",
     "RecordingShutdownMixin",
-    "RecordingFpsAccessor"
+    "RecordingFpsAccessor",
+    "GameAudioRecordingMixin",
+    "GameAudioExecutorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

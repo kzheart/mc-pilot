@@ -126,7 +126,7 @@ public final class RecordingController {
         return bytes == null ? null : new Capture(active, bytes);
     }
     public boolean isAccepting(Capture capture) {
-        return capture != null && capture.borrowed.get() && recorder == capture.owner && capture.owner.isAcceptingFrames();
+        return capture != null && capture.borrowed.get() && recorder == capture.owner && capture.owner.isAcceptingPendingFrames();
     }
     public boolean submitFrame(Capture capture, long captureNanos) {
         requireBorrowed(capture);
@@ -269,7 +269,8 @@ public final class RecordingController {
             result.put("capturedFps", 0.0); result.put("error", null); result.put("stopReason", null);
         }
         Source s = source; Metrics m = metrics;
-        result.put("name", sessionName); result.put("supported", true); result.put("audio", false); result.put("upscaled", false);
+        result.put("name", sessionName); result.put("supported", true); result.put("upscaled", false);
+        if (!result.containsKey("audio")) result.put("audio", false);
         result.put("sourceWidth", s.width); result.put("sourceHeight", s.height); result.put("rendererFps", s.rendererFps);
         result.put("directory", s.directory == null ? null : s.directory.toString());
         result.put("maxDurationSeconds", maxDurationSeconds); result.put("captureBackend", m.backend);
@@ -284,7 +285,10 @@ public final class RecordingController {
         try { result.put("ffmpegExecutable", RawFrameRecorder.ffmpegExecutable().toString()); result.put("ffmpegAvailable", true); }
         catch (IOException unavailable) { result.put("ffmpegAvailable", false); result.put("ffmpegError", unavailable.getMessage()); }
         result.put("formats", Collections.singletonList("mp4")); result.put("codec", "h264");
-        result.put("pixelFormat", "yuv420p"); result.put("audio", false); result.put("nativeFramebufferRequired", true);
+        result.put("pixelFormat", "yuv420p"); result.put("nativeFramebufferRequired", true);
+        Map<String, Object> audio = AudioCapture.capabilities();
+        result.put("audio", Boolean.TRUE.equals(audio.get("requested")) && Boolean.TRUE.equals(audio.get("available")));
+        result.put("audioCapture", audio);
         Map<String, Object> defaults = new LinkedHashMap<String, Object>();
         defaults.put("width", RawFrameRecorder.DEFAULT_WIDTH); defaults.put("height", RawFrameRecorder.DEFAULT_HEIGHT);
         defaults.put("fps", RawFrameRecorder.DEFAULT_FPS); defaults.put("maxDurationSeconds", RawFrameRecorder.DEFAULT_DURATION_SECONDS);
