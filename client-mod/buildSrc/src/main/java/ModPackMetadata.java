@@ -1,4 +1,4 @@
-/** Resource-only metadata for the modern Loom build family. */
+/** Resource-only metadata shared by the modern and mc26 Loom build families. */
 public final class ModPackMetadata {
     private ModPackMetadata() {}
 
@@ -13,6 +13,8 @@ public final class ModPackMetadata {
             case "1.21.1" -> 34;
             case "1.21.4" -> 46;
             case "1.21.11" -> 75;
+            case "26.1" -> 84;
+            case "26.2" -> 88;
             default -> throw new IllegalArgumentException(
                 "No client resource pack format registered for Minecraft " + minecraftVersion);
         };

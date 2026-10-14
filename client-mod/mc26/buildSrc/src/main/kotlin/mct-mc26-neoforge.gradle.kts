@@ -1,5 +1,6 @@
 plugins {
     id("dev.architectury.loom")
+    id("mct-mc26-pack-metadata")
 }
 
 val targetMcVersion = project.property("mcVersion") as String
