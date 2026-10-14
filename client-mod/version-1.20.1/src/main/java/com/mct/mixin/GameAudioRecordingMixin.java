@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Fabric 1.20.1 only: diverts the actual game mixer before it creates any sound sources. */
+/** 1.20.1 adapter (live-tested on Fabric): diverts the actual game mixer before it creates any sound sources. */
 @Mixin(SoundEngine.class)
 public abstract class GameAudioRecordingMixin implements GameAudioExecutorBridge {
     @Shadow private long devicePointer;

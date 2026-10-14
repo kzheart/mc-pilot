@@ -1,12 +1,12 @@
 # Native client recording
 
-`mct record` records Minecraft's own rendered framebuffer through the MC Pilot client mod. It works independently of desktop window capture permissions and does not use ScreenCaptureKit, OBS, screenshots over WebSocket, or an external OS recorder. FFmpeg is a local encoder process only. Output is **silent H.264 MP4**, with no audio stream.
+`mct record` records Minecraft's own rendered framebuffer through the MC Pilot client mod. It works independently of desktop window capture permissions and does not use ScreenCaptureKit, OBS, screenshots over WebSocket, or an external OS recorder. FFmpeg is a local encoder process only. Default output is **silent H.264 MP4**, with no audio stream; an [opt-in 1.20.1 game-audio prototype](#opt-in-game-audio-prototype-1201) can add AAC audio.
 
-The recording hooks cover all client variants listed by `mct client search`: Fabric, Forge and NeoForge, including Forge 1.12.2 and Minecraft 26.x. A matching recording-capable mod must actually be installed and running; the CLI cannot add recording support to an older mod. Build/runtime verification results belong to the test report rather than being inferred from the catalog.
+The recording hooks cover all client variants listed by `mct client search`: Fabric, Forge and NeoForge, including Forge 1.12.2 and Minecraft 26.x. A matching recording-capable mod must actually be installed and running; the CLI cannot add recording support to an older mod. The earlier 27-variant silent-video validation predates the latest hand-feedback and audio changes. The latest full build and live audio/visual demonstration cover Fabric 1.20.1 only; see [validation scope](recording-validation.md).
 
 ## Use this unpublished build locally
 
-This change is not a published npm/GitHub release. The CLI still reports version `0.19.0`, and the mod catalog retains the existing artifact versions/tags. Installing a current registry CLI or running `client create` without a matching local build can select an older released/cached mod without recording support.
+Publishing these source changes does not create a new npm package or tagged GitHub release. The CLI retains upstream version `0.19.1`, and the mod catalog retains the existing artifact versions/tags. Installing a current registry CLI or running `client create` without a matching local build can select an older released/cached mod without recording support.
 
 A reproducible source install uses the supplied checkout and its lockfile:
 
@@ -66,6 +66,20 @@ mct record view shop-demo --client <client> --probe
 
 A world is not required: title screens and in-game menus can also be recorded when the render backend is available. The usual `--client` selection, active profile, and default-client resolution apply. No project directory is required.
 
+## Opt-in game audio prototype (1.20.1)
+
+Add `-Dmct.record.audio=true` to the **game JVM's launch arguments before starting the game**. Restart an already-running client after changing this setting. This is local launch configuration, not a `record start` flag or WebSocket parameter. The default remains silent video.
+
+The prototype captures Minecraft's actual mixed OpenAL output as 48 kHz stereo PCM and finalizes it as AAC stereo in the MP4. It does not capture microphone input, desktop/system audio, or synthesized sound events. The game continues receiving the same PCM through a separate ordinary-output context; starting or stopping a recording does not restart music.
+
+Managed clients default to muted game audio. Use `client create` or `client launch` with `--no-mute` when audible game content is intended, and check the game's volume settings. Valid all-zero game audio stays silent; the recorder does not manufacture sound.
+
+Only **Fabric 1.20.1** has received the latest full build and live game-audio/hand-animation validation. Forge and NeoForge 1.20.1 share these source files but have not received corresponding audio build/runtime validation. No audio support is claimed for other Minecraft versions or untested operating systems/audio devices. The Linux cloud test used OpenAL's null backend for ordinary playback, so it does not establish physical speaker playback or subjective listening quality.
+
+Inspect `record status` before and during capture. `capabilities.audioCapture` reports whether audio was requested and whether the game provider is available. Requested but unavailable audio fails explicitly rather than silently producing video-only output. `audioCapture.enabled` means capture is subscribed; `audio` and `audioCapture.trackPresent` become true only after successful finalization. Check sample, nonzero, dropped, padded and trimmed frame counts, `audioCapture.error`, and `audioMuxExitCode` rather than treating an audio stream as proof of audible or synchronized content.
+
+Finalization aligns PCM to the CFR video duration and muxes AAC without changing video playback speed. Temporary PCM requires approximately 192 kB per second of extra disk space, and muxing needs a second temporary video. Existing no-overwrite, bounded-queue, disk-space and finalization protections still apply. See the [recording core notes](../client-mod/shared/recording-core/README.md#opt-in-real-game-audio-prototype-1201) for implementation details and the [validation report](recording-validation.md) for measured results and limits.
+
 ## Native dimensions, frame rate and bounds
 
 Start accepts an optional name plus:
@@ -87,7 +101,8 @@ Memory is bounded by a 256 MiB frame-buffer budget; the combined width and heigh
 - `capturedFps`: actual fresh framebuffer samples divided by elapsed recording wall-clock seconds (not an estimate of game render rate)
 - `captured`, `encoded`, `duplicate`, `dropped`: real capture/encoding counts, including CFR repeated frames and dropped work
 - `rendererFps`: the game's render-rate estimate, separate from capture rate
-- `width`, `height`, `sourceWidth`, `sourceHeight`, `upscaled: false`, `audio: false`
+- `width`, `height`, `sourceWidth`, `sourceHeight`, `upscaled: false`
+- `audio`: false for default silent output; true only after an audio-enabled recording successfully finalizes
 
 Report a 30 fps container and a lower actual capture rate separately. Do not describe duplicated frames as distinct 30 fps capture.
 
@@ -107,7 +122,7 @@ For independent media verification:
 ffprobe -v error -show_streams -show_format -of json /returned/outputPath.mp4
 ```
 
-Check H.264 video, actual width/height, duration, stream frame rate, and absence of audio. Then play the MP4 or inspect decoded frames for the intended visual behavior. Container metadata cannot establish distinct captured FPS; retain the mod's final status for that.
+Check H.264 video, actual width/height, duration and stream frame rate. Default recordings must have no audio stream; audio-enabled recordings must have AAC stereo at 48 kHz with duration aligned to the video. Decode the complete file and review the intended visual behavior and, where applicable, actual audio content and event timing. Container metadata alone cannot establish distinct captured FPS or audiovisual correspondence; retain the mod's final status for that.
 
 `lastControlError` is supplementary: null or `{code, message}` for the latest rejected control command, cleared by a successful start. For example, rejecting a second start does not fail the already-running recording. Session failure is reported by `state` and `error`.
 

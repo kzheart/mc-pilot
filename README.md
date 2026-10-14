@@ -294,7 +294,7 @@ mct enchant --option 0                # 0=top, 1=middle, 2=bottom
 
 ### Native recording
 
-Record Minecraft's own framebuffer through the mod, with silent H.264 MP4 output. The default is native **1920×1080 at a requested 30 fps**; the framebuffer must actually match, with no upscaling or desktop capture.
+Record Minecraft's own framebuffer through the mod, with silent H.264 MP4 output by default. The default is native **1920×1080 at a requested 30 fps**; the framebuffer must actually match, with no upscaling or desktop capture.
 
 ```bash
 mct record doctor                                  # existing FFmpeg + libx264, no automatic download
@@ -305,7 +305,9 @@ mct record stop --client <client>                   # wait for MP4 finalization
 mct record view shop-demo --client <client> --probe
 ```
 
-This recording build is currently local/unpublished: install the supplied CLI and matching mod JAR using the [local setup instructions](docs/recording.md#use-this-unpublished-build-locally); a registry install alone may still run an older mod.
+These source changes do not constitute a new npm/GitHub release: build the CLI and matching mod JAR using the [local setup instructions](docs/recording.md#use-this-unpublished-build-locally); a registry install alone may still run an older mod. Upstream CLI version `0.19.1` is retained.
+
+An opt-in Minecraft 1.20.1 game-audio prototype adds AAC stereo from the game's actual OpenAL mix. Set the game JVM argument `-Dmct.record.audio=true` **before game startup** and keep game audio unmuted; this does not capture a microphone or system audio. The latest audio and visual hand-feedback demonstration was built and tested on **Fabric 1.20.1 only**. Forge/NeoForge 1.20.1 inherit the source but have not received this audio validation. See [audio setup](docs/recording.md#opt-in-game-audio-prototype-1201) and [validation scope and measured results](docs/recording-validation.md); the earlier 27-variant silent-video validation predates the latest hand/audio changes.
 
 Use `mct client launch <client> --width 1920 --height 1080` to request that window size explicitly; HiDPI framebuffer dimensions can differ. Configure an existing encoder with `--record-ffmpeg /path/to/ffmpeg`. Files live in the selected client's `gameDir/recordings`, and existing names are never overwritten. Check `finalized`, `capturedFps`, dropped/duplicate counts, and the returned `outputPath`; a 30 fps container alone does not prove 30 distinct captured frames per second. See [recording setup, limits and review](docs/recording.md).
 

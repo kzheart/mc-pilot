@@ -285,7 +285,7 @@ mct wait --until-on-ground --timeout <seconds>
 
 ## record — Native mod video recording
 
-All commands target the selected running client (`--client`, profile or default); no project or joined world is required. Output is silent H.264 MP4 from native render-frame pixels, never OS capture.
+All commands target the selected running client (`--client`, profile or default); no project or joined world is required. Default output is silent H.264 MP4 from native render-frame pixels, never OS capture.
 
 | Subcommand | Description | Key options |
 |---|---|---|
@@ -296,8 +296,10 @@ All commands target the selected running client (`--client`, profile or default)
 | `view <name>` | Verified local file URL or inaccessible-host-path guidance | `--probe` (existing ffprobe only) |
 | `doctor` | Check existing CLI-local FFmpeg identity and libx264; no installation | `--ffmpeg <executable>` |
 
-Start width/height are native pixels and must match the framebuffer (even, 2–7680 × 2–4320, additionally bounded by frame memory). FPS is 1–120; duration is 1–7200 seconds. No output-path, backend, window-title, encoder-execute or audio options exist. Names contain only ASCII letters/digits/underscore/hyphen, start with a letter/digit, have at most 80 characters, and cannot be Windows device names. No `.mp4` extension or directories.
+Start width/height are native pixels and must match the framebuffer (even, 2–7680 × 2–4320, additionally bounded by frame memory). FPS is 1–120; duration is 1–7200 seconds. No output-path, backend, window-title, encoder-execute or audio command options exist. Names contain only ASCII letters/digits/underscore/hyphen, start with a letter/digit, have at most 80 characters, and cannot be Windows device names. No `.mp4` extension or directories.
 
 Configure explicit window size using `client create` or `client launch --width 1920 --height 1080`, and the encoder via `--record-ffmpeg /absolute/path/to/ffmpeg`. A create setting persists; launch flags are one-shot overrides. The launcher forwards `MCT_RECORD_FFMPEG` as `-Dmct.record.ffmpeg=...`; otherwise the mod uses its PATH. Restart the game after changing encoder configuration.
+
+The opt-in Minecraft 1.20.1 game-audio prototype is configured with the **game JVM argument** `-Dmct.record.audio=true` before game startup, not a `record` command flag. Use `client create/launch --no-mute` when audible game content is intended. It records the actual OpenAL game mix as AAC stereo 48 kHz, never microphone or system audio. Only Fabric 1.20.1 has current full-build/live audio validation; Forge/NeoForge 1.20.1 share the source but remain untested for this change. The earlier 27-variant silent-video validation predates the latest audio/hand changes. Requested unavailable audio fails; `audioCapture.enabled` means subscribed capture, while `audio` and `audioCapture.trackPresent` become true only after successful finalization. Inspect sample counts, errors and actual event correspondence; stream metadata cannot establish audible content, synchronization or speaker playback.
 
 `record start` returning does not stop capture. Stop before cleanup and require `state=stopped`, `finalized=true` before reviewing `outputPath`. A CFR `fps=30` output may contain duplicate frames: use `capturedFps` (fresh framebuffer samples / elapsed seconds), `captured`, `encoded`, `duplicate`, `dropped`, `sourceWidth` and `sourceHeight` for truthful evidence. `rendererFps` is the game render-rate estimate, separate from `capturedFps` and requested CFR `fps`. Recording survives routine WebSocket disconnects. After ambiguous transport failure, read status instead of retrying start.
