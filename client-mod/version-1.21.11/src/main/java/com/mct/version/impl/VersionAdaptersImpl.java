@@ -263,6 +263,17 @@ public final class VersionAdaptersImpl {
             }
 
             @Override
+            public boolean shouldSwingAfterBlockUse(ActionResult result) {
+                return result instanceof ActionResult.Success success
+                    && success.swingSource() == ActionResult.SwingSource.CLIENT;
+            }
+
+            @Override
+            public boolean hasUnlimitedBlockItems(ClientPlayerInteractionManager manager, ClientPlayerEntity player) {
+                return player.isInCreativeMode();
+            }
+
+            @Override
             public void sendCommand(ClientPlayerEntity player, String command) {
                 player.networkHandler.sendChatCommand(command);
             }

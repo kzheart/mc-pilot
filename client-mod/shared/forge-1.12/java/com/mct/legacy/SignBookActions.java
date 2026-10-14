@@ -80,8 +80,8 @@ public final class SignBookActions extends LegacyActions {
             if (!(client.currentScreen instanceof GuiEditSign)) {
                 EntityPlayerSP player = requirePlayer();
                 Vec3d hit = new Vec3d(target.getX() + 0.5D, target.getY() + 0.5D, target.getZ() + 0.5D);
-                requireController().processRightClickBlock(
-                    player, client.world, target, WorldActions.inferHitSide(player, target), hit, EnumHand.MAIN_HAND
+                BlockInteractionFeedback.interact(
+                    client, requireController(), player, target, WorldActions.inferHitSide(player, target), hit, EnumHand.MAIN_HAND
                 );
             }
             return target;

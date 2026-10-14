@@ -238,6 +238,16 @@ public final class VersionAdaptersImpl {
             }
 
             @Override
+            public boolean shouldSwingAfterBlockUse(ActionResult result) {
+                return result.isAccepted() && result.shouldSwingHand();
+            }
+
+            @Override
+            public boolean hasUnlimitedBlockItems(ClientPlayerInteractionManager manager, ClientPlayerEntity player) {
+                return manager.hasCreativeInventory();
+            }
+
+            @Override
             public void sendCommand(ClientPlayerEntity player, String command) {
                 String msg = command.startsWith("/") ? command : "/" + command;
                 player.sendChatMessage(msg);

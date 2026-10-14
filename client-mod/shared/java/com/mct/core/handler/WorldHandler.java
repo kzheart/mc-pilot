@@ -55,8 +55,8 @@ public final class WorldHandler extends ActionHandler {
         ClientPlayerEntity player = requirePlayer();
         BlockPos pos = blockPos(params);
         Direction face = inferHitSide(pos);
-        ActionResult result = ClientVersionModulesHolder.get().interaction().interactBlock(
-            requireInteractionManager(), player, Hand.MAIN_HAND,
+        ActionResult result = ClientVersionModulesHolder.get().interaction().interactBlockWithFeedback(
+            client, requireInteractionManager(), player, Hand.MAIN_HAND,
             new BlockHitResult(Vec3d.ofCenter(pos), face, pos, false)
         );
         return com.mct.core.util.MctMaps.mapOf("success", result.isAccepted(), "resultAction", ClientVersionModulesHolder.get().actionResult().resultName(result));
@@ -71,7 +71,7 @@ public final class WorldHandler extends ActionHandler {
         }
         BlockPos support = target.offset(face.getOpposite());
         BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(support), face, support, false);
-        ActionResult result = ClientVersionModulesHolder.get().interaction().interactBlock(requireInteractionManager(), player, Hand.MAIN_HAND, hit);
+        ActionResult result = ClientVersionModulesHolder.get().interaction().interactBlockWithFeedback(client, requireInteractionManager(), player, Hand.MAIN_HAND, hit);
         Instant startedAt = Instant.now();
         while (Duration.between(startedAt, Instant.now()).toMillis() < 2_000L) {
             String placedType = String.valueOf(McRegistries.blockId(clientWorld(requirePlayer()).getBlockState(target).getBlock()));

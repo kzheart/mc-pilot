@@ -260,6 +260,17 @@ public final class VersionAdaptersImpl {
             }
 
             @Override
+            public boolean shouldSwingAfterBlockUse(ActionResult result) {
+                return result instanceof ActionResult.Success success
+                    && success.swingSource() == ActionResult.SwingSource.CLIENT;
+            }
+
+            @Override
+            public boolean hasUnlimitedBlockItems(ClientPlayerInteractionManager manager, ClientPlayerEntity player) {
+                return manager.hasCreativeInventory();
+            }
+
+            @Override
             public void sendCommand(ClientPlayerEntity player, String command) {
                 boolean sent = player.networkHandler.sendCommand(command);
                 if (!sent) {

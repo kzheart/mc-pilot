@@ -67,8 +67,8 @@ public final class SignBookHandler extends ActionHandler {
             BlockPos target = sign.getPos();
             if (!ClientVersionModulesHolder.get().sign().isSignEditScreen(client.currentScreen)) {
                 ClientPlayerEntity player = requirePlayer();
-                ClientVersionModulesHolder.get().interaction().interactBlock(
-                    requireInteractionManager(), player, Hand.MAIN_HAND,
+                ClientVersionModulesHolder.get().interaction().interactBlockWithFeedback(
+                    client, requireInteractionManager(), player, Hand.MAIN_HAND,
                     new BlockHitResult(Vec3d.ofCenter(target), inferHitSide(target), target, false)
                 );
             }

@@ -52,8 +52,8 @@ public final class WorldActions extends LegacyActions {
         EntityPlayerSP player = requirePlayer();
         EnumFacing face = forcedFace != null ? forcedFace : inferHitSide(player, pos);
         Vec3d hit = new Vec3d(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D);
-        EnumActionResult result = requireController().processRightClickBlock(
-            player, client.world, pos, face, hit, EnumHand.MAIN_HAND
+        EnumActionResult result = BlockInteractionFeedback.interact(
+            client, requireController(), player, pos, face, hit, EnumHand.MAIN_HAND
         );
         boolean accepted = result == EnumActionResult.SUCCESS;
         return map("success", accepted, "resultAction", result.name());
