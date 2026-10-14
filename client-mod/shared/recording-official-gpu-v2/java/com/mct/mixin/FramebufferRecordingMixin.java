@@ -2,19 +2,19 @@ package com.mct.mixin;
 
 import com.mct.version.impl.RecordingSupport;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 26.2 moved presentation to GpuSurface. Capture after the final GUI/HUD render. */
-@Mixin(value = GameRenderer.class, remap = false)
+/** Capture the presented image, including Forge/NeoForge post-render event draws. */
+@Mixin(value = Minecraft.class, remap = false)
 public abstract class FramebufferRecordingMixin {
-    @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
-        at = @At("TAIL"), require = 1, remap = false)
-    private void mct$recordFinalFrame(CallbackInfo ci) {
-        Minecraft client = Minecraft.getInstance();
+    @Inject(method = "renderFrame(Z)V", at = @At(value = "INVOKE",
+        target = "Lcom/mojang/blaze3d/systems/GpuSurface;blitFromTexture(Lcom/mojang/blaze3d/systems/CommandEncoder;Lcom/mojang/blaze3d/textures/GpuTextureView;)V",
+        shift = At.Shift.BEFORE, remap = false), require = 1, allow = 1, remap = false)
+    private void mct$recordFinalFrame(boolean advanceGameTime, CallbackInfo ci) {
+        Minecraft client = (Minecraft) (Object) this;
         RecordingSupport.onFrame(client, client.gameRenderer.mainRenderTarget());
     }
 }
