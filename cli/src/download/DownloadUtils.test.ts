@@ -19,7 +19,6 @@ const variant: ModVariant = {
   loader: "fabric",
   support: "ready",
   validation: "verified",
-  modVersion: "0.9.1",
 };
 
 const DOWNLOAD_BYTES = 256 * 1024 * 1024;

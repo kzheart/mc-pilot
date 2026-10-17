@@ -1,4 +1,5 @@
-import { access, mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { access, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -15,13 +16,30 @@ import {
 } from "../ModVariantCatalog.js";
 import type { LoaderType, ModVariant } from "../types.js";
 import { prepareManagedClientRuntime } from "./FabricRuntimeDownloader.js";
+import { readModJarVersion } from "./ModJarVersion.js";
 
 const GITHUB_RELEASE_BASE_URL =
   process.env.MCT_MOD_DOWNLOAD_BASE_URL ||
   "https://github.com/kzheart/mc-pilot/releases/download";
 
-/** Latest upstream release tag that ships the client mod jars. */
-const DEFAULT_MOD_RELEASE_TAG = "v0.14.0";
+/**
+ * Every release builds the mod jars from the same commit as the CLI, so this
+ * CLI's own release hosts the jars matching its catalog's modVersion.
+ */
+const DEFAULT_MOD_RELEASE_TAG = `v${
+  (
+    JSON.parse(
+      readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+    ) as { version: string }
+  ).version
+}`;
+
+async function hasExpectedModVersion(jarPath: string, variant: ModVariant) {
+  return (
+    variant.modVersion === undefined ||
+    (await readModJarVersion(jarPath)) === variant.modVersion
+  );
+}
 
 export interface DownloadClientOptions {
   loader?: LoaderType;
@@ -163,9 +181,12 @@ export async function resolveArtifact(
     };
   } catch {}
 
-  // 2. Check cache
+  // 2. Check cache; jars cached by an older CLI share the file name.
   try {
     await access(cacheArtifactPath);
+    if (!(await hasExpectedModVersion(cacheArtifactPath, variant))) {
+      throw new Error("Cached mod jar is not the catalog version");
+    }
     return {
       sourcePath: cacheArtifactPath,
       cachePath: cacheArtifactPath,
@@ -175,10 +196,6 @@ export async function resolveArtifact(
   } catch {}
 
   // 3. Download from GitHub Releases
-  // The catalog's modVersion tracks the mod build (gradle mod_version), which
-  // is not necessarily a published GitHub release tag: v0.9.1 was deleted
-  // upstream while its artifacts live on under newer release tags. Default to
-  // a tag that actually hosts the mod jars.
   const releaseTag =
     variant.releaseTag ??
     process.env.MCT_MOD_RELEASE_TAG ??
@@ -187,12 +204,6 @@ export async function resolveArtifact(
 
   try {
     await downloadFile(downloadUrl, cacheArtifactPath, fetchImpl);
-    return {
-      sourcePath: cacheArtifactPath,
-      cachePath: cacheArtifactPath,
-      artifactFileName,
-      source: "github-release" as const,
-    };
   } catch (error) {
     throw new MctError(
       {
@@ -215,6 +226,30 @@ export async function resolveArtifact(
       4,
     );
   }
+
+  const actual = await readModJarVersion(cacheArtifactPath);
+  if (variant.modVersion !== undefined && actual !== variant.modVersion) {
+    await rm(cacheArtifactPath, { force: true });
+    throw new MctError(
+      {
+        code: "ARTIFACT_VERSION_MISMATCH",
+        message: `Release ${releaseTag} does not host mod ${variant.modVersion} for ${variant.id}`,
+        details: {
+          downloadUrl,
+          releaseTag,
+          expected: variant.modVersion,
+          actual: actual ?? null,
+        },
+      },
+      4,
+    );
+  }
+  return {
+    sourcePath: cacheArtifactPath,
+    cachePath: cacheArtifactPath,
+    artifactFileName,
+    source: "github-release" as const,
+  };
 }
 
 interface ClientLaunchRuntimePaths {

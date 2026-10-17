@@ -106,6 +106,17 @@ jobs:
           files: release-artifacts/*.jar
           generate_release_notes: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify the published release serves this CLI's mod jars
+        run: |
+          npm ci
+          npm run build
+          node scripts/check-release-mod-download.mjs
+
   publish-npm:
     needs: [build-mod, build-cli]
     runs-on: ubuntu-latest
