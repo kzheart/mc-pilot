@@ -21,7 +21,6 @@
       "support": "configured",
       "validation": "verified",
       "modVersion": "0.10.0",
-      "releaseTag": "v0.20.0",
       "forgeVersion": "14.23.5.2864",
       "forgeVersions": [
         "14.23.5.2859",
