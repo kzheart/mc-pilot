@@ -40,5 +40,6 @@ for variant in modern official legacy; do
       "$home/bin/java" -cp "$out/$variant:$cp" com.mct.test.LegacyWriterBackpressureTest
     fi
     node "$fixtures/run.cjs" "$home/bin/java" "$out/$variant:$cp" "$variant"
+    "$home/bin/java" -cp "$out/$variant:$cp" com.mct.test.WebSocketRestartTest "$variant"
   done
 done
