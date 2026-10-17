@@ -78,6 +78,17 @@ jobs:
       - run: npm run build
       - run: npm run test:cli
 
+      - name: Smoke-test packed CLI installation
+        env:
+          MCT_HOME: ${{ runner.temp }}/mct-install-home
+          MCT_SKILL_TARGETS: none
+        run: |
+          package_dir="$(mktemp -d)"
+          install_dir="$(mktemp -d)"
+          npm pack --workspace cli --pack-destination "$package_dir"
+          npm install --global --prefix "$install_dir" "$package_dir"/*.tgz --no-audit --no-fund
+          "$install_dir/bin/mct" --cli-version
+
   publish-github-release:
     needs: [build-mod, build-cli]
     runs-on: ubuntu-latest
