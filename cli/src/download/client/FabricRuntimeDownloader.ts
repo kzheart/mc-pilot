@@ -73,7 +73,8 @@ async function fileExists(filePath: string, expectedSize?: number) {
     const fileStat = await stat(filePath);
     return (
       expectedSize === undefined ||
-      expectedSize < 0 ||
+      // The arm64 LWJGL patch records its libraries with an unknown size of 0.
+      expectedSize <= 0 ||
       fileStat.size === expectedSize
     );
   } catch {
@@ -94,12 +95,8 @@ async function isManagedRuntimeComplete(
   }
 
   if (version.downloads?.client) {
-    const versionJar = path.join(
-      runtimeRootDir,
-      "versions",
-      version.id,
-      `${version.id}.jar`,
-    );
+    // Loader versions inherit the vanilla jar, which lives under the Minecraft version.
+    const versionJar = minecraft.getVersionJar(version.minecraftVersion);
     if (!(await fileExists(versionJar, version.downloads.client.size))) {
       return false;
     }
@@ -128,9 +125,12 @@ async function isManagedRuntimeComplete(
     if (!(await fileExists(assetIndexPath, assetIndex.size))) {
       return false;
     }
-    const { objects } = JSON.parse(await readFile(assetIndexPath, "utf8")) as {
-      objects?: Record<string, { hash: string; size?: number }>;
-    };
+    let objects: Record<string, { hash: string; size?: number }> | undefined;
+    try {
+      ({ objects } = JSON.parse(await readFile(assetIndexPath, "utf8")));
+    } catch {
+      return false;
+    }
     if (!objects) {
       return false;
     }
