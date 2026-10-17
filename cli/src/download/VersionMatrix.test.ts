@@ -78,20 +78,20 @@ test("searchClientVersions exposes all loaders and java requirements", () => {
 
   assert.equal(fabric?.supported, true);
   assert.equal(fabric?.loaderVersion, "0.16.14");
-  assert.equal(fabric?.modVersion, "0.10.0");
+  assert.equal(fabric?.modVersion, "0.10.1");
   assert.equal(fabric?.validation, "verified");
   assert.equal(fabric?.notes, undefined);
   assert.equal(fabric?.javaVersion, "21+");
 
   assert.equal(forge?.supported, true);
   assert.equal(forge?.loaderVersion, "54.1.16");
-  assert.equal(forge?.modVersion, "0.10.0");
+  assert.equal(forge?.modVersion, "0.10.1");
   assert.equal(forge?.validation, "verified");
   assert.equal(forge?.javaVersion, "21+");
 
   assert.equal(neoforge?.supported, true);
   assert.equal(neoforge?.loaderVersion, "21.4.157");
-  assert.equal(neoforge?.modVersion, "0.10.0");
+  assert.equal(neoforge?.modVersion, "0.10.1");
   assert.equal(neoforge?.validation, "verified");
   assert.equal(neoforge?.javaVersion, "21+");
 });
@@ -116,7 +116,7 @@ test("searchClientVersions retains unsupported discovery rows without inventing 
       minecraftVersion: "1.20.2",
       supported: true,
       loaderVersion: "0.16.14",
-      modVersion: "0.10.0",
+      modVersion: "0.10.1",
       validation: "verified",
       javaVersion: "17+",
     },
@@ -137,7 +137,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       minecraftVersion: "1.20.4",
       supported: true,
       loaderVersion: "49.0.49",
-      modVersion: "0.10.0",
+      modVersion: "0.10.1",
       validation: "verified",
       javaVersion: "17+",
     },
@@ -146,7 +146,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       minecraftVersion: "1.20.2",
       supported: true,
       loaderVersion: "48.1.0",
-      modVersion: "0.10.0",
+      modVersion: "0.10.1",
       validation: "verified",
       javaVersion: "17+",
     },
@@ -155,7 +155,7 @@ test("searchClientVersions exposes configured 1.20.x Forge variants", () => {
       minecraftVersion: "1.20.1",
       supported: true,
       loaderVersion: "47.3.0",
-      modVersion: "0.10.0",
+      modVersion: "0.10.1",
       validation: "verified",
       javaVersion: "17+",
     },

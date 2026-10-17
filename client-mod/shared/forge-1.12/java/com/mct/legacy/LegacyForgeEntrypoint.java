@@ -7,7 +7,7 @@ import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 @Mod(
     modid = LegacyForgeEntrypoint.MOD_ID,
     name = "Minecraft Auto Test Client Mod",
-    version = "0.10.0",
+    version = "0.10.1",
     clientSideOnly = true,
     acceptableRemoteVersions = "*"
 )
