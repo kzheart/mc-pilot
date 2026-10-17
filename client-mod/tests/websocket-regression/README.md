@@ -40,6 +40,11 @@ operation gates. Tests cover:
   with eight ping/pong frames
 - Shutdown with live sockets and a pending main-thread task; sockets close,
   canceled work does not execute, and dispatcher/legacy transport threads exit
+- A server JVM killed with live sockets (server-side close, TIME_WAIT on its
+  port) relaunched three times on the same port, while a second listener still
+  cannot bind the live port (`WebSocketRestartTest`). Java-WebSocket 1.5.6
+  explicitly disables `SO_REUSEADDR`, so modern adapters must re-enable it; on
+  Windows the JDK's default exclusive bind keeps that option emulated
 
 To keep tests fast, the harness changes each instance's default **queue-only**
 budget to 80ms by reflection; production source files are never rewritten. The

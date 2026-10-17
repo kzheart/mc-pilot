@@ -17,6 +17,8 @@ public final class MctWebSocketServer extends WebSocketServer {
 
     public MctWebSocketServer(int port, Minecraft client) {
         super(new InetSocketAddress("127.0.0.1", port));
+        // Java-WebSocket disables the JDK default; a relaunched client must rebind over TIME_WAIT.
+        setReuseAddr(true);
         ActionDispatcher actions = new ActionDispatcher(client);
         requests = new WebSocketRequestService<>(30_000L, actions::execute,
             failure -> failure instanceof ActionException ? ((ActionException) failure).getCode() : "INTERNAL_ERROR",
