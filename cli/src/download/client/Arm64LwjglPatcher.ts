@@ -1,9 +1,11 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { MinecraftFolder } from "@xmcl/core";
 
+import { writeFileAtomically } from "../DownloadUtils.js";
 import { proxyAwareFetch } from "../HttpClient.js";
 
 const LWJGL_ARM64_PATCH = {
@@ -108,25 +110,31 @@ export function needsArm64Patch() {
   return os.arch() === "arm64" && os.platform() === "darwin";
 }
 
+function sha1(content: Uint8Array) {
+  return createHash("sha1").update(content).digest("hex");
+}
+
 async function downloadJar(
   entry: PatchEntry,
   minecraft: MinecraftFolder,
   fetchImpl: typeof fetch,
 ) {
   const localPath = minecraft.getLibraryByPath(entry.path);
-  try {
-    await access(localPath);
-    return localPath;
-  } catch {
-    console.error(`[MCT]   Downloading ${path.basename(entry.path)}...`);
-    const response = await fetchImpl(entry.url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${entry.url}`);
-    }
-    await mkdir(path.dirname(localPath), { recursive: true });
-    await writeFile(localPath, Buffer.from(await response.arrayBuffer()));
+  const cached = await readFile(localPath).catch(() => null);
+  if (cached && sha1(cached) === entry.sha1) {
     return localPath;
   }
+  console.error(`[MCT]   Downloading ${path.basename(entry.path)}...`);
+  const response = await fetchImpl(entry.url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${entry.url}`);
+  }
+  const content = Buffer.from(await response.arrayBuffer());
+  if (sha1(content) !== entry.sha1) {
+    throw new Error(`SHA-1 mismatch: ${entry.url}`);
+  }
+  await writeFileAtomically(localPath, content);
+  return localPath;
 }
 
 export async function applyArm64LwjglPatch(
@@ -190,16 +198,8 @@ export async function applyArm64LwjglPatch(
 
   // 1. Download and extract arm64 natives
   await mkdir(nativesDir, { recursive: true });
-  for (const [libKey, entry] of Object.entries(LWJGL_ARM64_PATCH.natives)) {
-    const localJar = await downloadJar(entry, minecraft, fetchImpl).catch(
-      (e) => {
-        console.error(`[MCT]   Skip ${libKey}: ${(e as Error).message}`);
-        return null;
-      },
-    );
-    if (!localJar) {
-      continue;
-    }
+  for (const entry of Object.values(LWJGL_ARM64_PATCH.natives)) {
+    const localJar = await downloadJar(entry, minecraft, fetchImpl);
     const zip = await open(localJar, { lazyEntries: true, autoClose: false });
     for await (const zipEntry of walkEntriesGenerator(zip)) {
       const name = zipEntry.fileName;
@@ -215,10 +215,8 @@ export async function applyArm64LwjglPatch(
   }
 
   // 2. Download Java JARs
-  for (const [libKey, entry] of Object.entries(LWJGL_ARM64_PATCH.jars)) {
-    await downloadJar(entry, minecraft, fetchImpl).catch((e) =>
-      console.error(`[MCT]   Skip ${libKey}: ${(e as Error).message}`),
-    );
+  for (const entry of Object.values(LWJGL_ARM64_PATCH.jars)) {
+    await downloadJar(entry, minecraft, fetchImpl);
   }
 
   // 3. Patch vanilla version JSON to swap LWJGL 3.2.x -> 3.3.1
