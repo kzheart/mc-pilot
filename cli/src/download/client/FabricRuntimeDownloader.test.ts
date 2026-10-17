@@ -125,3 +125,31 @@ test("a corrupt asset index of the expected size is repaired, not thrown", async
   await assert.rejects(prepare(root, dependencies), /repair-required/);
   assert.equal(state.requests, 1);
 });
+
+for (const scenario of [
+  {
+    name: "a missing asset",
+    damage: (root: string) => rm(path.join(root, "assets/objects/ab/ab12")),
+  },
+  {
+    name: "a truncated asset",
+    damage: (root: string) =>
+      writeFile(path.join(root, "assets/objects/ab/ab12"), "png"),
+  },
+  {
+    name: "a missing client jar",
+    damage: (root: string) => rm(path.join(root, "versions/1.20.4/1.20.4.jar")),
+  },
+]) {
+  test(`a ready marker does not hide ${scenario.name}`, async (t) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mct-runtime-marker-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await createCompleteRuntime(root);
+    await writeFile(path.join(root, `.ready-${versionId}`), versionId);
+    await scenario.damage(root);
+    const { state, dependencies } = offline();
+
+    await assert.rejects(prepare(root, dependencies), /repair-required/);
+    assert.equal(state.requests, 1);
+  });
+}

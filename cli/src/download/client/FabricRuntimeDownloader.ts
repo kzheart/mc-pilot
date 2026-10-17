@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -189,15 +189,17 @@ async function prepareManagedRuntime(
   const readyMarker = path.join(runtimeRootDir, `.ready-${expectedVersionId}`);
 
   try {
-    await access(readyMarker);
-    // Runtime already prepared, skip download. Marker content records the
-    // actual installed version id (older markers held a timestamp instead).
+    // Marker content records the actual installed version id (older markers
+    // held a timestamp instead). Files can disappear after the marker was
+    // written, so it only skips the download while the runtime is complete.
     const markerContent = (await readFile(readyMarker, "utf8")).trim();
     const versionId =
       markerContent && !/^\d{4}-\d{2}-\d{2}T/.test(markerContent)
         ? markerContent
         : expectedVersionId;
-    return { runtimeRootDir, gameDir, versionId };
+    if (await isManagedRuntimeComplete(runtimeRootDir, versionId)) {
+      return { runtimeRootDir, gameDir, versionId };
+    }
   } catch {
     // Not ready, proceed with download
   }
